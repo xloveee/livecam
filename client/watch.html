@@ -129,7 +129,7 @@
 
     <div id="offline-banner">
         <span class="dot"></span>
-        <span id="offline-text">No broadcast right now — waiting...</span>
+        <span id="offline-text">No broadcast right now</span>
     </div>
 
     <div id="password-prompt">
@@ -156,7 +156,6 @@
         let roomPassword = '';
         let pc = null;
         let viewerPollInterval = null;
-        let activePollInterval = null;
         let mediaWatchdogInterval = null;
         let lastBytesReceived = 0;
         let stallCount = 0;
@@ -166,16 +165,6 @@
             if (parts.length >= 2 && parts[0] === 'watch') {
                 return parts[1];
             }
-            return null;
-        }
-
-        async function fetchActiveRoom() {
-            try {
-                const resp = await fetch('/api/active');
-                if (!resp.ok) return null;
-                const data = await resp.json();
-                if (data.room_id) return data;
-            } catch (e) { /* ignore */ }
             return null;
         }
 
@@ -254,7 +243,7 @@
                         stallCount++;
                         if (stallCount >= 2) {
                             teardownConnection();
-                            startActivePoll();
+                            showOffline();
                         }
                     }
                 } catch (e) { /* pc may have closed mid-check */ }
@@ -266,7 +255,7 @@
             teardownConnection();
             statusEl.textContent = 'Stream ended';
             statusEl.classList.add('error');
-            startActivePoll();
+            showOffline();
         }
 
         async function connectWHEP() {
@@ -353,36 +342,16 @@
                 console.error('WHEP connection failed:', err);
                 statusEl.textContent = 'Connection failed';
                 statusEl.classList.add('error');
-                startActivePoll();
+                showOffline();
             }
         }
 
         function showOffline() {
             offlineBanner.style.display = 'block';
             offlineBanner.classList.remove('live');
-            offlineText.textContent = 'No broadcast right now \u2014 waiting...';
+            offlineText.textContent = 'No broadcast right now';
             statusEl.textContent = 'Offline';
             statusEl.classList.remove('error');
-        }
-
-        function startActivePoll() {
-            if (activePollInterval) return;
-            showOffline();
-            activePollInterval = setInterval(async () => {
-                const active = await fetchActiveRoom();
-                if (active) {
-                    clearInterval(activePollInterval);
-                    activePollInterval = null;
-                    roomId = active.room_id;
-                    if (active.has_password && !roomPassword) {
-                        offlineBanner.style.display = 'none';
-                        passwordPrompt.style.display = 'block';
-                        statusEl.textContent = 'Password required';
-                    } else {
-                        connectWHEP();
-                    }
-                }
-            }, 3000);
         }
 
         btnPasswordSubmit.onclick = () => {
@@ -399,25 +368,12 @@
             if (e.key === 'Enter') btnPasswordSubmit.click();
         });
 
-        (async function init() {
-            const urlRoom = getRoomIdFromURL();
-            if (urlRoom) {
-                roomId = urlRoom;
+        (function init() {
+            roomId = getRoomIdFromURL();
+            if (roomId) {
                 connectWHEP();
-                return;
-            }
-
-            const active = await fetchActiveRoom();
-            if (active) {
-                roomId = active.room_id;
-                if (active.has_password) {
-                    passwordPrompt.style.display = 'block';
-                    statusEl.textContent = 'Password required';
-                } else {
-                    connectWHEP();
-                }
             } else {
-                startActivePoll();
+                showOffline();
             }
         })();
     </script>

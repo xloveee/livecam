@@ -219,7 +219,13 @@
         function teardownConnection() {
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
             if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
-            if (pc) { pc.close(); pc = null; }
+            if (pc) {
+                const dying = pc;
+                pc = null;
+                dying.oniceconnectionstatechange = null;
+                dying.onconnectionstatechange = null;
+                dying.close();
+            }
             video.srcObject = null;
             qualitySelect.disabled = true;
             sessionId = null;

@@ -1,0 +1,444 @@
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use str0m::media::{KeyframeRequest, MediaData, Mid, Rid};
+use str0m::net::{Protocol, Receive};
+use str0m::{Event, IceConnectionState, Input, Output, Rtc};
+use tokio::net::UdpSocket;
+use tokio::sync::mpsc;
+use tokio::time::timeout;
+
+use crate::archive::ArchiveModule;
+
+/// Unique identifier for a peer session (broadcaster or viewer).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PeerId(u64);
+
+static NEXT_PEER_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
+impl PeerId {
+    pub fn next() -> Self {
+        Self(NEXT_PEER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+    }
+
+    pub fn parse(s: &str) -> Option<Self> {
+        let num = s.strip_prefix("peer-")?;
+        num.parse::<u64>().ok().map(PeerId)
+    }
+}
+
+impl std::fmt::Display for PeerId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "peer-{}", self.0)
+    }
+}
+
+/// Role of a peer: broadcaster sends media, viewer receives it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PeerRole {
+    Broadcaster,
+    Viewer,
+}
+
+/// A new Rtc instance to be added to the run loop, sent from the HTTP handler.
+pub struct NewPeer {
+    pub peer_id: PeerId,
+    pub rtc: Rtc,
+    pub role: PeerRole,
+    pub room_id: String,
+}
+
+/// Request to change a viewer's simulcast quality, sent from the HTTP handler.
+pub struct QualityChange {
+    pub peer_id: PeerId,
+    pub room_id: String,
+    pub rid: Option<Rid>,
+}
+
+/// Per-room metadata visible to both API handlers and the SFU loop.
+#[derive(Debug, Clone)]
+pub struct RoomInfo {
+    pub viewer_count: u32,
+    pub max_viewers: u32,
+}
+
+impl Default for RoomInfo {
+    fn default() -> Self {
+        Self {
+            viewer_count: 0,
+            max_viewers: 0,
+        }
+    }
+}
+
+/// Thread-safe map of room_id -> RoomInfo, shared between API and SFU.
+pub type RoomStateMap = Arc<Mutex<HashMap<String, RoomInfo>>>;
+
+pub fn new_room_state() -> RoomStateMap {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+/// Tracks an incoming media track on the broadcaster.
+struct TrackIn {
+    mid: Mid,
+    kind: str0m::media::MediaKind,
+}
+
+/// Tracks an outgoing media track on a viewer, mapped to a broadcaster's incoming track.
+struct TrackOut {
+    source_peer: PeerId,
+    source_mid: Mid,
+    kind: str0m::media::MediaKind,
+    local_mid: Option<Mid>,
+}
+
+/// Per-peer session state.
+struct Peer {
+    id: PeerId,
+    rtc: Rtc,
+    role: PeerRole,
+    room_id: String,
+    tracks_in: Vec<TrackIn>,
+    tracks_out: Vec<TrackOut>,
+    chosen_rid: Option<Rid>,
+}
+
+impl Peer {
+    fn new(id: PeerId, rtc: Rtc, role: PeerRole, room_id: String) -> Self {
+        Self {
+            id,
+            rtc,
+            role,
+            room_id,
+            tracks_in: Vec::new(),
+            tracks_out: Vec::new(),
+            chosen_rid: None,
+        }
+    }
+}
+
+/// Events produced by polling a peer that need to be forwarded to other peers.
+enum Propagated {
+    Noop,
+    TrackOpen {
+        source_peer: PeerId,
+        room_id: String,
+        mid: Mid,
+        kind: str0m::media::MediaKind,
+    },
+    Media {
+        source_peer: PeerId,
+        room_id: String,
+        data: MediaData,
+    },
+    Keyframe {
+        request: KeyframeRequest,
+        target_peer: PeerId,
+        source_mid: Mid,
+    },
+}
+
+/// The main SFU run loop. Drives all Rtc instances, demuxes UDP, forwards media.
+///
+/// `socket`      — single multiplexed UDP socket for all WebRTC traffic
+/// `new_peer_rx` — channel receiving new Rtc instances from the HTTP handlers
+/// `quality_rx`  — channel receiving quality change requests from the HTTP handlers
+/// `room_state`  — shared map of room metadata (viewer counts, caps)
+/// `archive_dir` — directory for VOD archive recordings
+pub async fn run_sfu_loop(
+    socket: UdpSocket,
+    mut new_peer_rx: mpsc::UnboundedReceiver<NewPeer>,
+    mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
+    room_state: RoomStateMap,
+    archive_dir: String,
+) {
+    let mut peers: Vec<Peer> = Vec::new();
+    let mut propagation_queue: Vec<Propagated> = Vec::new();
+    let mut buf = vec![0u8; 2000];
+    let mut archive = ArchiveModule::new(&archive_dir);
+
+    tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
+
+    loop {
+        // Stop recording for any disconnected broadcaster before removing them.
+        for peer in peers.iter() {
+            if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
+                archive.stop_recording(&peer.room_id);
+            }
+        }
+        peers.retain(|p| p.rtc.is_alive());
+
+        // Recompute viewer counts from the authoritative peer list.
+        {
+            let mut counts: HashMap<&str, u32> = HashMap::new();
+            for peer in peers.iter() {
+                if peer.role == PeerRole::Viewer {
+                    *counts.entry(&peer.room_id).or_insert(0) += 1;
+                }
+            }
+            if let Ok(mut state) = room_state.lock() {
+                for info in state.values_mut() {
+                    info.viewer_count = 0;
+                }
+                for (room_id, count) in counts {
+                    state.entry(room_id.to_owned())
+                        .or_default()
+                        .viewer_count = count;
+                }
+            }
+        }
+
+        // Apply any pending quality change requests.
+        while let Ok(qc) = quality_rx.try_recv() {
+            if let Some(peer) = peers.iter_mut().find(|p| {
+                p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
+            }) {
+                tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
+                peer.chosen_rid = qc.rid;
+            }
+        }
+
+        // Accept any newly connected peers from the HTTP layer.
+        while let Ok(new) = new_peer_rx.try_recv() {
+            let peer_id = new.peer_id;
+            let room_id = new.room_id.clone();
+            let role = new.role;
+            let mut peer = Peer::new(peer_id, new.rtc, role, new.room_id);
+
+            if role == PeerRole::Viewer {
+                for bcast in peers.iter().filter(|p| {
+                    p.role == PeerRole::Broadcaster && p.room_id == room_id
+                }) {
+                    for track_in in &bcast.tracks_in {
+                        peer.tracks_out.push(TrackOut {
+                            source_peer: bcast.id,
+                            source_mid: track_in.mid,
+                            kind: track_in.kind,
+                            local_mid: None,
+                        });
+                    }
+                }
+            }
+
+            tracing::info!("{} joined room '{}' as {:?}", peer_id, room_id, role);
+            peers.push(peer);
+        }
+
+        // Poll every peer for outputs, collecting events to propagate.
+        let mut next_timeout = Instant::now() + Duration::from_millis(100);
+
+        for peer in peers.iter_mut() {
+            loop {
+                if !peer.rtc.is_alive() {
+                    break;
+                }
+
+                match peer.rtc.poll_output() {
+                    Ok(Output::Timeout(t)) => {
+                        next_timeout = next_timeout.min(t);
+                        break;
+                    }
+                    Ok(Output::Transmit(t)) => {
+                        if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
+                            tracing::warn!("{}: UDP send error: {}", peer.id, e);
+                        }
+                    }
+                    Ok(Output::Event(event)) => {
+                        let prop = handle_peer_event(peer, event);
+                        propagation_queue.push(prop);
+                    }
+                    Err(e) => {
+                        tracing::error!("{}: poll error: {:?}", peer.id, e);
+                        peer.rtc.disconnect();
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Propagate collected events to other peers and archive broadcaster media.
+        for prop in propagation_queue.drain(..) {
+            if let Propagated::Media { room_id, data, .. } = &prop {
+                archive.write_sample(room_id, &data.data);
+            }
+            propagate(&prop, &mut peers);
+        }
+
+        // Wait for either incoming UDP data or the next timeout.
+        let wait = (next_timeout - Instant::now()).max(Duration::from_millis(1));
+
+        match timeout(wait, socket.recv_from(&mut buf)).await {
+            Ok(Ok((n, source))) => {
+                let now = Instant::now();
+                let local_addr = socket.local_addr().unwrap();
+                let receive = match Receive::new(
+                    Protocol::Udp,
+                    source,
+                    local_addr,
+                    &buf[..n],
+                ) {
+                    Ok(r) => r,
+                    Err(_) => continue,
+                };
+                let input = Input::Receive(now, receive);
+
+                if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
+                    if let Err(e) = peer.rtc.handle_input(input) {
+                        tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                    }
+                }
+            }
+            Ok(Err(e)) => {
+                tracing::warn!("UDP recv error: {}", e);
+            }
+            Err(_) => {
+                // Timeout expired — will drive time forward below.
+            }
+        }
+
+        // Drive time forward on all peers.
+        let now = Instant::now();
+        for peer in peers.iter_mut() {
+            if peer.rtc.is_alive() {
+                let _ = peer.rtc.handle_input(Input::Timeout(now));
+            }
+        }
+    }
+}
+
+/// Process a single event from a peer's Rtc instance.
+fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
+    match event {
+        Event::IceConnectionStateChange(state) => {
+            tracing::info!("{}: ICE state -> {:?}", peer.id, state);
+            if state == IceConnectionState::Disconnected {
+                peer.rtc.disconnect();
+            }
+            Propagated::Noop
+        }
+
+        Event::MediaAdded(ev) => {
+            tracing::info!("{}: media added mid={} kind={:?} dir={:?}", peer.id, ev.mid, ev.kind, ev.direction);
+            if peer.role == PeerRole::Broadcaster {
+                peer.tracks_in.push(TrackIn { mid: ev.mid, kind: ev.kind });
+                return Propagated::TrackOpen {
+                    source_peer: peer.id,
+                    room_id: peer.room_id.clone(),
+                    mid: ev.mid,
+                    kind: ev.kind,
+                };
+            }
+            if peer.role == PeerRole::Viewer {
+                // The viewer's SDP offer contained recvonly m-lines. str0m fires MediaAdded
+                // for each one. Match it to an unmapped TrackOut of the same media kind so
+                // the SFU knows where to write incoming broadcaster media.
+                if let Some(track_out) = peer.tracks_out.iter_mut().find(|t| {
+                    t.local_mid.is_none() && t.kind == ev.kind
+                }) {
+                    tracing::info!("{}: mapped viewer mid={} -> broadcaster mid={}", peer.id, ev.mid, track_out.source_mid);
+                    track_out.local_mid = Some(ev.mid);
+                }
+            }
+            Propagated::Noop
+        }
+
+        Event::MediaData(data) => {
+            if peer.role == PeerRole::Broadcaster {
+                return Propagated::Media {
+                    source_peer: peer.id,
+                    room_id: peer.room_id.clone(),
+                    data,
+                };
+            }
+            Propagated::Noop
+        }
+
+        Event::KeyframeRequest(req) => {
+            if peer.role == PeerRole::Viewer {
+                if let Some(track_out) = peer.tracks_out.iter().find(|t| t.local_mid == Some(req.mid)) {
+                    return Propagated::Keyframe {
+                        request: req,
+                        target_peer: track_out.source_peer,
+                        source_mid: track_out.source_mid,
+                    };
+                }
+            }
+            Propagated::Noop
+        }
+
+        _ => Propagated::Noop,
+    }
+}
+
+/// Forward a propagated event to all relevant peers.
+fn propagate(prop: &Propagated, peers: &mut [Peer]) {
+    match prop {
+        Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
+            for peer in peers.iter_mut() {
+                if peer.role != PeerRole::Viewer || peer.room_id != *room_id {
+                    continue;
+                }
+                let already_mapped = peer.tracks_out.iter().any(|t| {
+                    t.source_peer == *source_peer && t.source_mid == *mid
+                });
+                if !already_mapped {
+                    peer.tracks_out.push(TrackOut {
+                        source_peer: *source_peer,
+                        source_mid: *mid,
+                        kind: *kind,
+                        local_mid: None,
+                    });
+                }
+            }
+        }
+
+        Propagated::Media { source_peer, room_id, data } => {
+            for peer in peers.iter_mut() {
+                if peer.role != PeerRole::Viewer
+                    || peer.room_id != *room_id
+                    || peer.id == *source_peer
+                {
+                    continue;
+                }
+
+                if let (Some(ref chosen), Some(ref actual)) = (&peer.chosen_rid, &data.rid) {
+                    if chosen != actual {
+                        continue;
+                    }
+                }
+
+                let local_mid = peer.tracks_out.iter()
+                    .find(|t| t.source_peer == *source_peer && t.source_mid == data.mid)
+                    .and_then(|t| t.local_mid);
+
+                let Some(mid) = local_mid else {
+                    continue;
+                };
+
+                let Some(writer) = peer.rtc.writer(mid) else {
+                    continue;
+                };
+
+                let Some(pt) = writer.match_params(data.params) else {
+                    continue;
+                };
+
+                if let Err(e) = writer.write(pt, data.network_time, data.time, data.data.clone()) {
+                    tracing::warn!("{}: write error: {:?}", peer.id, e);
+                    peer.rtc.disconnect();
+                }
+            }
+        }
+
+        Propagated::Keyframe { target_peer, source_mid, request, .. } => {
+            if let Some(broadcaster) = peers.iter_mut().find(|p| p.id == *target_peer) {
+                if let Some(mut writer) = broadcaster.rtc.writer(*source_mid) {
+                    let _ = writer.request_keyframe(request.rid, request.kind);
+                }
+            }
+        }
+
+        Propagated::Noop => {}
+    }
+}

@@ -1,0 +1,28 @@
+# Rust build artifacts (1GB+)
+rust-core/target/
+
+# Go build artifacts
+go-features/api/api-server
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor state
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Environment files (may contain secrets)
+.env
+*.env.local
+
+# VOD archive recordings (runtime data, not source)
+rust-core/archive/
+
+deploy/
+build-plan-story.md
+Build-plan.md
+td.md

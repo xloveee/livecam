@@ -1,0 +1,100 @@
+name: CI
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        rust: [stable, beta, 1.81.0]
+        feature: ["aws-lc-rs", "rust-crypto", "rcgen", ""]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: ${{ matrix.rust }}
+      - uses: Swatinem/rust-cache@v1
+      - name: Build
+        run: cargo +${{steps.toolchain.outputs.name}} build --no-default-features --features "${{ matrix.feature }}"
+      - name: Test
+        if: matrix.feature == 'aws-lc-rs' || matrix.feature == 'rust-crypto'
+        run: cargo +${{steps.toolchain.outputs.name}} test  --no-default-features --features "${{ matrix.feature }}"
+
+  snowflake:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Martin's snowflake formatting rules
+        uses: algesten/snowflake@v1.0.4
+        with:
+          check_diff: true
+          line_width_rules: "CHANGELOG.md:120;c_cpp_properties.json:160;Cargo.toml:199;README.md:180;README.tpl:180;*.md:110;*.rs:110;*.toml:110;DEFAULT=110"
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: dtolnay/rust-toolchain@master
+        id: toolchain
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v1
+      - name: fmt
+        run: cargo +${{steps.toolchain.outputs.name}} fmt --all -- --check
+      - name: clippy
+        run: cargo +${{steps.toolchain.outputs.name}} clippy -- -D warnings
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+          components: clippy
+      - name: doc
+        run: cargo doc --no-deps
+        env:
+          RUSTDOCFLAGS: -Dwarnings
+
+  # cargo-deny:
+  #   name: cargo-deny
+
+  #   # TODO: remove this matrix when https://github.com/EmbarkStudios/cargo-deny/issues/324 is resolved
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       platform:
+  #         - aarch64-apple-ios
+  #         - aarch64-linux-android
+  #         - i686-pc-windows-gnu
+  #         - i686-pc-windows-msvc
+  #         - i686-unknown-linux-gnu
+  #         - wasm32-unknown-unknown
+  #         - x86_64-apple-darwin
+  #         - x86_64-apple-ios
+  #         - x86_64-pc-windows-gnu
+  #         - x86_64-pc-windows-msvc
+  #         - x86_64-unknown-linux-gnu
+  #         - x86_64-unknown-redox
+
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #   - uses: actions/checkout@v3
+  #   - uses: EmbarkStudios/cargo-deny-action@v1
+  #     with:
+  #       command: check
+  #       log-level: error
+  #       arguments: --all-features --target ${{ matrix.platform }}

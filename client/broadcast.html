@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Broadcast — Independent Broadcasting</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 1.5rem 1rem;
+        }
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: #fff;
+        }
+        .subtitle {
+            font-size: 0.85rem;
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+        .preview-container {
+            position: relative;
+            width: 100%;
+            max-width: 720px;
+        }
+        video {
+            width: 100%;
+            background: #111;
+            aspect-ratio: 16/9;
+            border-radius: 6px;
+            transform: scaleX(-1);
+        }
+        .live-badge {
+            display: none;
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            background: #d32f2f;
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 3px 10px;
+            border-radius: 3px;
+            letter-spacing: 0.05em;
+        }
+        .live-badge.visible { display: block; }
+
+        .form-group {
+            margin-top: 1.2rem;
+            width: 100%;
+            max-width: 720px;
+            display: flex;
+            flex-direction: column;
+            gap: 0.6rem;
+        }
+        label {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        input, select {
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 0.6rem 0.8rem;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            width: 100%;
+        }
+        input:focus, select:focus {
+            outline: none;
+            border-color: #d32f2f;
+        }
+        .row {
+            display: flex;
+            gap: 0.8rem;
+        }
+        .row > * { flex: 1; }
+
+        .controls {
+            margin-top: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            width: 100%;
+            max-width: 720px;
+        }
+        button {
+            color: #fff;
+            border: none;
+            padding: 0.65rem 1.8rem;
+            font-size: 0.95rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.15s;
+        }
+        #btn-start { background: #d32f2f; }
+        #btn-start:hover { background: #b71c1c; }
+        #btn-stop { background: #555; display: none; }
+        #btn-stop:hover { background: #777; }
+        button:disabled { background: #333; cursor: default; }
+
+        #status {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .error { color: #ef5350; }
+        .connected { color: #4caf50; }
+
+        .stats {
+            margin-top: 0.8rem;
+            font-size: 0.8rem;
+            color: #666;
+            width: 100%;
+            max-width: 720px;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Go Live</h1>
+    <div class="subtitle">Broadcast from your browser — phone or desktop</div>
+
+    <div class="preview-container">
+        <video id="preview" autoplay muted playsinline></video>
+        <div class="live-badge" id="live-badge">LIVE</div>
+    </div>
+
+    <div class="form-group">
+        <div class="row">
+            <div>
+                <label for="stream-key">Stream Key</label>
+                <input type="text" id="stream-key" placeholder="your-stream-key" autocomplete="off" spellcheck="false">
+            </div>
+            <div>
+                <label for="resolution">Resolution</label>
+                <select id="resolution">
+                    <option value="1280x720">720p</option>
+                    <option value="1920x1080">1080p</option>
+                    <option value="854x480">480p</option>
+                    <option value="640x360">360p</option>
+                </select>
+            </div>
+        </div>
+        <div class="row">
+            <div>
+                <label for="max-viewers">Max Viewers (0 = unlimited)</label>
+                <input type="number" id="max-viewers" value="0" min="0" max="10000">
+            </div>
+            <div>
+                <label>Viewers</label>
+                <div id="viewer-count" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">—</div>
+            </div>
+        </div>
+        <div class="row">
+            <div>
+                <label for="camera-select">Camera</label>
+                <select id="camera-select"><option value="">Loading...</option></select>
+            </div>
+            <div>
+                <label for="mic-select">Microphone</label>
+                <select id="mic-select"><option value="">Loading...</option></select>
+            </div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <button id="btn-start">Start Broadcast</button>
+        <button id="btn-stop">Stop</button>
+        <span id="status">Ready</span>
+    </div>
+
+    <div class="stats" id="stats"></div>
+
+    <script>
+        const preview = document.getElementById('preview');
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const statusEl = document.getElementById('status');
+        const statsEl = document.getElementById('stats');
+        const liveBadge = document.getElementById('live-badge');
+        const streamKeyInput = document.getElementById('stream-key');
+        const resolutionSelect = document.getElementById('resolution');
+        const cameraSelect = document.getElementById('camera-select');
+        const micSelect = document.getElementById('mic-select');
+        const maxViewersInput = document.getElementById('max-viewers');
+        const viewerCountEl = document.getElementById('viewer-count');
+
+        let pc = null;
+        let localStream = null;
+        let statsInterval = null;
+        let viewerPollInterval = null;
+        let activeStreamKey = null;
+
+        async function enumerateDevices() {
+            try {
+                await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+            } catch (e) {
+                statusEl.textContent = 'Camera/mic permission denied';
+                statusEl.classList.add('error');
+                btnStart.disabled = true;
+                return;
+            }
+
+            const devices = await navigator.mediaDevices.enumerateDevices();
+
+            cameraSelect.innerHTML = '';
+            micSelect.innerHTML = '';
+
+            const cameras = devices.filter(d => d.kind === 'videoinput');
+            const mics = devices.filter(d => d.kind === 'audioinput');
+
+            if (cameras.length === 0) {
+                cameraSelect.innerHTML = '<option value="">No camera found</option>';
+            } else {
+                cameras.forEach((cam, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = cam.deviceId;
+                    opt.textContent = cam.label || ('Camera ' + (i + 1));
+                    cameraSelect.appendChild(opt);
+                });
+            }
+
+            if (mics.length === 0) {
+                micSelect.innerHTML = '<option value="">No microphone found</option>';
+            } else {
+                mics.forEach((mic, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = mic.deviceId;
+                    opt.textContent = mic.label || ('Mic ' + (i + 1));
+                    micSelect.appendChild(opt);
+                });
+            }
+
+            await startPreview();
+        }
+
+        async function startPreview() {
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+            }
+
+            const [w, h] = resolutionSelect.value.split('x').map(Number);
+            const constraints = {
+                video: {
+                    deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
+                    width: { ideal: w },
+                    height: { ideal: h },
+                    frameRate: { ideal: 30 }
+                },
+                audio: {
+                    deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true
+                }
+            };
+
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia(constraints);
+                preview.srcObject = localStream;
+            } catch (e) {
+                statusEl.textContent = 'Failed to access camera: ' + e.message;
+                statusEl.classList.add('error');
+            }
+        }
+
+        cameraSelect.onchange = startPreview;
+        micSelect.onchange = startPreview;
+        resolutionSelect.onchange = startPreview;
+
+        async function setViewerLimit(streamKey, max) {
+            try {
+                await fetch('/api/viewer_limit/' + streamKey, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ max_viewers: parseInt(max, 10) || 0 })
+                });
+            } catch (e) {
+                console.warn('Failed to set viewer limit:', e);
+            }
+        }
+
+        async function pollViewerCount() {
+            if (!activeStreamKey) return;
+            try {
+                const resp = await fetch('/api/room_info/' + activeStreamKey);
+                if (resp.ok) {
+                    const info = await resp.json();
+                    viewerCountEl.textContent = info.viewer_count + (info.max_viewers > 0 ? ' / ' + info.max_viewers : '');
+                }
+            } catch (e) {
+                /* ignore */
+            }
+        }
+
+        maxViewersInput.onchange = () => {
+            if (activeStreamKey) {
+                setViewerLimit(activeStreamKey, maxViewersInput.value);
+            }
+        };
+
+        async function fetchICEConfig() {
+            try {
+                const resp = await fetch('/api/config');
+                if (!resp.ok) return {};
+                return await resp.json();
+            } catch (e) {
+                return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            }
+        }
+
+        btnStart.onclick = async () => {
+            const streamKey = streamKeyInput.value.trim();
+            if (!streamKey) {
+                statusEl.textContent = 'Enter a stream key';
+                statusEl.classList.add('error');
+                return;
+            }
+            if (!localStream) {
+                statusEl.textContent = 'No camera stream available';
+                statusEl.classList.add('error');
+                return;
+            }
+
+            statusEl.textContent = 'Connecting...';
+            statusEl.classList.remove('error', 'connected');
+            btnStart.disabled = true;
+
+            const config = await fetchICEConfig();
+
+            pc = new RTCPeerConnection({
+                iceServers: config.iceServers || []
+            });
+
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                if (state === 'connected' || state === 'completed') {
+                    statusEl.textContent = 'Live';
+                    statusEl.classList.add('connected');
+                    statusEl.classList.remove('error');
+                    liveBadge.classList.add('visible');
+                    btnStop.style.display = '';
+                    startStats();
+                    activeStreamKey = streamKey;
+                    setViewerLimit(streamKey, maxViewersInput.value);
+                    pollViewerCount();
+                    viewerPollInterval = setInterval(pollViewerCount, 3000);
+                } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    stopBroadcast();
+                    statusEl.textContent = 'Disconnected';
+                    statusEl.classList.add('error');
+                }
+            };
+
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const response = await fetch('/api/whip/' + streamKey, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp' },
+                    body: pc.localDescription.sdp
+                });
+
+                if (!response.ok) {
+                    const errText = await response.text();
+                    throw new Error(errText || ('Server returned ' + response.status));
+                }
+
+                const answerSdp = await response.text();
+                await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+            } catch (err) {
+                console.error('WHIP broadcast failed:', err);
+                statusEl.textContent = 'Failed: ' + err.message;
+                statusEl.classList.add('error');
+                btnStart.disabled = false;
+                if (pc) { pc.close(); pc = null; }
+            }
+        };
+
+        btnStop.onclick = () => {
+            stopBroadcast();
+            statusEl.textContent = 'Stopped';
+            statusEl.classList.remove('connected', 'error');
+        };
+
+        function stopBroadcast() {
+            if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
+            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            if (pc) { pc.close(); pc = null; }
+            activeStreamKey = null;
+            liveBadge.classList.remove('visible');
+            btnStart.disabled = false;
+            btnStop.style.display = 'none';
+            statsEl.textContent = '';
+            viewerCountEl.textContent = '—';
+        }
+
+        function startStats() {
+            if (statsInterval) clearInterval(statsInterval);
+            let prevBytesSent = 0;
+            let prevTimestamp = 0;
+            statsInterval = setInterval(async () => {
+                if (!pc) return;
+                const stats = await pc.getStats();
+                let videoBitrate = '';
+                let audioBitrate = '';
+                let resolution = '';
+                let fps = '';
+
+                stats.forEach(report => {
+                    if (report.type === 'outbound-rtp' && report.kind === 'video') {
+                        if (prevTimestamp > 0) {
+                            const dt = (report.timestamp - prevTimestamp) / 1000;
+                            const db = (report.bytesSent - prevBytesSent) * 8;
+                            videoBitrate = (db / dt / 1000).toFixed(0) + ' kbps';
+                        }
+                        prevBytesSent = report.bytesSent;
+                        prevTimestamp = report.timestamp;
+                        if (report.frameWidth) {
+                            resolution = report.frameWidth + 'x' + report.frameHeight;
+                        }
+                        if (report.framesPerSecond) {
+                            fps = report.framesPerSecond + ' fps';
+                        }
+                    }
+                    if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+                        // Audio bitrate is always low; skip for display
+                    }
+                });
+
+                const parts = [resolution, fps, videoBitrate].filter(Boolean);
+                statsEl.textContent = parts.length > 0 ? parts.join(' · ') : '';
+            }, 2000);
+        }
+
+        enumerateDevices();
+    </script>
+</body>
+</html>

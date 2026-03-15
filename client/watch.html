@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Independent Broadcast Viewer</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background-color: #0a0a0a;
+            color: #e0e0e0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 2rem 1rem;
+        }
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: #fff;
+        }
+        .room-label {
+            font-size: 0.9rem;
+            color: #888;
+            margin-bottom: 1.5rem;
+        }
+        video {
+            width: 100%;
+            max-width: 960px;
+            background: #000;
+            aspect-ratio: 16/9;
+            border-radius: 4px;
+        }
+        #controls {
+            margin-top: 1.2rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        button {
+            background: #d32f2f;
+            color: #fff;
+            border: none;
+            padding: 0.6rem 1.6rem;
+            font-size: 0.95rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button:hover { background: #b71c1c; }
+        button:disabled { background: #555; cursor: default; }
+        select {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        select:disabled { opacity: 0.4; cursor: default; }
+        #status {
+            font-size: 0.85rem;
+            color: #aaa;
+        }
+        .error { color: #ef5350; }
+        .viewer-count {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 0.6rem;
+        }
+    </style>
+</head>
+<body>
+
+    <h1>Independent Broadcast</h1>
+    <div class="room-label" id="room-label">Room: —</div>
+
+    <video id="player" autoplay controls playsinline></video>
+
+    <div id="controls">
+        <button id="btn-watch">Watch Live</button>
+        <select id="quality-select" disabled>
+            <option value="">Auto</option>
+            <option value="h">High (1080p)</option>
+            <option value="m">Medium (720p)</option>
+            <option value="l">Low (360p)</option>
+        </select>
+        <span id="status">Disconnected</span>
+    </div>
+    <div class="viewer-count" id="viewer-count"></div>
+
+    <script>
+        const video = document.getElementById('player');
+        const btnWatch = document.getElementById('btn-watch');
+        const qualitySelect = document.getElementById('quality-select');
+        const statusEl = document.getElementById('status');
+        const roomLabel = document.getElementById('room-label');
+        const viewerCountEl = document.getElementById('viewer-count');
+
+        function getRoomId() {
+            const parts = window.location.pathname.split('/').filter(Boolean);
+            if (parts.length >= 2 && parts[0] === 'watch') {
+                return parts[1];
+            }
+            return null;
+        }
+
+        const roomId = getRoomId();
+        let sessionId = null;
+        let viewerPollInterval = null;
+
+        if (!roomId) {
+            roomLabel.textContent = 'No room specified. Use /watch/{room-id}';
+            statusEl.textContent = 'Error: no room ID in URL';
+            statusEl.classList.add('error');
+            btnWatch.disabled = true;
+        } else {
+            roomLabel.textContent = 'Room: ' + roomId;
+        }
+
+        let pc = null;
+
+        async function pollViewerCount() {
+            if (!roomId) return;
+            try {
+                const resp = await fetch('/api/room_info/' + roomId);
+                if (resp.ok) {
+                    const info = await resp.json();
+                    viewerCountEl.textContent = info.viewer_count + ' watching';
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        async function fetchICEConfig() {
+            try {
+                const resp = await fetch('/api/config');
+                if (!resp.ok) return {};
+                return await resp.json();
+            } catch (e) {
+                console.warn('Could not fetch ICE config, using defaults:', e);
+                return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+            }
+        }
+
+        async function setQuality(rid) {
+            if (!sessionId || !roomId) return;
+            try {
+                await fetch('/api/quality/' + roomId, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Session-Id': sessionId
+                    },
+                    body: JSON.stringify({ rid: rid || null })
+                });
+            } catch (e) {
+                console.warn('Quality change failed:', e);
+            }
+        }
+
+        qualitySelect.onchange = () => {
+            setQuality(qualitySelect.value || null);
+        };
+
+        btnWatch.onclick = async () => {
+            if (!roomId) return;
+
+            statusEl.textContent = 'Fetching config...';
+            statusEl.classList.remove('error');
+            btnWatch.disabled = true;
+            qualitySelect.disabled = true;
+            sessionId = null;
+
+            const config = await fetchICEConfig();
+
+            pc = new RTCPeerConnection({
+                iceServers: config.iceServers || []
+            });
+
+            pc.ontrack = (event) => {
+                if (video.srcObject !== event.streams[0]) {
+                    video.srcObject = event.streams[0];
+                }
+            };
+
+            pc.oniceconnectionstatechange = () => {
+                const state = pc.iceConnectionState;
+                statusEl.textContent = state.charAt(0).toUpperCase() + state.slice(1);
+                if (state === 'connected' || state === 'completed') {
+                    statusEl.classList.remove('error');
+                    qualitySelect.disabled = false;
+                    pollViewerCount();
+                    viewerPollInterval = setInterval(pollViewerCount, 5000);
+                } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    statusEl.classList.add('error');
+                    btnWatch.disabled = false;
+                    qualitySelect.disabled = true;
+                    if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+                    viewerCountEl.textContent = '';
+                }
+            };
+
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+
+            statusEl.textContent = 'Negotiating...';
+
+            try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+
+                const response = await fetch('/api/whep/' + roomId, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/sdp' },
+                    body: pc.localDescription.sdp
+                });
+
+                if (!response.ok) {
+                    throw new Error('Server returned ' + response.status);
+                }
+
+                sessionId = response.headers.get('X-Session-Id');
+
+                const answerSdp = await response.text();
+                await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+            } catch (err) {
+                console.error('WHEP connection failed:', err);
+                statusEl.textContent = 'Connection failed';
+                statusEl.classList.add('error');
+                btnWatch.disabled = false;
+            }
+        };
+    </script>
+</body>
+</html>

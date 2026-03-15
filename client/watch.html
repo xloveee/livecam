@@ -332,6 +332,20 @@
                     return;
                 }
 
+                if (response.status === 503) {
+                    pc.close();
+                    pc = null;
+                    showRetry('Room is full — retrying...');
+                    return;
+                }
+
+                if (response.status === 429) {
+                    pc.close();
+                    pc = null;
+                    showRetry('Too many requests — retrying...');
+                    return;
+                }
+
                 if (!response.ok) {
                     throw new Error('Server returned ' + response.status);
                 }
@@ -345,6 +359,17 @@
                 statusEl.textContent = 'Connection failed';
                 statusEl.classList.add('error');
                 showOffline();
+            }
+        }
+
+        function showRetry(message) {
+            offlineBanner.style.display = 'block';
+            offlineBanner.classList.remove('live');
+            offlineText.textContent = message;
+            statusEl.textContent = 'Waiting';
+            statusEl.classList.remove('error');
+            if (!offlinePollInterval) {
+                offlinePollInterval = setInterval(() => { connectWHEP(); }, 5000);
             }
         }
 

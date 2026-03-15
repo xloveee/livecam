@@ -222,6 +222,7 @@ pub struct RoomInfoResponse {
     pub viewer_count: u32,
     pub max_viewers: u32,
     pub has_password: bool,
+    pub is_live: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
 }
@@ -242,12 +243,14 @@ pub async fn room_info_handler(
             viewer_count: info.viewer_count,
             max_viewers: info.max_viewers,
             has_password: info.password.is_some(),
+            is_live: info.is_live,
             password: info.password,
         },
         None => RoomInfoResponse {
             viewer_count: 0,
             max_viewers: 0,
             has_password: false,
+            is_live: false,
             password: None,
         },
     };

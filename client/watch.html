@@ -182,6 +182,10 @@
                 const resp = await fetch('/api/room_info/' + roomId);
                 if (resp.ok) {
                     const info = await resp.json();
+                    if (!info.is_live && pc) {
+                        handleStreamEnded();
+                        return;
+                    }
                     viewerCountEl.textContent = info.viewer_count + ' watching';
                 }
             } catch (e) { /* ignore */ }
@@ -213,6 +217,20 @@
 
         qualitySelect.onchange = () => { setQuality(qualitySelect.value || null); };
 
+        function handleStreamEnded() {
+            if (!pc) return;
+            pc.close();
+            pc = null;
+            video.srcObject = null;
+            statusEl.textContent = 'Stream ended';
+            statusEl.classList.add('error');
+            qualitySelect.disabled = true;
+            sessionId = null;
+            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            viewerCountEl.textContent = '';
+            startActivePoll();
+        }
+
         async function connectWHEP() {
             if (!roomId) return;
 
@@ -235,19 +253,6 @@
                 }
             };
 
-            function handleStreamEnded() {
-                if (!pc) return;
-                pc.close();
-                pc = null;
-                video.srcObject = null;
-                statusEl.textContent = 'Stream ended';
-                statusEl.classList.add('error');
-                qualitySelect.disabled = true;
-                if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
-                viewerCountEl.textContent = '';
-                startActivePoll();
-            }
-
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
                 if (state === 'connected' || state === 'completed') {
@@ -256,7 +261,7 @@
                     qualitySelect.disabled = false;
                     passwordPrompt.style.display = 'none';
                     pollViewerCount();
-                    viewerPollInterval = setInterval(pollViewerCount, 5000);
+                    viewerPollInterval = setInterval(pollViewerCount, 3000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                     handleStreamEnded();
                 }

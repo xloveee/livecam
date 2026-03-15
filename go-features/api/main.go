@@ -327,6 +327,7 @@ type roomInfoResult struct {
 	ViewerCount int32  `json:"viewer_count"`
 	MaxViewers  int32  `json:"max_viewers"`
 	HasPassword bool   `json:"has_password"`
+	IsLive      bool   `json:"is_live"`
 	Password    string `json:"password,omitempty"`
 }
 
@@ -360,10 +361,12 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		ViewerCount int32 `json:"viewer_count"`
 		MaxViewers  int32 `json:"max_viewers"`
 		HasPassword bool  `json:"has_password"`
+		IsLive      bool  `json:"is_live"`
 	}{
 		ViewerCount: info.ViewerCount,
 		MaxViewers:  info.MaxViewers,
 		HasPassword: info.HasPassword,
+		IsLive:      info.IsLive,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

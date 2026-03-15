@@ -371,7 +371,8 @@
 
             statusEl.textContent = 'Connecting...';
             statusEl.classList.remove('error', 'connected');
-            btnStart.disabled = true;
+            btnStart.style.display = 'none';
+            btnStop.style.display = '';
 
             const config = await fetchICEConfig();
 
@@ -390,8 +391,6 @@
                     statusEl.classList.add('connected');
                     statusEl.classList.remove('error');
                     liveBadge.classList.add('visible');
-                    btnStart.style.display = 'none';
-                    btnStop.style.display = '';
                     startStats();
                     activeStreamKey = streamKey;
                     setViewerLimit(streamKey, maxViewersInput.value);
@@ -427,7 +426,9 @@
                 console.error('WHIP broadcast failed:', err);
                 statusEl.textContent = 'Failed: ' + err.message;
                 statusEl.classList.add('error');
+                btnStart.style.display = '';
                 btnStart.disabled = false;
+                btnStop.style.display = 'none';
                 if (pc) { pc.close(); pc = null; }
             }
         };

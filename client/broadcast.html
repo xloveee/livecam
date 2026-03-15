@@ -390,6 +390,7 @@
                     statusEl.classList.add('connected');
                     statusEl.classList.remove('error');
                     liveBadge.classList.add('visible');
+                    btnStart.style.display = 'none';
                     btnStop.style.display = '';
                     startStats();
                     activeStreamKey = streamKey;
@@ -448,6 +449,7 @@
             preview.srcObject = null;
             activeStreamKey = null;
             liveBadge.classList.remove('visible');
+            btnStart.style.display = '';
             btnStart.disabled = false;
             btnStop.style.display = 'none';
             statsEl.textContent = '';

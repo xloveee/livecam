@@ -368,13 +368,29 @@
             if (e.key === 'Enter') btnPasswordSubmit.click();
         });
 
-        (function init() {
+        (async function init() {
             roomId = getRoomIdFromURL();
             if (roomId) {
                 connectWHEP();
-            } else {
-                showOffline();
+                return;
             }
+            try {
+                const resp = await fetch('/api/active');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.room_id) {
+                        roomId = data.room_id;
+                        if (data.has_password) {
+                            passwordPrompt.style.display = 'block';
+                            statusEl.textContent = 'Password required';
+                        } else {
+                            connectWHEP();
+                        }
+                        return;
+                    }
+                }
+            } catch (e) { /* server unreachable */ }
+            showOffline();
         })();
     </script>
 </body>

@@ -157,6 +157,7 @@
         let pc = null;
         let viewerPollInterval = null;
         let mediaWatchdogInterval = null;
+        let offlinePollInterval = null;
         let lastBytesReceived = 0;
         let stallCount = 0;
 
@@ -260,6 +261,7 @@
 
         async function connectWHEP() {
             if (!roomId) return;
+            if (offlinePollInterval) { clearInterval(offlinePollInterval); offlinePollInterval = null; }
 
             statusEl.textContent = 'Connecting...';
             statusEl.classList.remove('error');
@@ -352,6 +354,19 @@
             offlineText.textContent = 'No broadcast right now';
             statusEl.textContent = 'Offline';
             statusEl.classList.remove('error');
+            if (!offlinePollInterval) {
+                offlinePollInterval = setInterval(async () => {
+                    try {
+                        const resp = await fetch('/api/active');
+                        if (!resp.ok) return;
+                        const data = await resp.json();
+                        if (data.room_id) {
+                            roomId = data.room_id;
+                            connectWHEP();
+                        }
+                    } catch (e) { /* ignore */ }
+                }, 5000);
+            }
         }
 
         btnPasswordSubmit.onclick = () => {

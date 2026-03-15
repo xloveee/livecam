@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Independent Broadcast Viewer</title>
+    <title>Watch — livecam</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -72,11 +72,35 @@
             color: #666;
             margin-top: 0.6rem;
         }
+        #password-prompt {
+            display: none;
+            margin-top: 1rem;
+            text-align: center;
+        }
+        #password-prompt input {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            width: 220px;
+            margin-right: 0.5rem;
+        }
+        #password-prompt button {
+            padding: 0.5rem 1.2rem;
+            font-size: 0.9rem;
+        }
+        #password-error {
+            color: #ef5350;
+            font-size: 0.85rem;
+            margin-top: 0.4rem;
+        }
     </style>
 </head>
 <body>
 
-    <h1>Independent Broadcast</h1>
+    <h1>livecam</h1>
     <div class="room-label" id="room-label">Room: —</div>
 
     <video id="player" autoplay controls playsinline></video>
@@ -93,6 +117,13 @@
     </div>
     <div class="viewer-count" id="viewer-count"></div>
 
+    <div id="password-prompt">
+        <label>This room requires a password</label><br><br>
+        <input type="password" id="room-password-input" placeholder="Enter room password" autocomplete="off">
+        <button id="btn-password-submit">Join</button>
+        <div id="password-error"></div>
+    </div>
+
     <script>
         const video = document.getElementById('player');
         const btnWatch = document.getElementById('btn-watch');
@@ -100,6 +131,10 @@
         const statusEl = document.getElementById('status');
         const roomLabel = document.getElementById('room-label');
         const viewerCountEl = document.getElementById('viewer-count');
+        const passwordPrompt = document.getElementById('password-prompt');
+        const passwordInput = document.getElementById('room-password-input');
+        const btnPasswordSubmit = document.getElementById('btn-password-submit');
+        const passwordError = document.getElementById('password-error');
 
         function getRoomId() {
             const parts = window.location.pathname.split('/').filter(Boolean);
@@ -112,6 +147,7 @@
         const roomId = getRoomId();
         let sessionId = null;
         let viewerPollInterval = null;
+        let roomPassword = '';
 
         if (!roomId) {
             roomLabel.textContent = 'No room specified. Use /watch/{room-id}';
@@ -146,6 +182,17 @@
             }
         }
 
+        async function checkRoomPassword() {
+            try {
+                const resp = await fetch('/api/room_info/' + roomId);
+                if (resp.ok) {
+                    const info = await resp.json();
+                    return info.has_password === true;
+                }
+            } catch (e) { /* ignore */ }
+            return false;
+        }
+
         async function setQuality(rid) {
             if (!sessionId || !roomId) return;
             try {
@@ -166,9 +213,7 @@
             setQuality(qualitySelect.value || null);
         };
 
-        btnWatch.onclick = async () => {
-            if (!roomId) return;
-
+        async function connectWHEP() {
             statusEl.textContent = 'Fetching config...';
             statusEl.classList.remove('error');
             btnWatch.disabled = true;
@@ -193,6 +238,7 @@
                 if (state === 'connected' || state === 'completed') {
                     statusEl.classList.remove('error');
                     qualitySelect.disabled = false;
+                    passwordPrompt.style.display = 'none';
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 5000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
@@ -213,11 +259,27 @@
                 const offer = await pc.createOffer();
                 await pc.setLocalDescription(offer);
 
+                const headers = { 'Content-Type': 'application/sdp' };
+                if (roomPassword) {
+                    headers['X-Room-Password'] = roomPassword;
+                }
+
                 const response = await fetch('/api/whep/' + roomId, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/sdp' },
+                    headers: headers,
                     body: pc.localDescription.sdp
                 });
+
+                if (response.status === 403) {
+                    pc.close();
+                    pc = null;
+                    statusEl.textContent = 'Password required';
+                    statusEl.classList.add('error');
+                    passwordPrompt.style.display = 'block';
+                    passwordError.textContent = roomPassword ? 'Incorrect password' : '';
+                    btnWatch.disabled = false;
+                    return;
+                }
 
                 if (!response.ok) {
                     throw new Error('Server returned ' + response.status);
@@ -234,7 +296,35 @@
                 statusEl.classList.add('error');
                 btnWatch.disabled = false;
             }
+        }
+
+        btnWatch.onclick = async () => {
+            if (!roomId) return;
+
+            const needsPassword = await checkRoomPassword();
+            if (needsPassword && !roomPassword) {
+                passwordPrompt.style.display = 'block';
+                passwordError.textContent = '';
+                statusEl.textContent = 'Password required';
+                return;
+            }
+
+            connectWHEP();
         };
+
+        btnPasswordSubmit.onclick = () => {
+            roomPassword = passwordInput.value;
+            if (!roomPassword) {
+                passwordError.textContent = 'Please enter a password';
+                return;
+            }
+            passwordError.textContent = '';
+            connectWHEP();
+        };
+
+        passwordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') btnPasswordSubmit.click();
+        });
     </script>
 </body>
 </html>

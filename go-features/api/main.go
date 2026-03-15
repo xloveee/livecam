@@ -34,6 +34,7 @@ func main() {
 	mux.HandleFunc("/api/quality/", qualityProxyHandler)
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
+	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
 	mux.HandleFunc("/broadcast", broadcastHandler)
@@ -219,12 +220,27 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Path[len("/api/whep/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
 
-	viewerCount, maxViewers := fetchRoomInfo(roomID)
-	capAllowed := C.check_viewer_cap(C.int32_t(viewerCount), C.int32_t(maxViewers))
+	info := fetchRoomInfo(roomID)
+
+	capAllowed := C.check_viewer_cap(C.int32_t(info.ViewerCount), C.int32_t(info.MaxViewers))
 	if capAllowed == 0 {
-		log.Printf("Room '%s' at capacity (%d/%d), rejecting viewer %s", roomID, viewerCount, maxViewers, ip)
+		log.Printf("Room '%s' at capacity (%d/%d), rejecting viewer %s", roomID, info.ViewerCount, info.MaxViewers, ip)
 		http.Error(w, "Room is at viewer capacity", http.StatusServiceUnavailable)
 		return
+	}
+
+	if info.HasPassword {
+		submitted := r.Header.Get("X-Room-Password")
+		cSubmitted := C.CString(submitted)
+		cStored := C.CString(info.Password)
+		defer C.free(unsafe.Pointer(cSubmitted))
+		defer C.free(unsafe.Pointer(cStored))
+
+		if C.check_room_password(cSubmitted, cStored) == 0 {
+			log.Printf("Room '%s' password rejected for viewer %s", roomID, ip)
+			http.Error(w, "Incorrect room password", http.StatusForbidden)
+			return
+		}
 	}
 
 	log.Printf("WHEP request for room: %s (IP: %s), proxying to Rust Core...", roomID, ip)
@@ -266,22 +282,26 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write(respBody)
 }
 
-func fetchRoomInfo(roomID string) (int32, int32) {
+type roomInfoResult struct {
+	ViewerCount int32  `json:"viewer_count"`
+	MaxViewers  int32  `json:"max_viewers"`
+	HasPassword bool   `json:"has_password"`
+	Password    string `json:"password,omitempty"`
+}
+
+func fetchRoomInfo(roomID string) roomInfoResult {
 	infoURL := fmt.Sprintf("%s/room_info/%s", rustCoreURL, roomID)
 	resp, err := http.Get(infoURL)
 	if err != nil {
-		return 0, 0
+		return roomInfoResult{}
 	}
 	defer resp.Body.Close()
 
-	var info struct {
-		ViewerCount int32 `json:"viewer_count"`
-		MaxViewers  int32 `json:"max_viewers"`
-	}
+	var info roomInfoResult
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
-		return 0, 0
+		return roomInfoResult{}
 	}
-	return info.ViewerCount, info.MaxViewers
+	return info
 }
 
 func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -293,23 +313,20 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Path[len("/api/room_info/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
 
-	rustURL := fmt.Sprintf("%s/room_info/%s", rustCoreURL, roomID)
-	resp, err := http.Get(rustURL)
-	if err != nil {
-		http.Error(w, "Media server unavailable", http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
+	info := fetchRoomInfo(roomID)
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		http.Error(w, "Failed to read response", http.StatusInternalServerError)
-		return
+	publicResp := struct {
+		ViewerCount int32 `json:"viewer_count"`
+		MaxViewers  int32 `json:"max_viewers"`
+		HasPassword bool  `json:"has_password"`
+	}{
+		ViewerCount: info.ViewerCount,
+		MaxViewers:  info.MaxViewers,
+		HasPassword: info.HasPassword,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	w.Write(respBody)
+	json.NewEncoder(w).Encode(publicResp)
 }
 
 func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -328,6 +345,48 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/viewer_limit/%s", rustCoreURL, roomID)
+	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
+}
+
+func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	roomID := r.URL.Path[len("/api/room_password/"):]
+	roomID = strings.TrimSuffix(roomID, "/")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	rustURL := fmt.Sprintf("%s/room_password/%s", rustCoreURL, roomID)
 	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)

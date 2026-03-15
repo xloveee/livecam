@@ -221,9 +221,14 @@ pub async fn quality_handler(
 pub struct RoomInfoResponse {
     pub viewer_count: u32,
     pub max_viewers: u32,
+    pub has_password: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub password: Option<String>,
 }
 
-/// Returns current viewer count and max viewer cap for a room.
+/// Returns current viewer count, max viewer cap, and password state for a room.
+/// The `password` field is included for internal Go proxy queries.
+/// The Go proxy strips it before forwarding to external clients.
 pub async fn room_info_handler(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
@@ -236,10 +241,14 @@ pub async fn room_info_handler(
         Some(info) => RoomInfoResponse {
             viewer_count: info.viewer_count,
             max_viewers: info.max_viewers,
+            has_password: info.password.is_some(),
+            password: info.password,
         },
         None => RoomInfoResponse {
             viewer_count: 0,
             max_viewers: 0,
+            has_password: false,
+            password: None,
         },
     };
 
@@ -262,5 +271,27 @@ pub async fn viewer_limit_handler(
     }
 
     tracing::info!("Viewer limit for room '{}' set to {}", room_id, body.max_viewers);
+    (StatusCode::OK, "ok")
+}
+
+#[derive(Deserialize)]
+pub struct RoomPasswordRequest {
+    pub password: String,
+}
+
+/// Sets or clears the room password. Empty string clears the password.
+pub async fn room_password_handler(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    Json(body): Json<RoomPasswordRequest>,
+) -> impl IntoResponse {
+    let pw = if body.password.is_empty() { None } else { Some(body.password.clone()) };
+    let active = pw.is_some();
+
+    if let Ok(mut s) = state.room_state.lock() {
+        s.entry(room_id.clone()).or_default().password = pw;
+    }
+
+    tracing::info!("Room password for '{}': {}", room_id, if active { "set" } else { "cleared" });
     (StatusCode::OK, "ok")
 }

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Broadcast — Independent Broadcasting</title>
+    <title>Broadcast — livecam</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -163,6 +163,16 @@
         </div>
         <div class="row">
             <div>
+                <label for="room-password">Room Password (blank = open)</label>
+                <input type="text" id="room-password" placeholder="Leave empty for public" autocomplete="off" spellcheck="false">
+            </div>
+            <div>
+                <label>Access</label>
+                <div id="access-status" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">Public</div>
+            </div>
+        </div>
+        <div class="row">
+            <div>
                 <label for="camera-select">Camera</label>
                 <select id="camera-select"><option value="">Loading...</option></select>
             </div>
@@ -194,6 +204,8 @@
         const micSelect = document.getElementById('mic-select');
         const maxViewersInput = document.getElementById('max-viewers');
         const viewerCountEl = document.getElementById('viewer-count');
+        const roomPasswordInput = document.getElementById('room-password');
+        const accessStatusEl = document.getElementById('access-status');
 
         let pc = null;
         let localStream = null;
@@ -290,6 +302,19 @@
             }
         }
 
+        async function setRoomPassword(streamKey, password) {
+            try {
+                await fetch('/api/room_password/' + streamKey, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: password || '' })
+                });
+                accessStatusEl.textContent = password ? 'Password Protected' : 'Public';
+            } catch (e) {
+                console.warn('Failed to set room password:', e);
+            }
+        }
+
         async function pollViewerCount() {
             if (!activeStreamKey) return;
             try {
@@ -306,6 +331,12 @@
         maxViewersInput.onchange = () => {
             if (activeStreamKey) {
                 setViewerLimit(activeStreamKey, maxViewersInput.value);
+            }
+        };
+
+        roomPasswordInput.onchange = () => {
+            if (activeStreamKey) {
+                setRoomPassword(activeStreamKey, roomPasswordInput.value.trim());
             }
         };
 
@@ -357,6 +388,7 @@
                     startStats();
                     activeStreamKey = streamKey;
                     setViewerLimit(streamKey, maxViewersInput.value);
+                    setRoomPassword(streamKey, roomPasswordInput.value.trim());
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 3000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {

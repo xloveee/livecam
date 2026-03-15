@@ -156,3 +156,46 @@ int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers)
 
     return 1;
 }
+
+#define MAX_ROOM_PASSWORD_LEN 128
+
+/*
+ * Constant-time comparison of a submitted room password against
+ * the stored password. Returns 1 if access is granted, 0 if denied.
+ *
+ * If stored is NULL or empty, no password is set — always allow.
+ * If submitted is NULL or empty when a password is required — deny.
+ */
+int32_t check_room_password(const char *submitted, const char *stored)
+{
+    if (stored == NULL) {
+        return 1;
+    }
+
+    const size_t stored_len = bounded_strlen(stored, MAX_ROOM_PASSWORD_LEN + 1);
+    if (stored_len == 0) {
+        return 1;
+    }
+
+    if (submitted == NULL) {
+        return 0;
+    }
+
+    const size_t submitted_len = bounded_strlen(submitted, MAX_ROOM_PASSWORD_LEN + 1);
+
+    /* Length mismatch — still iterate to preserve constant time */
+    volatile int32_t diff = 0;
+    const size_t cmp_len = (stored_len > submitted_len) ? stored_len : submitted_len;
+
+    for (size_t i = 0; i < cmp_len && i < MAX_ROOM_PASSWORD_LEN; i++) {
+        const char a = (i < submitted_len) ? submitted[i] : '\0';
+        const char b = (i < stored_len)    ? stored[i]    : '\0';
+        diff |= (a ^ b);
+    }
+
+    if (submitted_len != stored_len) {
+        diff |= 1;
+    }
+
+    return (diff == 0) ? 1 : 0;
+}

@@ -13,5 +13,6 @@ void    init_stream_key_whitelist(const char *csv);
 int32_t validate_stream_key(const char *key);
 int32_t check_viewer_rate_limit(const char *ip_address);
 int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers);
+int32_t check_room_password(const char *submitted, const char *stored);
 
 #endif /* CORE_LOGIC_H */

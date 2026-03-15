@@ -47,6 +47,7 @@ async fn main() {
         .route("/quality/{room_id}", post(api::quality_handler))
         .route("/room_info/{room_id}", get(api::room_info_handler))
         .route("/viewer_limit/{room_id}", post(api::viewer_limit_handler))
+        .route("/room_password/{room_id}", post(api::room_password_handler))
         .route("/health", get(|| async { (StatusCode::OK, "ok") }))
         .with_state(state);
 

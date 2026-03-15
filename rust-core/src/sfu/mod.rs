@@ -61,6 +61,7 @@ pub struct QualityChange {
 pub struct RoomInfo {
     pub viewer_count: u32,
     pub max_viewers: u32,
+    pub password: Option<String>,
 }
 
 impl Default for RoomInfo {
@@ -68,6 +69,7 @@ impl Default for RoomInfo {
         Self {
             viewer_count: 0,
             max_viewers: 0,
+            password: None,
         }
     }
 }

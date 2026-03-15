@@ -91,7 +91,7 @@ sudo ufw status
 
 ## Step 8: TLS Certificate (Let's Encrypt)
 
-Point your DNS A record for `indep.stream` to `167.71.76.112` before running this. Certbot requires the domain to resolve to the server.
+Point your DNS A record for `indep.stream` to your server's public IP before running this. Certbot requires the domain to resolve to the server.
 
 ```bash
 sudo certbot --nginx -d indep.stream
@@ -171,6 +171,15 @@ cat /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32; echo
 ```
 
 Multiple keys (up to 64) can be comma-separated for multiple broadcasters.
+
+Lock down the file permissions — only root and the service user should read it:
+
+```bash
+sudo chown root:www-data /opt/livecam/deploy/.env
+sudo chmod 640 /opt/livecam/deploy/.env
+```
+
+This ensures no other user on the server can read your stream keys or TURN credentials.
 
 ## Step 11: Create systemd Services
 
@@ -274,9 +283,12 @@ No app install needed. Works from any device with a camera (phone, tablet, lapto
 3. Select your preferred camera, microphone, and resolution from the dropdowns.
 4. Enter a stream key (same 32-character alphanumeric format as OBS, e.g., `a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6`).
 5. Optionally set a **Max Viewers** limit (leave at `0` for unlimited).
-6. Click **Start Broadcast**.
+6. Optionally set a **Room Password** to restrict viewer access. Viewers will be prompted to enter it before they can watch. Leave blank for a public stream.
+7. Click **Start Broadcast**.
 
 The browser performs the same WHIP handshake as OBS — `createOffer()` → `POST /api/whip/{key}` → `setRemoteDescription(answer)`. The stream key doubles as the room ID. Viewers can watch at `/watch/{stream-key}`.
+
+The room password and max viewers can both be changed mid-stream without interrupting the broadcast.
 
 > **Note:** Browser broadcasts send a single quality layer (no Simulcast), so viewers won't see a quality dropdown. For multi-quality streams, use OBS with Simulcast enabled.
 
@@ -518,5 +530,6 @@ The upload speed requirement is the stream bitrate plus ~30% headroom for retran
 | `https://indep.stream/api/whip/{key}` | WHIP ingest (OBS + browser broadcast) |
 | `https://indep.stream/watch/{room}` | Viewer page |
 | `https://indep.stream/api/whep/{room}` | Viewer SDP negotiation |
+| `https://indep.stream/api/room_password/{room}` | Set/clear room viewer password |
 | `https://indep.stream/api/config` | Browser ICE server config |
 | `https://indep.stream/api/health` | System health check |

@@ -168,21 +168,25 @@ pub async fn run_sfu_loop(
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
     loop {
-        // When a broadcaster disconnects, stop recording and kick all viewers in that room.
-        let mut dead_rooms: Vec<String> = Vec::new();
-        for peer in peers.iter() {
-            if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
-                archive.stop_recording(&peer.room_id);
-                dead_rooms.push(peer.room_id.clone());
+        // Clean up dead peers and kick viewers when their broadcaster is gone.
+        {
+            let mut dead_rooms: Vec<String> = Vec::new();
+            for peer in peers.iter() {
+                if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
+                    archive.stop_recording(&peer.room_id);
+                    dead_rooms.push(peer.room_id.clone());
+                }
             }
-        }
-        for peer in peers.iter_mut() {
-            if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
-                tracing::info!("{}: disconnecting viewer (broadcaster left room '{}')", peer.id, peer.room_id);
-                peer.rtc.disconnect();
+            if !dead_rooms.is_empty() {
+                for peer in peers.iter_mut() {
+                    if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
+                        tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
+                        peer.rtc.disconnect();
+                    }
+                }
             }
+            peers.retain(|p| p.rtc.is_alive());
         }
-        peers.retain(|p| p.rtc.is_alive());
 
         // Recompute viewer counts and broadcaster presence from the peer list.
         {
@@ -275,6 +279,24 @@ pub async fn run_sfu_loop(
                         tracing::error!("{}: poll error: {:?}", peer.id, e);
                         peer.rtc.disconnect();
                         break;
+                    }
+                }
+            }
+        }
+
+        // Kick viewers immediately if a broadcaster died during this poll cycle.
+        {
+            let mut dead_rooms: Vec<String> = Vec::new();
+            for peer in peers.iter() {
+                if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
+                    dead_rooms.push(peer.room_id.clone());
+                }
+            }
+            if !dead_rooms.is_empty() {
+                for peer in peers.iter_mut() {
+                    if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
+                        tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
+                        peer.rtc.disconnect();
                     }
                 }
             }

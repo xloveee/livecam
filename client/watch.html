@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watch — livecam</title>
+    <title>livecam</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -22,11 +22,6 @@
             margin-bottom: 1rem;
             color: #fff;
         }
-        .room-label {
-            font-size: 0.9rem;
-            color: #888;
-            margin-bottom: 1.5rem;
-        }
         video {
             width: 100%;
             max-width: 960px;
@@ -40,6 +35,16 @@
             align-items: center;
             gap: 1rem;
         }
+        select {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 0.5rem 0.8rem;
+            font-size: 0.9rem;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        select:disabled { opacity: 0.4; cursor: default; }
         button {
             background: #d32f2f;
             color: #fff;
@@ -52,16 +57,6 @@
         }
         button:hover { background: #b71c1c; }
         button:disabled { background: #555; cursor: default; }
-        select {
-            background: #1e1e1e;
-            color: #e0e0e0;
-            border: 1px solid #444;
-            padding: 0.5rem 0.8rem;
-            font-size: 0.9rem;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-        select:disabled { opacity: 0.4; cursor: default; }
         #status {
             font-size: 0.85rem;
             color: #aaa;
@@ -72,9 +67,26 @@
             color: #666;
             margin-top: 0.6rem;
         }
+        #offline-banner {
+            display: none;
+            margin-top: 2rem;
+            text-align: center;
+            color: #888;
+            font-size: 1rem;
+        }
+        #offline-banner .dot {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #555;
+            margin-right: 0.5rem;
+            vertical-align: middle;
+        }
+        #offline-banner.live .dot { background: #d32f2f; }
         #password-prompt {
             display: none;
-            margin-top: 1rem;
+            margin-top: 1.5rem;
             text-align: center;
         }
         #password-prompt input {
@@ -101,42 +113,52 @@
 <body>
 
     <h1>livecam</h1>
-    <div class="room-label" id="room-label">Room: —</div>
 
     <video id="player" autoplay controls playsinline></video>
 
     <div id="controls">
-        <button id="btn-watch">Watch Live</button>
         <select id="quality-select" disabled>
             <option value="">Auto</option>
             <option value="h">High (1080p)</option>
             <option value="m">Medium (720p)</option>
             <option value="l">Low (360p)</option>
         </select>
-        <span id="status">Disconnected</span>
+        <span id="status">Checking stream...</span>
     </div>
     <div class="viewer-count" id="viewer-count"></div>
 
+    <div id="offline-banner">
+        <span class="dot"></span>
+        <span id="offline-text">No broadcast right now — waiting...</span>
+    </div>
+
     <div id="password-prompt">
-        <label>This room requires a password</label><br><br>
-        <input type="password" id="room-password-input" placeholder="Enter room password" autocomplete="off">
+        <label>This broadcast requires a password</label><br><br>
+        <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
         <button id="btn-password-submit">Join</button>
         <div id="password-error"></div>
     </div>
 
     <script>
-        const video = document.getElementById('player');
-        const btnWatch = document.getElementById('btn-watch');
+        const video       = document.getElementById('player');
         const qualitySelect = document.getElementById('quality-select');
-        const statusEl = document.getElementById('status');
-        const roomLabel = document.getElementById('room-label');
+        const statusEl    = document.getElementById('status');
         const viewerCountEl = document.getElementById('viewer-count');
+        const offlineBanner = document.getElementById('offline-banner');
+        const offlineText = document.getElementById('offline-text');
         const passwordPrompt = document.getElementById('password-prompt');
-        const passwordInput = document.getElementById('room-password-input');
+        const passwordInput  = document.getElementById('room-password-input');
         const btnPasswordSubmit = document.getElementById('btn-password-submit');
-        const passwordError = document.getElementById('password-error');
+        const passwordError  = document.getElementById('password-error');
 
-        function getRoomId() {
+        let roomId = null;
+        let sessionId = null;
+        let roomPassword = '';
+        let pc = null;
+        let viewerPollInterval = null;
+        let activePollInterval = null;
+
+        function getRoomIdFromURL() {
             const parts = window.location.pathname.split('/').filter(Boolean);
             if (parts.length >= 2 && parts[0] === 'watch') {
                 return parts[1];
@@ -144,21 +166,15 @@
             return null;
         }
 
-        const roomId = getRoomId();
-        let sessionId = null;
-        let viewerPollInterval = null;
-        let roomPassword = '';
-
-        if (!roomId) {
-            roomLabel.textContent = 'No room specified. Use /watch/{room-id}';
-            statusEl.textContent = 'Error: no room ID in URL';
-            statusEl.classList.add('error');
-            btnWatch.disabled = true;
-        } else {
-            roomLabel.textContent = 'Room: ' + roomId;
+        async function fetchActiveRoom() {
+            try {
+                const resp = await fetch('/api/active');
+                if (!resp.ok) return null;
+                const data = await resp.json();
+                if (data.room_id) return data;
+            } catch (e) { /* ignore */ }
+            return null;
         }
-
-        let pc = null;
 
         async function pollViewerCount() {
             if (!roomId) return;
@@ -177,20 +193,8 @@
                 if (!resp.ok) return {};
                 return await resp.json();
             } catch (e) {
-                console.warn('Could not fetch ICE config, using defaults:', e);
                 return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
             }
-        }
-
-        async function checkRoomPassword() {
-            try {
-                const resp = await fetch('/api/room_info/' + roomId);
-                if (resp.ok) {
-                    const info = await resp.json();
-                    return info.has_password === true;
-                }
-            } catch (e) { /* ignore */ }
-            return false;
         }
 
         async function setQuality(rid) {
@@ -204,21 +208,20 @@
                     },
                     body: JSON.stringify({ rid: rid || null })
                 });
-            } catch (e) {
-                console.warn('Quality change failed:', e);
-            }
+            } catch (e) { /* ignore */ }
         }
 
-        qualitySelect.onchange = () => {
-            setQuality(qualitySelect.value || null);
-        };
+        qualitySelect.onchange = () => { setQuality(qualitySelect.value || null); };
 
         async function connectWHEP() {
-            statusEl.textContent = 'Fetching config...';
+            if (!roomId) return;
+
+            statusEl.textContent = 'Connecting...';
             statusEl.classList.remove('error');
-            btnWatch.disabled = true;
             qualitySelect.disabled = true;
             sessionId = null;
+            offlineBanner.style.display = 'none';
+            passwordError.textContent = '';
 
             const config = await fetchICEConfig();
 
@@ -234,26 +237,25 @@
 
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
-                statusEl.textContent = state.charAt(0).toUpperCase() + state.slice(1);
                 if (state === 'connected' || state === 'completed') {
+                    statusEl.textContent = 'Live';
                     statusEl.classList.remove('error');
                     qualitySelect.disabled = false;
                     passwordPrompt.style.display = 'none';
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 5000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    statusEl.textContent = 'Stream ended';
                     statusEl.classList.add('error');
-                    btnWatch.disabled = false;
                     qualitySelect.disabled = true;
                     if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
                     viewerCountEl.textContent = '';
+                    startActivePoll();
                 }
             };
 
             pc.addTransceiver('video', { direction: 'recvonly' });
             pc.addTransceiver('audio', { direction: 'recvonly' });
-
-            statusEl.textContent = 'Negotiating...';
 
             try {
                 const offer = await pc.createOffer();
@@ -277,7 +279,6 @@
                     statusEl.classList.add('error');
                     passwordPrompt.style.display = 'block';
                     passwordError.textContent = roomPassword ? 'Incorrect password' : '';
-                    btnWatch.disabled = false;
                     return;
                 }
 
@@ -286,7 +287,6 @@
                 }
 
                 sessionId = response.headers.get('X-Session-Id');
-
                 const answerSdp = await response.text();
                 await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
@@ -294,23 +294,37 @@
                 console.error('WHEP connection failed:', err);
                 statusEl.textContent = 'Connection failed';
                 statusEl.classList.add('error');
-                btnWatch.disabled = false;
+                startActivePoll();
             }
         }
 
-        btnWatch.onclick = async () => {
-            if (!roomId) return;
+        function showOffline() {
+            offlineBanner.style.display = 'block';
+            offlineBanner.classList.remove('live');
+            offlineText.textContent = 'No broadcast right now \u2014 waiting...';
+            statusEl.textContent = 'Offline';
+            statusEl.classList.remove('error');
+        }
 
-            const needsPassword = await checkRoomPassword();
-            if (needsPassword && !roomPassword) {
-                passwordPrompt.style.display = 'block';
-                passwordError.textContent = '';
-                statusEl.textContent = 'Password required';
-                return;
-            }
-
-            connectWHEP();
-        };
+        function startActivePoll() {
+            if (activePollInterval) return;
+            showOffline();
+            activePollInterval = setInterval(async () => {
+                const active = await fetchActiveRoom();
+                if (active) {
+                    clearInterval(activePollInterval);
+                    activePollInterval = null;
+                    roomId = active.room_id;
+                    if (active.has_password && !roomPassword) {
+                        offlineBanner.style.display = 'none';
+                        passwordPrompt.style.display = 'block';
+                        statusEl.textContent = 'Password required';
+                    } else {
+                        connectWHEP();
+                    }
+                }
+            }, 3000);
+        }
 
         btnPasswordSubmit.onclick = () => {
             roomPassword = passwordInput.value;
@@ -325,6 +339,28 @@
         passwordInput.addEventListener('keydown', (e) => {
             if (e.key === 'Enter') btnPasswordSubmit.click();
         });
+
+        (async function init() {
+            const urlRoom = getRoomIdFromURL();
+            if (urlRoom) {
+                roomId = urlRoom;
+                connectWHEP();
+                return;
+            }
+
+            const active = await fetchActiveRoom();
+            if (active) {
+                roomId = active.room_id;
+                if (active.has_password) {
+                    passwordPrompt.style.display = 'block';
+                    statusEl.textContent = 'Password required';
+                } else {
+                    connectWHEP();
+                }
+            } else {
+                startActivePoll();
+            }
+        })();
     </script>
 </body>
 </html>

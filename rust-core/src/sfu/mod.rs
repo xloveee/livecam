@@ -62,6 +62,7 @@ pub struct RoomInfo {
     pub viewer_count: u32,
     pub max_viewers: u32,
     pub password: Option<String>,
+    pub is_live: bool,
 }
 
 impl Default for RoomInfo {
@@ -70,6 +71,7 @@ impl Default for RoomInfo {
             viewer_count: 0,
             max_viewers: 0,
             password: None,
+            is_live: false,
         }
     }
 }
@@ -171,22 +173,30 @@ pub async fn run_sfu_loop(
         }
         peers.retain(|p| p.rtc.is_alive());
 
-        // Recompute viewer counts from the authoritative peer list.
+        // Recompute viewer counts and broadcaster presence from the peer list.
         {
-            let mut counts: HashMap<&str, u32> = HashMap::new();
+            let mut viewer_counts: HashMap<&str, u32> = HashMap::new();
+            let mut live_rooms: std::collections::HashSet<&str> = std::collections::HashSet::new();
             for peer in peers.iter() {
-                if peer.role == PeerRole::Viewer {
-                    *counts.entry(&peer.room_id).or_insert(0) += 1;
+                match peer.role {
+                    PeerRole::Viewer => { *viewer_counts.entry(&peer.room_id).or_insert(0) += 1; }
+                    PeerRole::Broadcaster => { live_rooms.insert(&peer.room_id); }
                 }
             }
             if let Ok(mut state) = room_state.lock() {
                 for info in state.values_mut() {
                     info.viewer_count = 0;
+                    info.is_live = false;
                 }
-                for (room_id, count) in counts {
+                for (room_id, count) in viewer_counts {
                     state.entry(room_id.to_owned())
                         .or_default()
                         .viewer_count = count;
+                }
+                for room_id in live_rooms {
+                    state.entry(room_id.to_owned())
+                        .or_default()
+                        .is_live = true;
                 }
             }
         }

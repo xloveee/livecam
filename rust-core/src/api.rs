@@ -295,3 +295,29 @@ pub async fn room_password_handler(
     tracing::info!("Room password for '{}': {}", room_id, if active { "set" } else { "cleared" });
     (StatusCode::OK, "ok")
 }
+
+#[derive(Serialize)]
+pub struct ActiveRoomResponse {
+    pub room_id: Option<String>,
+    pub has_password: bool,
+}
+
+/// Returns the first currently-live room, or null if no broadcast is active.
+pub async fn active_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let active = state.room_state.lock()
+        .ok()
+        .and_then(|s| {
+            s.iter()
+                .find(|(_, info)| info.is_live)
+                .map(|(id, info)| (id.clone(), info.password.is_some()))
+        });
+
+    let resp = match active {
+        Some((id, has_pw)) => ActiveRoomResponse { room_id: Some(id), has_password: has_pw },
+        None => ActiveRoomResponse { room_id: None, has_password: false },
+    };
+
+    (StatusCode::OK, Json(resp))
+}

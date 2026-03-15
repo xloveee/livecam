@@ -294,7 +294,10 @@
             try {
                 await fetch('/api/viewer_limit/' + streamKey, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Stream-Key': streamKey
+                    },
                     body: JSON.stringify({ max_viewers: parseInt(max, 10) || 0 })
                 });
             } catch (e) {
@@ -306,7 +309,10 @@
             try {
                 await fetch('/api/room_password/' + streamKey, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-Stream-Key': streamKey
+                    },
                     body: JSON.stringify({ password: password || '' })
                 });
                 accessStatusEl.textContent = password ? 'Password Protected' : 'Public';

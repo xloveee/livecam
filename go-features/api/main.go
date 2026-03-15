@@ -35,6 +35,7 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
+	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
 	mux.HandleFunc("/broadcast", broadcastHandler)
@@ -97,6 +98,21 @@ func initConfig() {
 	log.Printf("ICE servers configured: %d entries", len(iceServers))
 }
 
+func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) bool {
+	key := r.Header.Get("X-Stream-Key")
+	if key == "" {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	cKey := C.CString(key)
+	defer C.free(unsafe.Pointer(cKey))
+	if C.validate_stream_key(cKey) == 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
 func configHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -145,6 +161,31 @@ func rootHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, clientDir+"/watch.html")
+}
+
+func activeProxyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	rustURL := fmt.Sprintf("%s/active", rustCoreURL)
+	resp, err := http.Get(rustURL)
+	if err != nil {
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
 
 func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
@@ -334,6 +375,9 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+	if !requireBroadcasterAuth(w, r) {
+		return
+	}
 
 	roomID := r.URL.Path[len("/api/viewer_limit/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
@@ -374,6 +418,9 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if !requireBroadcasterAuth(w, r) {
 		return
 	}
 

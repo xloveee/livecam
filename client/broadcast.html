@@ -443,11 +443,6 @@
             if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
             if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
             if (pc) { pc.close(); pc = null; }
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-                localStream = null;
-            }
-            preview.srcObject = null;
             activeStreamKey = null;
             liveBadge.classList.remove('visible');
             btnStart.style.display = '';
@@ -455,7 +450,6 @@
             btnStop.style.display = 'none';
             statsEl.textContent = '';
             viewerCountEl.textContent = '—';
-            accessStatusEl.textContent = 'Public';
         }
 
         function startStats() {

@@ -157,6 +157,9 @@
         let pc = null;
         let viewerPollInterval = null;
         let activePollInterval = null;
+        let mediaWatchdogInterval = null;
+        let lastBytesReceived = 0;
+        let stallCount = 0;
 
         function getRoomIdFromURL() {
             const parts = window.location.pathname.split('/').filter(Boolean);
@@ -182,10 +185,6 @@
                 const resp = await fetch('/api/room_info/' + roomId);
                 if (resp.ok) {
                     const info = await resp.json();
-                    if (!info.is_live && pc) {
-                        handleStreamEnded();
-                        return;
-                    }
                     viewerCountEl.textContent = info.viewer_count + ' watching';
                 }
             } catch (e) { /* ignore */ }
@@ -217,17 +216,50 @@
 
         qualitySelect.onchange = () => { setQuality(qualitySelect.value || null); };
 
-        function handleStreamEnded() {
-            if (!pc) return;
-            pc.close();
-            pc = null;
+        function teardownConnection() {
+            if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
+            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            if (pc) { pc.close(); pc = null; }
             video.srcObject = null;
-            statusEl.textContent = 'Stream ended';
-            statusEl.classList.add('error');
             qualitySelect.disabled = true;
             sessionId = null;
-            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            lastBytesReceived = 0;
+            stallCount = 0;
             viewerCountEl.textContent = '';
+        }
+
+        function startMediaWatchdog() {
+            lastBytesReceived = 0;
+            stallCount = 0;
+            mediaWatchdogInterval = setInterval(async () => {
+                if (!pc) return;
+                try {
+                    const stats = await pc.getStats();
+                    let totalBytes = 0;
+                    stats.forEach(report => {
+                        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                            totalBytes += report.bytesReceived || 0;
+                        }
+                    });
+                    if (totalBytes > lastBytesReceived) {
+                        lastBytesReceived = totalBytes;
+                        stallCount = 0;
+                    } else {
+                        stallCount++;
+                        if (stallCount >= 2) {
+                            teardownConnection();
+                            startActivePoll();
+                        }
+                    }
+                } catch (e) { /* pc may have closed mid-check */ }
+            }, 1000);
+        }
+
+        function handleStreamEnded() {
+            if (!pc) return;
+            teardownConnection();
+            statusEl.textContent = 'Stream ended';
+            statusEl.classList.add('error');
             startActivePoll();
         }
 
@@ -261,7 +293,8 @@
                     qualitySelect.disabled = false;
                     passwordPrompt.style.display = 'none';
                     pollViewerCount();
-                    viewerPollInterval = setInterval(pollViewerCount, 3000);
+                    viewerPollInterval = setInterval(pollViewerCount, 5000);
+                    startMediaWatchdog();
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                     handleStreamEnded();
                 }

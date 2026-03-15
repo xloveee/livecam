@@ -329,6 +329,7 @@
                     statusEl.classList.add('error');
                     passwordPrompt.style.display = 'block';
                     passwordError.textContent = roomPassword ? 'Incorrect password' : '';
+                    startWaitingForBroadcast();
                     return;
                 }
 
@@ -373,25 +374,40 @@
             }
         }
 
+        function startWaitingForBroadcast() {
+            if (offlinePollInterval) return;
+            offlinePollInterval = setInterval(async () => {
+                try {
+                    const resp = await fetch('/api/active');
+                    if (!resp.ok) return;
+                    const data = await resp.json();
+                    if (!data.room_id) {
+                        if (passwordPrompt.style.display === 'block') {
+                            passwordPrompt.style.display = 'none';
+                            showOffline();
+                        }
+                        return;
+                    }
+                    roomId = data.room_id;
+                    if (data.has_password && !roomPassword) {
+                        offlineBanner.style.display = 'none';
+                        passwordPrompt.style.display = 'block';
+                        statusEl.textContent = 'Password required';
+                        passwordError.textContent = '';
+                    } else {
+                        connectWHEP();
+                    }
+                } catch (e) { /* ignore */ }
+            }, 5000);
+        }
+
         function showOffline() {
             offlineBanner.style.display = 'block';
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'No broadcast right now';
             statusEl.textContent = 'Offline';
             statusEl.classList.remove('error');
-            if (!offlinePollInterval) {
-                offlinePollInterval = setInterval(async () => {
-                    try {
-                        const resp = await fetch('/api/active');
-                        if (!resp.ok) return;
-                        const data = await resp.json();
-                        if (data.room_id) {
-                            roomId = data.room_id;
-                            connectWHEP();
-                        }
-                    } catch (e) { /* ignore */ }
-                }, 5000);
-            }
+            startWaitingForBroadcast();
         }
 
         btnPasswordSubmit.onclick = () => {
@@ -423,6 +439,7 @@
                         if (data.has_password) {
                             passwordPrompt.style.display = 'block';
                             statusEl.textContent = 'Password required';
+                            startWaitingForBroadcast();
                         } else {
                             connectWHEP();
                         }

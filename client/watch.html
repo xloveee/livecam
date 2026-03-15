@@ -235,6 +235,19 @@
                 }
             };
 
+            function handleStreamEnded() {
+                if (!pc) return;
+                pc.close();
+                pc = null;
+                video.srcObject = null;
+                statusEl.textContent = 'Stream ended';
+                statusEl.classList.add('error');
+                qualitySelect.disabled = true;
+                if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+                viewerCountEl.textContent = '';
+                startActivePoll();
+            }
+
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
                 if (state === 'connected' || state === 'completed') {
@@ -245,12 +258,14 @@
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 5000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    statusEl.textContent = 'Stream ended';
-                    statusEl.classList.add('error');
-                    qualitySelect.disabled = true;
-                    if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
-                    viewerCountEl.textContent = '';
-                    startActivePoll();
+                    handleStreamEnded();
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                const state = pc.connectionState;
+                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    handleStreamEnded();
                 }
             };
 

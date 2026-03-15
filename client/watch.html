@@ -239,7 +239,7 @@
                     if (totalBytes > lastBytesReceived) {
                         lastBytesReceived = totalBytes;
                         stallCount = 0;
-                    } else {
+                    } else if (lastBytesReceived > 0) {
                         stallCount++;
                         if (stallCount >= 2) {
                             teardownConnection();

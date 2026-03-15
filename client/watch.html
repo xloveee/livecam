@@ -268,6 +268,7 @@
             qualitySelect.disabled = true;
             sessionId = null;
             offlineBanner.style.display = 'none';
+            passwordPrompt.style.display = 'none';
             passwordError.textContent = '';
 
             const config = await fetchICEConfig();
@@ -395,6 +396,10 @@
                         statusEl.textContent = 'Password required';
                         passwordError.textContent = '';
                     } else {
+                        if (!data.has_password) {
+                            roomPassword = '';
+                            passwordInput.value = '';
+                        }
                         connectWHEP();
                     }
                 } catch (e) { /* ignore */ }

@@ -31,7 +31,7 @@ async fn main() {
 
     let udp_candidate_addr = cfg.udp_candidate_addr();
     tokio::spawn(sfu::run_sfu_loop(
-        udp_socket, new_peer_rx, quality_rx, room_state.clone(), cfg.archive_dir,
+        udp_socket, udp_candidate_addr, new_peer_rx, quality_rx, room_state.clone(), cfg.archive_dir,
     ));
 
     let state = Arc::new(AppState {

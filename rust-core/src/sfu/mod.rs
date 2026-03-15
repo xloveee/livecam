@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -145,13 +146,15 @@ enum Propagated {
 
 /// The main SFU run loop. Drives all Rtc instances, demuxes UDP, forwards media.
 ///
-/// `socket`      — single multiplexed UDP socket for all WebRTC traffic
-/// `new_peer_rx` — channel receiving new Rtc instances from the HTTP handlers
-/// `quality_rx`  — channel receiving quality change requests from the HTTP handlers
-/// `room_state`  — shared map of room metadata (viewer counts, caps)
-/// `archive_dir` — directory for VOD archive recordings
+/// `socket`         — single multiplexed UDP socket for all WebRTC traffic
+/// `candidate_addr` — public address advertised in ICE candidates
+/// `new_peer_rx`    — channel receiving new Rtc instances from the HTTP handlers
+/// `quality_rx`     — channel receiving quality change requests from the HTTP handlers
+/// `room_state`     — shared map of room metadata (viewer counts, caps)
+/// `archive_dir`    — directory for VOD archive recordings
 pub async fn run_sfu_loop(
     socket: UdpSocket,
+    candidate_addr: SocketAddr,
     mut new_peer_rx: mpsc::UnboundedReceiver<NewPeer>,
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
     room_state: RoomStateMap,
@@ -283,11 +286,10 @@ pub async fn run_sfu_loop(
         match timeout(wait, socket.recv_from(&mut buf)).await {
             Ok(Ok((n, source))) => {
                 let now = Instant::now();
-                let local_addr = socket.local_addr().unwrap();
                 let receive = match Receive::new(
                     Protocol::Udp,
                     source,
-                    local_addr,
+                    candidate_addr,
                     &buf[..n],
                 ) {
                     Ok(r) => r,

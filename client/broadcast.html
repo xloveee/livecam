@@ -372,7 +372,7 @@
             statusEl.textContent = 'Connecting...';
             statusEl.classList.remove('error', 'connected');
             btnStart.style.display = 'none';
-            btnStop.style.display = '';
+            btnStop.style.display = 'inline-block';
 
             const config = await fetchICEConfig();
 

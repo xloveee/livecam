@@ -284,7 +284,6 @@
                 if (!info.is_live) {
                     teardownConnection();
                     setState('offline');
-                    setTimeout(pollActive, 1000);
                     return false;
                 }
                 viewerCountEl.textContent = info.viewer_count + ' watching';
@@ -373,7 +372,6 @@
                         if (stallCount >= 3) {
                             teardownConnection();
                             setState('offline');
-                            setTimeout(pollActive, 1000);
                         }
                     }
                 } catch (e) { /* pc may have closed mid-check */ }
@@ -390,7 +388,6 @@
             } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
                 teardownConnection();
                 setState('offline');
-                setTimeout(pollActive, 1000);
             }
         }
 
@@ -437,7 +434,6 @@
                 if (response.status === 404) {
                     teardownConnection();
                     setState('offline');
-                    setTimeout(pollActive, 1000);
                     return;
                 }
                 if (response.status === 403) {

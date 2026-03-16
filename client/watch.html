@@ -407,10 +407,10 @@
                 iceServers: config.iceServers || []
             });
 
+            var remoteStream = new MediaStream();
+            video.srcObject = remoteStream;
             pc.ontrack = function (event) {
-                if (video.srcObject !== event.streams[0]) {
-                    video.srcObject = event.streams[0];
-                }
+                remoteStream.addTrack(event.track);
             };
 
             pc.oniceconnectionstatechange = onPeerStateChange;

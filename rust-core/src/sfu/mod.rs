@@ -367,7 +367,8 @@ pub async fn run_sfu_loop(
             propagate(&prop, &mut peers);
         }
 
-        // Drain all available UDP packets, then wait for more or a timeout.
+        // Read one UDP packet per iteration so poll_output runs between each
+        // ingest, keeping outgoing audio/video forwarding steady.
         let wait = (next_timeout - Instant::now()).max(Duration::from_millis(1));
 
         match timeout(wait, socket.recv_from(&mut buf)).await {
@@ -379,24 +380,6 @@ pub async fn run_sfu_loop(
                         if let Err(e) = peer.rtc.handle_input(input) {
                             tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
                         }
-                    }
-                }
-
-                // Drain any remaining buffered packets without blocking.
-                loop {
-                    match socket.try_recv_from(&mut buf) {
-                        Ok((n, source)) => {
-                            let now = Instant::now();
-                            if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
-                                let input = Input::Receive(now, receive);
-                                if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
-                                    if let Err(e) = peer.rtc.handle_input(input) {
-                                        tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
-                                    }
-                                }
-                            }
-                        }
-                        Err(_) => break,
                     }
                 }
             }
@@ -506,6 +489,11 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
         }
 
         Propagated::Media { source_peer, room_id, data } => {
+            tracing::debug!(
+                "propagate media: mid={} pt={:?} rid={:?} from={}",
+                data.mid, data.pt, data.rid, source_peer,
+            );
+
             for peer in peers.iter_mut() {
                 if peer.role != PeerRole::Viewer
                     || peer.room_id != *room_id
@@ -518,6 +506,10 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
                     let default_rid: Rid = "h".into();
                     let target = peer.chosen_rid.as_ref().unwrap_or(&default_rid);
                     if target != actual_rid {
+                        tracing::debug!(
+                            "{}: RID filter skip mid={} actual={:?} target={:?}",
+                            peer.id, data.mid, actual_rid, target,
+                        );
                         continue;
                     }
                 }

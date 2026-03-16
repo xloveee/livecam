@@ -250,7 +250,7 @@
                         roomPassword = '';
                         passwordInput.value = '';
                     } else {
-                        pollRoomInfo();
+                        await checkRoomAlive();
                         return;
                     }
                 }
@@ -276,14 +276,20 @@
             return null;
         }
 
-        async function pollRoomInfo() {
-            if (!roomId) return;
+        async function checkRoomAlive() {
+            if (!roomId) return true;
             try {
                 const resp = await fetch('/api/room_info/' + roomId);
-                if (!resp.ok) return;
+                if (!resp.ok) return true;
                 const info = await resp.json();
+                if (!info.is_live) {
+                    teardownConnection();
+                    setState('offline');
+                    return false;
+                }
                 viewerCountEl.textContent = info.viewer_count + ' watching';
-            } catch (e) { /* ignore */ }
+                return true;
+            } catch (e) { return true; }
         }
 
         async function fetchICEConfig() {
@@ -368,7 +374,7 @@
             var s = pc.iceConnectionState;
             if (s === 'connected' || s === 'completed') {
                 setState('live');
-                pollRoomInfo();
+                checkRoomAlive();
                 startMediaWatchdog();
             } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
                 teardownConnection();

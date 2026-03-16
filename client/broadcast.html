@@ -127,6 +127,18 @@
 </head>
 <body>
 
+    <div id="login-gate" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;width:100%;max-width:400px;">
+        <h1>Broadcaster Login</h1>
+        <div class="subtitle">Enter your stream key to access the broadcast studio</div>
+        <div style="width:100%;margin-top:1.5rem;">
+            <label for="login-key">Stream Key</label>
+            <input type="password" id="login-key" placeholder="32-character key" autocomplete="off" spellcheck="false">
+        </div>
+        <button id="btn-login" style="margin-top:1rem;width:100%;background:#d32f2f;">Log In</button>
+        <div id="login-error" style="margin-top:0.8rem;font-size:0.85rem;color:#ef5350;min-height:1.2em;"></div>
+    </div>
+
+    <div id="broadcast-ui" style="display:none;width:100%;flex-direction:column;align-items:center;">
     <h1>Go Live</h1>
     <div class="subtitle">Broadcast from your browser — phone or desktop</div>
 
@@ -190,35 +202,75 @@
     </div>
 
     <div class="stats" id="stats"></div>
+    </div>
 
     <script>
-        const preview = document.getElementById('preview');
-        const btnStart = document.getElementById('btn-start');
-        const btnStop = document.getElementById('btn-stop');
-        const statusEl = document.getElementById('status');
-        const statsEl = document.getElementById('stats');
-        const liveBadge = document.getElementById('live-badge');
-        const streamKeyInput = document.getElementById('stream-key');
-        const resolutionSelect = document.getElementById('resolution');
-        const cameraSelect = document.getElementById('camera-select');
-        const micSelect = document.getElementById('mic-select');
-        const maxViewersInput = document.getElementById('max-viewers');
-        const viewerCountEl = document.getElementById('viewer-count');
-        const roomPasswordInput = document.getElementById('room-password');
-        const accessStatusEl = document.getElementById('access-status');
+        var loginGate = document.getElementById('login-gate');
+        var broadcastUI = document.getElementById('broadcast-ui');
+        var loginKeyInput = document.getElementById('login-key');
+        var btnLogin = document.getElementById('btn-login');
+        var loginError = document.getElementById('login-error');
 
-        let pc = null;
-        let localStream = null;
-        let statsInterval = null;
-        let viewerPollInterval = null;
-        let activeStreamKey = null;
+        var preview = document.getElementById('preview');
+        var btnStart = document.getElementById('btn-start');
+        var btnStop = document.getElementById('btn-stop');
+        var statusEl = document.getElementById('status');
+        var statsEl = document.getElementById('stats');
+        var liveBadge = document.getElementById('live-badge');
+        var streamKeyInput = document.getElementById('stream-key');
+        var resolutionSelect = document.getElementById('resolution');
+        var cameraSelect = document.getElementById('camera-select');
+        var micSelect = document.getElementById('mic-select');
+        var maxViewersInput = document.getElementById('max-viewers');
+        var viewerCountEl = document.getElementById('viewer-count');
+        var roomPasswordInput = document.getElementById('room-password');
+        var accessStatusEl = document.getElementById('access-status');
 
-        (function initStreamKey() {
-            var parts = window.location.pathname.split('/').filter(Boolean);
-            if (parts.length >= 2 && parts[0] === 'broadcast') {
-                streamKeyInput.value = parts[1];
+        var pc = null;
+        var localStream = null;
+        var statsInterval = null;
+        var viewerPollInterval = null;
+        var activeStreamKey = null;
+        var authenticatedKey = '';
+
+        function showBroadcastUI(streamKey) {
+            authenticatedKey = streamKey;
+            streamKeyInput.value = streamKey;
+            loginGate.style.display = 'none';
+            broadcastUI.style.display = 'flex';
+            enumerateDevices();
+        }
+
+        btnLogin.onclick = async function () {
+            var key = loginKeyInput.value.trim();
+            loginError.textContent = '';
+            if (!key) {
+                loginError.textContent = 'Please enter your stream key';
+                return;
             }
-        })();
+            btnLogin.disabled = true;
+            try {
+                var resp = await fetch('/api/auth/broadcast', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ stream_key: key })
+                });
+                if (!resp.ok) {
+                    loginError.textContent = 'Invalid stream key';
+                    return;
+                }
+                var data = await resp.json();
+                showBroadcastUI(data.stream_key);
+            } catch (e) {
+                loginError.textContent = 'Connection error — try again';
+            } finally {
+                btnLogin.disabled = false;
+            }
+        };
+
+        loginKeyInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') { btnLogin.click(); }
+        });
 
         async function enumerateDevices() {
             try {
@@ -301,10 +353,7 @@
             try {
                 await fetch('/api/viewer_limit/' + streamKey, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Stream-Key': streamKey
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ max_viewers: parseInt(max, 10) || 0 })
                 });
             } catch (e) {
@@ -316,10 +365,7 @@
             try {
                 await fetch('/api/room_password/' + streamKey, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Stream-Key': streamKey
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: password || '' })
                 });
                 accessStatusEl.textContent = password ? 'Password Protected' : 'Public';
@@ -367,10 +413,10 @@
             }
         }
 
-        btnStart.onclick = async () => {
-            const streamKey = streamKeyInput.value.trim();
+        btnStart.onclick = async function () {
+            var streamKey = authenticatedKey;
             if (!streamKey) {
-                statusEl.textContent = 'Invalid URL — stream key missing';
+                statusEl.textContent = 'Not authenticated';
                 statusEl.classList.add('error');
                 return;
             }
@@ -444,7 +490,7 @@
             }
         };
 
-        btnStop.onclick = () => {
+        btnStop.onclick = function () {
             stopBroadcast();
             statusEl.textContent = 'Stopped';
             statusEl.classList.remove('connected', 'error');
@@ -501,7 +547,6 @@
             }, 2000);
         }
 
-        enumerateDevices();
     </script>
 </body>
 </html>

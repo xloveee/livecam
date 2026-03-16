@@ -35,9 +35,11 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
+	mux.HandleFunc("/api/auth/broadcast", authBroadcastHandler)
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
+	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/watch/", watchHandler)
 	mux.HandleFunc("/", rootHandler)
@@ -73,6 +75,15 @@ func initConfig() {
 		log.Printf("Stream key whitelist: disabled (open mode)")
 	}
 
+	sessionSecret := os.Getenv("SESSION_SECRET")
+	if sessionSecret == "" {
+		sessionSecret = "default_dev_secret_change_me!!"
+		log.Printf("WARNING: SESSION_SECRET not set, using insecure default")
+	}
+	cSecret := C.CString(sessionSecret)
+	C.init_session_secret(cSecret)
+	C.free(unsafe.Pointer(cSecret))
+
 	stunURL := os.Getenv("STUN_URL")
 	if stunURL == "" {
 		stunURL = "stun:stun.l.google.com:19302"
@@ -98,19 +109,22 @@ func initConfig() {
 	log.Printf("ICE servers configured: %d entries", len(iceServers))
 }
 
-func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) bool {
-	key := r.Header.Get("X-Stream-Key")
-	if key == "" {
+func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("broadcaster_session")
+	if err != nil || cookie.Value == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return false
+		return "", false
 	}
-	cKey := C.CString(key)
-	defer C.free(unsafe.Pointer(cKey))
-	if C.validate_stream_key(cKey) == 0 {
+
+	cToken := C.CString(cookie.Value)
+	defer C.free(unsafe.Pointer(cToken))
+
+	var outKey [C.STREAM_KEY_EXACT_LEN + 1]C.char
+	if C.extract_stream_key_from_token(cToken, &outKey[0]) == 0 {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
-		return false
+		return "", false
 	}
-	return true
+	return C.GoString(&outKey[0]), true
 }
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
@@ -147,22 +161,57 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, `{"go":"ok","rust":"ok"}`)
 }
 
-func broadcastHandler(w http.ResponseWriter, r *http.Request) {
-	streamKey := strings.TrimPrefix(r.URL.Path, "/broadcast/")
-	streamKey = strings.TrimSuffix(streamKey, "/")
-
-	if streamKey == "" {
-		http.Error(w, "Unauthorized — stream key required in URL", http.StatusUnauthorized)
+func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	cKey := C.CString(streamKey)
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	var req struct {
+		StreamKey string `json:"stream_key"`
+	}
+	if err := json.Unmarshal(body, &req); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	cKey := C.CString(req.StreamKey)
 	defer C.free(unsafe.Pointer(cKey))
 	if C.validate_stream_key(cKey) == 0 {
-		http.Error(w, "Unauthorized — invalid stream key", http.StatusUnauthorized)
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	var tokenBuf [C.SESSION_TOKEN_HEX_LEN + 1]C.char
+	C.generate_session_token(cKey, &tokenBuf[0])
+	token := C.GoString(&tokenBuf[0])
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     "broadcaster_session",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   86400,
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   r.TLS != nil,
+	})
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":     "ok",
+		"stream_key": req.StreamKey,
+	})
+}
+
+func broadcastHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	w.Header().Set("Cache-Control", "no-store")
 	http.ServeFile(w, r, clientDir+"/broadcast.html")
 }
 
@@ -434,7 +483,8 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireBroadcasterAuth(w, r) {
+	_, ok := requireBroadcasterAuth(w, r)
+	if !ok {
 		return
 	}
 
@@ -479,7 +529,8 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if !requireBroadcasterAuth(w, r) {
+	_, ok := requireBroadcasterAuth(w, r)
+	if !ok {
 		return
 	}
 

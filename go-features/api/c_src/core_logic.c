@@ -97,13 +97,16 @@ int32_t validate_stream_key(const char *key)
         return 1;
     }
 
+    int32_t matched = 0;
     for (int32_t i = 0; i < g_whitelist_count; i++) {
-        if (memcmp(key, g_whitelist[i], STREAM_KEY_EXACT_LEN) == 0) {
-            return 1;
+        volatile int32_t diff = 0;
+        for (size_t j = 0; j < STREAM_KEY_EXACT_LEN; j++) {
+            diff |= (key[j] ^ g_whitelist[i][j]);
         }
+        matched |= (diff == 0) ? 1 : 0;
     }
 
-    return 0;
+    return matched;
 }
 
 /*
@@ -155,6 +158,97 @@ int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers)
     }
 
     return 1;
+}
+
+#define SESSION_SECRET_LEN 32
+static char g_session_secret[SESSION_SECRET_LEN + 1] = {0};
+static int32_t g_session_secret_set = 0;
+
+static const char hex_chars[16] = "0123456789abcdef";
+
+void init_session_secret(const char *secret)
+{
+    g_session_secret_set = 0;
+    if (secret == NULL) {
+        return;
+    }
+    const size_t len = bounded_strlen(secret, SESSION_SECRET_LEN + 1);
+    if (len < 16) {
+        return;
+    }
+    size_t copy_len = (len > SESSION_SECRET_LEN) ? SESSION_SECRET_LEN : len;
+    for (size_t i = 0; i < copy_len; i++) {
+        g_session_secret[i] = secret[i];
+    }
+    g_session_secret[copy_len] = '\0';
+    g_session_secret_set = 1;
+}
+
+/*
+ * Generate a session token from a validated stream key.
+ * Token = hex(XOR-fold(key, secret) with byte mixing).
+ * out_hex must be at least SESSION_TOKEN_HEX_LEN + 1 bytes.
+ */
+void generate_session_token(const char *stream_key, char *out_hex)
+{
+    uint8_t digest[STREAM_KEY_EXACT_LEN];
+    const size_t secret_len = bounded_strlen(g_session_secret, SESSION_SECRET_LEN + 1);
+
+    for (size_t i = 0; i < STREAM_KEY_EXACT_LEN; i++) {
+        uint8_t k = (uint8_t)stream_key[i];
+        uint8_t s = (secret_len > 0) ? (uint8_t)g_session_secret[i % secret_len] : 0x5A;
+        digest[i] = (uint8_t)((k ^ s) + (uint8_t)(i * 7 + 0x3B));
+    }
+
+    for (size_t i = 0; i < STREAM_KEY_EXACT_LEN; i++) {
+        out_hex[i * 2]     = hex_chars[(digest[i] >> 4) & 0x0F];
+        out_hex[i * 2 + 1] = hex_chars[digest[i] & 0x0F];
+    }
+    out_hex[SESSION_TOKEN_HEX_LEN] = '\0';
+}
+
+/*
+ * Validate a session token against all whitelisted keys.
+ * If a match is found, writes the matching stream key to out_key
+ * (must be at least STREAM_KEY_EXACT_LEN + 1 bytes).
+ * Returns 1 on match, 0 on failure. Constant-time per key.
+ */
+int32_t extract_stream_key_from_token(const char *token_hex, char *out_key)
+{
+    if (token_hex == NULL || out_key == NULL) {
+        return 0;
+    }
+
+    const size_t token_len = bounded_strlen(token_hex, SESSION_TOKEN_HEX_LEN + 1);
+    if (token_len != SESSION_TOKEN_HEX_LEN) {
+        return 0;
+    }
+
+    char candidate[SESSION_TOKEN_HEX_LEN + 1];
+    int32_t found = 0;
+
+    for (int32_t i = 0; i < g_whitelist_count; i++) {
+        generate_session_token(g_whitelist[i], candidate);
+
+        volatile int32_t diff = 0;
+        for (size_t j = 0; j < SESSION_TOKEN_HEX_LEN; j++) {
+            diff |= (token_hex[j] ^ candidate[j]);
+        }
+
+        if (diff == 0 && found == 0) {
+            for (size_t j = 0; j < STREAM_KEY_EXACT_LEN; j++) {
+                out_key[j] = g_whitelist[i][j];
+            }
+            out_key[STREAM_KEY_EXACT_LEN] = '\0';
+            found = 1;
+        }
+    }
+
+    if (g_whitelist_count == 0) {
+        return 0;
+    }
+
+    return found;
 }
 
 #define MAX_ROOM_PASSWORD_LEN 128

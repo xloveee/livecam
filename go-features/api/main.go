@@ -119,6 +119,13 @@ func initConfig() {
 	log.Printf("ICE servers configured: %d entries", len(iceServers))
 }
 
+func isSecureRequest(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
 func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
 	cookie, err := r.Cookie("broadcaster_session")
 	if err != nil || cookie.Value == "" {
@@ -221,7 +228,7 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   86400,
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   r.TLS != nil,
+		Secure:   isSecureRequest(r),
 	})
 
 	w.Header().Set("Content-Type", "application/json")

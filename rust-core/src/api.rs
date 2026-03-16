@@ -14,12 +14,13 @@ use str0m::change::SdpOffer;
 use str0m::{Candidate, Rtc};
 use tokio::sync::mpsc;
 
-use crate::sfu::{NewPeer, PeerId, PeerRole, QualityChange, RoomStateMap};
+use crate::sfu::{NewPeer, PeerDisconnect, PeerId, PeerRole, QualityChange, RoomStateMap};
 
 /// Shared state injected into axum handlers.
 pub struct AppState {
     pub new_peer_tx: mpsc::UnboundedSender<NewPeer>,
     pub quality_tx: mpsc::UnboundedSender<QualityChange>,
+    pub disconnect_tx: mpsc::UnboundedSender<PeerDisconnect>,
     pub room_state: RoomStateMap,
     pub udp_candidate_addr: SocketAddr,
 }
@@ -214,6 +215,40 @@ pub async fn quality_handler(
     }
 
     tracing::info!("Quality change: {} room '{}' -> {:?}", session_id, room_id, body.rid);
+    (StatusCode::OK, "ok")
+}
+
+/// Explicit viewer disconnect handler — called via DELETE /whep/{roomId}.
+/// Expects X-Session-Id header to identify the peer.
+pub async fn disconnect_handler(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let session_id = match headers.get("X-Session-Id").and_then(|v| v.to_str().ok()) {
+        Some(id) => id.to_owned(),
+        None => {
+            return (StatusCode::BAD_REQUEST, "Missing X-Session-Id header");
+        }
+    };
+
+    let peer_id = match PeerId::parse(&session_id) {
+        Some(id) => id,
+        None => {
+            return (StatusCode::BAD_REQUEST, "Invalid X-Session-Id");
+        }
+    };
+
+    let dc = PeerDisconnect {
+        peer_id,
+        room_id: room_id.clone(),
+    };
+
+    if state.disconnect_tx.send(dc).is_err() {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "SFU unavailable");
+    }
+
+    tracing::info!("Viewer disconnect: {} room '{}'", session_id, room_id);
     (StatusCode::OK, "ok")
 }
 

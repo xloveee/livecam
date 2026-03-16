@@ -242,6 +242,10 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodDelete {
+		whepDeleteHandler(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -321,6 +325,37 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
+}
+
+func whepDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	roomID := r.URL.Path[len("/api/whep/"):]
+	roomID = strings.TrimSuffix(roomID, "/")
+
+	sessionID := r.Header.Get("X-Session-Id")
+	if sessionID == "" {
+		http.Error(w, "Missing X-Session-Id header", http.StatusBadRequest)
+		return
+	}
+
+	rustURL := fmt.Sprintf("%s/whep/%s", rustCoreURL, roomID)
+	req, err := http.NewRequest(http.MethodDelete, rustURL, nil)
+	if err != nil {
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("X-Session-Id", sessionID)
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Printf("Failed to reach Rust Core for disconnect: %v", err)
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.WriteHeader(resp.StatusCode)
+	io.Copy(w, resp.Body)
 }
 
 type roomInfoResult struct {

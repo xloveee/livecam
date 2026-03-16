@@ -57,6 +57,12 @@ pub struct QualityChange {
     pub rid: Option<Rid>,
 }
 
+/// Request to disconnect a viewer, sent from the HTTP handler.
+pub struct PeerDisconnect {
+    pub peer_id: PeerId,
+    pub room_id: String,
+}
+
 /// Per-room metadata visible to both API handlers and the SFU loop.
 #[derive(Debug, Clone)]
 pub struct RoomInfo {
@@ -150,6 +156,7 @@ enum Propagated {
 /// `candidate_addr` — public address advertised in ICE candidates
 /// `new_peer_rx`    — channel receiving new Rtc instances from the HTTP handlers
 /// `quality_rx`     — channel receiving quality change requests from the HTTP handlers
+/// `disconnect_rx`  — channel receiving explicit viewer disconnect requests
 /// `room_state`     — shared map of room metadata (viewer counts, caps)
 /// `archive_dir`    — directory for VOD archive recordings
 pub async fn run_sfu_loop(
@@ -157,6 +164,7 @@ pub async fn run_sfu_loop(
     candidate_addr: SocketAddr,
     mut new_peer_rx: mpsc::UnboundedReceiver<NewPeer>,
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
+    mut disconnect_rx: mpsc::UnboundedReceiver<PeerDisconnect>,
     room_state: RoomStateMap,
     archive_dir: String,
 ) {
@@ -223,6 +231,16 @@ pub async fn run_sfu_loop(
             }) {
                 tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
                 peer.chosen_rid = qc.rid;
+            }
+        }
+
+        // Apply any pending explicit disconnect requests.
+        while let Ok(dc) = disconnect_rx.try_recv() {
+            if let Some(peer) = peers.iter_mut().find(|p| {
+                p.id == dc.peer_id && p.room_id == dc.room_id && p.role == PeerRole::Viewer
+            }) {
+                tracing::info!("{}: explicit disconnect from room '{}'", peer.id, peer.room_id);
+                peer.rtc.disconnect();
             }
         }
 

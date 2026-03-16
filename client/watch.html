@@ -318,7 +318,13 @@
             clearPollTimer();
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
             if (pc) {
-                const dying = pc;
+                if (sessionId && roomId) {
+                    fetch('/api/whep/' + roomId, {
+                        method: 'DELETE',
+                        headers: { 'X-Session-Id': sessionId }
+                    }).catch(function () {});
+                }
+                var dying = pc;
                 pc = null;
                 dying.oniceconnectionstatechange = null;
                 dying.onconnectionstatechange = null;

@@ -64,6 +64,7 @@ pub struct RoomInfo {
     pub max_viewers: u32,
     pub password: Option<String>,
     pub is_live: bool,
+    pub generation: u64,
 }
 
 impl Default for RoomInfo {
@@ -73,6 +74,7 @@ impl Default for RoomInfo {
             max_viewers: 0,
             password: None,
             is_live: false,
+            generation: 0,
         }
     }
 }
@@ -209,9 +211,11 @@ pub async fn run_sfu_loop(
                         .viewer_count = count;
                 }
                 for room_id in live_rooms {
-                    state.entry(room_id.to_owned())
-                        .or_default()
-                        .is_live = true;
+                    let info = state.entry(room_id.to_owned()).or_default();
+                    if !info.is_live {
+                        info.generation += 1;
+                    }
+                    info.is_live = true;
                 }
             }
         }

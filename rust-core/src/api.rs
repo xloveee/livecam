@@ -223,6 +223,7 @@ pub struct RoomInfoResponse {
     pub max_viewers: u32,
     pub has_password: bool,
     pub is_live: bool,
+    pub generation: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
 }
@@ -244,6 +245,7 @@ pub async fn room_info_handler(
             max_viewers: info.max_viewers,
             has_password: info.password.is_some(),
             is_live: info.is_live,
+            generation: info.generation,
             password: info.password,
         },
         None => RoomInfoResponse {
@@ -251,6 +253,7 @@ pub async fn room_info_handler(
             max_viewers: 0,
             has_password: false,
             is_live: false,
+            generation: 0,
             password: None,
         },
     };
@@ -303,6 +306,7 @@ pub async fn room_password_handler(
 pub struct ActiveRoomResponse {
     pub room_id: Option<String>,
     pub has_password: bool,
+    pub generation: u64,
 }
 
 /// Returns the first currently-live room, or null if no broadcast is active.
@@ -314,12 +318,16 @@ pub async fn active_handler(
         .and_then(|s| {
             s.iter()
                 .find(|(_, info)| info.is_live)
-                .map(|(id, info)| (id.clone(), info.password.is_some()))
+                .map(|(id, info)| (id.clone(), info.password.is_some(), info.generation))
         });
 
     let resp = match active {
-        Some((id, has_pw)) => ActiveRoomResponse { room_id: Some(id), has_password: has_pw },
-        None => ActiveRoomResponse { room_id: None, has_password: false },
+        Some((id, has_pw, gen)) => ActiveRoomResponse {
+            room_id: Some(id),
+            has_password: has_pw,
+            generation: gen,
+        },
+        None => ActiveRoomResponse { room_id: None, has_password: false, generation: 0 },
     };
 
     (StatusCode::OK, Json(resp))

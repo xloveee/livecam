@@ -152,6 +152,7 @@
         const passwordError  = document.getElementById('password-error');
 
         let roomId = null;
+        let roomGeneration = 0;
         let sessionId = null;
         let roomPassword = '';
         let pc = null;
@@ -237,6 +238,7 @@
                     return;
                 }
                 roomId = data.room_id;
+                roomGeneration = data.generation || 0;
                 if (data.has_password && !roomPassword) {
                     if (viewerState !== 'need_password') setState('need_password');
                 } else {
@@ -263,6 +265,14 @@
                 if (resp.ok) {
                     const info = await resp.json();
                     viewerCountEl.textContent = info.viewer_count + ' watching';
+                    if (info.generation) {
+                        if (roomGeneration && info.generation !== roomGeneration) {
+                            roomGeneration = info.generation;
+                            connectWHEP();
+                        } else {
+                            roomGeneration = info.generation;
+                        }
+                    }
                 }
             } catch (e) { /* ignore */ }
         }
@@ -460,6 +470,7 @@
                     const data = await resp.json();
                     if (data.room_id) {
                         roomId = data.room_id;
+                        roomGeneration = data.generation || 0;
                         if (data.has_password) {
                             setState('need_password');
                         } else {

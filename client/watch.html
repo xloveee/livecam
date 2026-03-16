@@ -230,7 +230,7 @@
 
         async function pollActive() {
             try {
-                const resp = await fetch('/api/active');
+                const resp = await fetch('/api/active', { cache: 'no-store' });
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data.room_id) {
@@ -261,7 +261,7 @@
         async function pollViewerCount() {
             if (!roomId) return;
             try {
-                const resp = await fetch('/api/room_info/' + roomId);
+                const resp = await fetch('/api/room_info/' + roomId, { cache: 'no-store' });
                 if (resp.ok) {
                     const info = await resp.json();
                     viewerCountEl.textContent = info.viewer_count + ' watching';
@@ -465,7 +465,7 @@
             if (roomId) { connectWHEP(); return; }
 
             try {
-                const resp = await fetch('/api/active');
+                const resp = await fetch('/api/active', { cache: 'no-store' });
                 if (resp.ok) {
                     const data = await resp.json();
                     if (data.room_id) {

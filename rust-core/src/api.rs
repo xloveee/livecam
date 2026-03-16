@@ -11,7 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use str0m::change::SdpOffer;
-use str0m::{Candidate, Rtc};
+use str0m::{Candidate, RtcConfig};
 use tokio::sync::mpsc;
 
 use crate::sfu::{NewPeer, PeerDisconnect, PeerId, PeerRole, QualityChange, RoomStateMap};
@@ -47,7 +47,9 @@ pub async fn whip_handler(
         }
     };
 
-    let mut rtc = Rtc::new(Instant::now());
+    let mut rtc = RtcConfig::new()
+        .set_reordering_size_audio(0)
+        .build(Instant::now());
 
     let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {
         Ok(c) => c,
@@ -136,7 +138,9 @@ pub async fn whep_handler(
         }
     };
 
-    let mut rtc = Rtc::new(Instant::now());
+    let mut rtc = RtcConfig::new()
+        .set_reordering_size_audio(0)
+        .build(Instant::now());
 
     let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {
         Ok(c) => c,

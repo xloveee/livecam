@@ -347,6 +347,7 @@
         async function connectWHEP() {
             if (!roomId) return;
 
+            teardownConnection();
             setState('connecting');
 
             const config = await fetchICEConfig();

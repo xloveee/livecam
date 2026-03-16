@@ -155,7 +155,6 @@
         let sessionId = null;
         let roomPassword = '';
         let pc = null;
-        let viewerPollInterval = null;
         let mediaWatchdogInterval = null;
         let pollInterval = null;
         let lastBytesReceived = 0;
@@ -219,7 +218,6 @@
 
         function clearAllTimers() {
             if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
         }
 
@@ -230,6 +228,8 @@
                 pollInterval = setInterval(pollActive, 5000);
             } else if (viewerState === 'room_full' || viewerState === 'rate_limited') {
                 pollInterval = setInterval(function () { connectWHEP(); }, 5000);
+            } else if (viewerState === 'live') {
+                pollInterval = setInterval(pollRoomInfo, 5000);
             }
         }
 
@@ -262,14 +262,18 @@
             return null;
         }
 
-        async function pollViewerCount() {
+        async function pollRoomInfo() {
             if (!roomId) return;
             try {
                 const resp = await fetch('/api/room_info/' + roomId);
-                if (resp.ok) {
-                    const info = await resp.json();
-                    viewerCountEl.textContent = info.viewer_count + ' watching';
+                if (!resp.ok) return;
+                const info = await resp.json();
+                if (!info.is_live) {
+                    teardownConnection();
+                    setState('offline');
+                    return;
                 }
+                viewerCountEl.textContent = info.viewer_count + ' watching';
             } catch (e) { /* ignore */ }
         }
 
@@ -348,8 +352,7 @@
             var s = pc.iceConnectionState;
             if (s === 'connected' || s === 'completed') {
                 setState('live');
-                pollViewerCount();
-                viewerPollInterval = setInterval(pollViewerCount, 5000);
+                pollRoomInfo();
                 startMediaWatchdog();
             } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
                 teardownConnection();

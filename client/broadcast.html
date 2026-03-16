@@ -340,10 +340,14 @@
             }
         };
 
-        roomPasswordInput.onchange = () => {
-            if (activeStreamKey) {
-                setRoomPassword(activeStreamKey, roomPasswordInput.value.trim());
-            }
+        let passwordDebounce = null;
+        roomPasswordInput.oninput = function () {
+            clearTimeout(passwordDebounce);
+            passwordDebounce = setTimeout(function () {
+                if (activeStreamKey) {
+                    setRoomPassword(activeStreamKey, roomPasswordInput.value.trim());
+                }
+            }, 500);
         };
 
         async function fetchICEConfig() {

@@ -216,13 +216,12 @@
             }
         }
 
-        function clearAllTimers() {
+        function clearPollTimer() {
             if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
-            if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
         }
 
         function managePoll() {
-            clearAllTimers();
+            clearPollTimer();
 
             if (viewerState === 'offline' || viewerState === 'need_password') {
                 pollInterval = setInterval(pollActive, 5000);
@@ -268,11 +267,6 @@
                 const resp = await fetch('/api/room_info/' + roomId);
                 if (!resp.ok) return;
                 const info = await resp.json();
-                if (!info.is_live) {
-                    teardownConnection();
-                    setState('offline');
-                    return;
-                }
                 viewerCountEl.textContent = info.viewer_count + ' watching';
             } catch (e) { /* ignore */ }
         }
@@ -306,7 +300,8 @@
         /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
         function teardownConnection() {
-            clearAllTimers();
+            clearPollTimer();
+            if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
             if (pc) {
                 const dying = pc;
                 pc = null;

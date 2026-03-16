@@ -113,6 +113,7 @@ struct Peer {
     tracks_in: Vec<TrackIn>,
     tracks_out: Vec<TrackOut>,
     chosen_rid: Option<Rid>,
+    last_media_at: Option<Instant>,
 }
 
 impl Peer {
@@ -125,6 +126,7 @@ impl Peer {
             tracks_in: Vec::new(),
             tracks_out: Vec::new(),
             chosen_rid: None,
+            last_media_at: None,
         }
     }
 }
@@ -213,13 +215,23 @@ pub async fn run_sfu_loop(
         }
 
         // Recompute viewer counts and broadcaster presence from the peer list.
+        // A broadcaster is only "live" if it sent media within the last 3 seconds.
         {
+            let now = Instant::now();
+            let media_timeout = Duration::from_secs(3);
             let mut viewer_counts: HashMap<&str, u32> = HashMap::new();
             let mut live_rooms: std::collections::HashSet<&str> = std::collections::HashSet::new();
             for peer in peers.iter() {
                 match peer.role {
                     PeerRole::Viewer => { *viewer_counts.entry(&peer.room_id).or_insert(0) += 1; }
-                    PeerRole::Broadcaster => { live_rooms.insert(&peer.room_id); }
+                    PeerRole::Broadcaster => {
+                        let sending = peer.last_media_at
+                            .map(|t| now.duration_since(t) < media_timeout)
+                            .unwrap_or(false);
+                        if sending {
+                            live_rooms.insert(&peer.room_id);
+                        }
+                    }
                 }
             }
             if let Ok(mut state) = room_state.lock() {
@@ -268,6 +280,7 @@ pub async fn run_sfu_loop(
             let mut peer = Peer::new(peer_id, new.rtc, role, new.room_id);
 
             if role == PeerRole::Broadcaster {
+                peer.last_media_at = Some(Instant::now());
                 for old in peers.iter_mut().filter(|p| {
                     p.role == PeerRole::Broadcaster && p.room_id == room_id
                 }) {
@@ -433,6 +446,7 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
         Event::MediaData(data) => {
             if peer.role == PeerRole::Broadcaster {
+                peer.last_media_at = Some(Instant::now());
                 return Propagated::Media {
                     source_peer: peer.id,
                     room_id: peer.room_id.clone(),

@@ -157,9 +157,96 @@
         let pc = null;
         let viewerPollInterval = null;
         let mediaWatchdogInterval = null;
-        let offlinePollInterval = null;
+        let pollInterval = null;
         let lastBytesReceived = 0;
         let stallCount = 0;
+        let viewerState = 'init';
+
+        /* ── State Machine ──────────────────────────────────────── */
+
+        function setState(next) {
+            if (next === viewerState) return;
+            viewerState = next;
+            renderState();
+            managePoll();
+        }
+
+        function renderState() {
+            offlineBanner.style.display = 'none';
+            passwordPrompt.style.display = 'none';
+            statusEl.classList.remove('error');
+
+            switch (viewerState) {
+                case 'offline':
+                    offlineBanner.style.display = 'block';
+                    offlineBanner.classList.remove('live');
+                    offlineText.textContent = 'No broadcast right now';
+                    statusEl.textContent = 'Offline';
+                    viewerCountEl.textContent = '';
+                    qualitySelect.disabled = true;
+                    break;
+                case 'need_password':
+                    passwordPrompt.style.display = 'block';
+                    statusEl.textContent = 'Password required';
+                    qualitySelect.disabled = true;
+                    break;
+                case 'connecting':
+                    statusEl.textContent = 'Connecting...';
+                    qualitySelect.disabled = true;
+                    break;
+                case 'live':
+                    statusEl.textContent = 'Live';
+                    qualitySelect.disabled = false;
+                    break;
+                case 'room_full':
+                    offlineBanner.style.display = 'block';
+                    offlineBanner.classList.remove('live');
+                    offlineText.textContent = 'Room is full — retrying...';
+                    statusEl.textContent = 'Waiting';
+                    qualitySelect.disabled = true;
+                    break;
+                case 'rate_limited':
+                    offlineBanner.style.display = 'block';
+                    offlineBanner.classList.remove('live');
+                    offlineText.textContent = 'Too many requests — retrying...';
+                    statusEl.textContent = 'Waiting';
+                    qualitySelect.disabled = true;
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function managePoll() {
+            if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+
+            if (viewerState === 'offline' || viewerState === 'need_password') {
+                pollInterval = setInterval(pollActive, 5000);
+            } else if (viewerState === 'room_full' || viewerState === 'rate_limited') {
+                pollInterval = setInterval(function () { connectWHEP(); }, 5000);
+            }
+        }
+
+        async function pollActive() {
+            try {
+                const resp = await fetch('/api/active');
+                if (!resp.ok) return;
+                const data = await resp.json();
+                if (!data.room_id) {
+                    if (viewerState !== 'offline') setState('offline');
+                    return;
+                }
+                roomId = data.room_id;
+                if (data.has_password && !roomPassword) {
+                    if (viewerState !== 'need_password') setState('need_password');
+                } else {
+                    if (!data.has_password) { roomPassword = ''; passwordInput.value = ''; }
+                    connectWHEP();
+                }
+            } catch (e) { /* ignore */ }
+        }
+
+        /* ── Utilities ──────────────────────────────────────────── */
 
         function getRoomIdFromURL() {
             const parts = window.location.pathname.split('/').filter(Boolean);
@@ -204,7 +291,9 @@
             } catch (e) { /* ignore */ }
         }
 
-        qualitySelect.onchange = () => { setQuality(qualitySelect.value || null); };
+        qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); };
+
+        /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
         function teardownConnection() {
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
@@ -217,22 +306,20 @@
                 dying.close();
             }
             video.srcObject = null;
-            qualitySelect.disabled = true;
             sessionId = null;
             lastBytesReceived = 0;
             stallCount = 0;
-            viewerCountEl.textContent = '';
         }
 
         function startMediaWatchdog() {
             lastBytesReceived = 0;
             stallCount = 0;
-            mediaWatchdogInterval = setInterval(async () => {
+            mediaWatchdogInterval = setInterval(async function () {
                 if (!pc) return;
                 try {
                     const stats = await pc.getStats();
                     let totalBytes = 0;
-                    stats.forEach(report => {
+                    stats.forEach(function (report) {
                         if (report.type === 'inbound-rtp' && report.kind === 'video') {
                             totalBytes += report.bytesReceived || 0;
                         }
@@ -244,7 +331,7 @@
                         stallCount++;
                         if (stallCount >= 2) {
                             teardownConnection();
-                            showOffline();
+                            setState('offline');
                         }
                     }
                 } catch (e) { /* pc may have closed mid-check */ }
@@ -254,22 +341,13 @@
         function handleStreamEnded() {
             if (!pc) return;
             teardownConnection();
-            statusEl.textContent = 'Stream ended';
-            statusEl.classList.add('error');
-            showOffline();
+            setState('offline');
         }
 
         async function connectWHEP() {
             if (!roomId) return;
-            if (offlinePollInterval) { clearInterval(offlinePollInterval); offlinePollInterval = null; }
 
-            statusEl.textContent = 'Connecting...';
-            statusEl.classList.remove('error');
-            qualitySelect.disabled = true;
-            sessionId = null;
-            offlineBanner.style.display = 'none';
-            passwordPrompt.style.display = 'none';
-            passwordError.textContent = '';
+            setState('connecting');
 
             const config = await fetchICEConfig();
 
@@ -277,19 +355,17 @@
                 iceServers: config.iceServers || []
             });
 
-            pc.ontrack = (event) => {
+            pc.ontrack = function (event) {
                 if (video.srcObject !== event.streams[0]) {
                     video.srcObject = event.streams[0];
                 }
             };
 
-            pc.oniceconnectionstatechange = () => {
+            pc.oniceconnectionstatechange = function () {
+                if (!pc) return;
                 const state = pc.iceConnectionState;
                 if (state === 'connected' || state === 'completed') {
-                    statusEl.textContent = 'Live';
-                    statusEl.classList.remove('error');
-                    qualitySelect.disabled = false;
-                    passwordPrompt.style.display = 'none';
+                    setState('live');
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 5000);
                     startMediaWatchdog();
@@ -298,7 +374,8 @@
                 }
             };
 
-            pc.onconnectionstatechange = () => {
+            pc.onconnectionstatechange = function () {
+                if (!pc) return;
                 const state = pc.connectionState;
                 if (state === 'disconnected' || state === 'failed' || state === 'closed') {
                     handleStreamEnded();
@@ -324,30 +401,21 @@
                 });
 
                 if (response.status === 403) {
-                    pc.close();
-                    pc = null;
-                    statusEl.textContent = 'Password required';
-                    statusEl.classList.add('error');
-                    passwordPrompt.style.display = 'block';
+                    pc.close(); pc = null;
                     passwordError.textContent = roomPassword ? 'Incorrect password' : '';
-                    startWaitingForBroadcast();
+                    setState('need_password');
                     return;
                 }
-
                 if (response.status === 503) {
-                    pc.close();
-                    pc = null;
-                    showRetry('Room is full — retrying...');
+                    pc.close(); pc = null;
+                    setState('room_full');
                     return;
                 }
-
                 if (response.status === 429) {
-                    pc.close();
-                    pc = null;
-                    showRetry('Too many requests — retrying...');
+                    pc.close(); pc = null;
+                    setState('rate_limited');
                     return;
                 }
-
                 if (!response.ok) {
                     throw new Error('Server returned ' + response.status);
                 }
@@ -358,64 +426,14 @@
 
             } catch (err) {
                 console.error('WHEP connection failed:', err);
-                statusEl.textContent = 'Connection failed';
-                statusEl.classList.add('error');
-                showOffline();
+                if (pc) { pc.close(); pc = null; }
+                setState('offline');
             }
         }
 
-        function showRetry(message) {
-            offlineBanner.style.display = 'block';
-            offlineBanner.classList.remove('live');
-            offlineText.textContent = message;
-            statusEl.textContent = 'Waiting';
-            statusEl.classList.remove('error');
-            if (!offlinePollInterval) {
-                offlinePollInterval = setInterval(() => { connectWHEP(); }, 5000);
-            }
-        }
+        /* ── User Actions ───────────────────────────────────────── */
 
-        function startWaitingForBroadcast() {
-            if (offlinePollInterval) return;
-            offlinePollInterval = setInterval(async () => {
-                try {
-                    const resp = await fetch('/api/active');
-                    if (!resp.ok) return;
-                    const data = await resp.json();
-                    if (!data.room_id) {
-                        if (passwordPrompt.style.display === 'block') {
-                            passwordPrompt.style.display = 'none';
-                            showOffline();
-                        }
-                        return;
-                    }
-                    roomId = data.room_id;
-                    if (data.has_password && !roomPassword) {
-                        offlineBanner.style.display = 'none';
-                        passwordPrompt.style.display = 'block';
-                        statusEl.textContent = 'Password required';
-                        passwordError.textContent = '';
-                    } else {
-                        if (!data.has_password) {
-                            roomPassword = '';
-                            passwordInput.value = '';
-                        }
-                        connectWHEP();
-                    }
-                } catch (e) { /* ignore */ }
-            }, 5000);
-        }
-
-        function showOffline() {
-            offlineBanner.style.display = 'block';
-            offlineBanner.classList.remove('live');
-            offlineText.textContent = 'No broadcast right now';
-            statusEl.textContent = 'Offline';
-            statusEl.classList.remove('error');
-            startWaitingForBroadcast();
-        }
-
-        btnPasswordSubmit.onclick = () => {
+        btnPasswordSubmit.onclick = function () {
             roomPassword = passwordInput.value;
             if (!roomPassword) {
                 passwordError.textContent = 'Please enter a password';
@@ -425,16 +443,16 @@
             connectWHEP();
         };
 
-        passwordInput.addEventListener('keydown', (e) => {
+        passwordInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') btnPasswordSubmit.click();
         });
 
+        /* ── Init ───────────────────────────────────────────────── */
+
         (async function init() {
             roomId = getRoomIdFromURL();
-            if (roomId) {
-                connectWHEP();
-                return;
-            }
+            if (roomId) { connectWHEP(); return; }
+
             try {
                 const resp = await fetch('/api/active');
                 if (resp.ok) {
@@ -442,9 +460,7 @@
                     if (data.room_id) {
                         roomId = data.room_id;
                         if (data.has_password) {
-                            passwordPrompt.style.display = 'block';
-                            statusEl.textContent = 'Password required';
-                            startWaitingForBroadcast();
+                            setState('need_password');
                         } else {
                             connectWHEP();
                         }
@@ -452,7 +468,8 @@
                     }
                 }
             } catch (e) { /* server unreachable */ }
-            showOffline();
+
+            setState('offline');
         })();
     </script>
 </body>

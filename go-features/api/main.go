@@ -38,7 +38,7 @@ func main() {
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
-	mux.HandleFunc("/broadcast", broadcastHandler)
+	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/watch/", watchHandler)
 	mux.HandleFunc("/", rootHandler)
 
@@ -148,6 +148,21 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func broadcastHandler(w http.ResponseWriter, r *http.Request) {
+	streamKey := strings.TrimPrefix(r.URL.Path, "/broadcast/")
+	streamKey = strings.TrimSuffix(streamKey, "/")
+
+	if streamKey == "" {
+		http.Error(w, "Unauthorized — stream key required in URL", http.StatusUnauthorized)
+		return
+	}
+
+	cKey := C.CString(streamKey)
+	defer C.free(unsafe.Pointer(cKey))
+	if C.validate_stream_key(cKey) == 0 {
+		http.Error(w, "Unauthorized — invalid stream key", http.StatusUnauthorized)
+		return
+	}
+
 	http.ServeFile(w, r, clientDir+"/broadcast.html")
 }
 

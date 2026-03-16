@@ -139,7 +139,7 @@
         <div class="row">
             <div>
                 <label for="stream-key">Stream Key</label>
-                <input type="text" id="stream-key" placeholder="your-stream-key" autocomplete="off" spellcheck="false">
+                <input type="text" id="stream-key" readonly style="opacity:0.6;cursor:default;">
             </div>
             <div>
                 <label for="resolution">Resolution</label>
@@ -212,6 +212,13 @@
         let statsInterval = null;
         let viewerPollInterval = null;
         let activeStreamKey = null;
+
+        (function initStreamKey() {
+            var parts = window.location.pathname.split('/').filter(Boolean);
+            if (parts.length >= 2 && parts[0] === 'broadcast') {
+                streamKeyInput.value = parts[1];
+            }
+        })();
 
         async function enumerateDevices() {
             try {
@@ -363,7 +370,7 @@
         btnStart.onclick = async () => {
             const streamKey = streamKeyInput.value.trim();
             if (!streamKey) {
-                statusEl.textContent = 'Enter a stream key';
+                statusEl.textContent = 'Invalid URL — stream key missing';
                 statusEl.classList.add('error');
                 return;
             }

@@ -161,6 +161,7 @@
         let stallCount = 0;
         let connectTimeout = null;
         let viewerState = 'init';
+        let confirmedLive = false;
 
         /* ── State Machine ──────────────────────────────────────── */
 
@@ -252,7 +253,12 @@
                     }
 
                     if (!info.is_live) {
+                        confirmedLive = false;
                         setState('offline');
+                        return;
+                    }
+                    if (!confirmedLive) {
+                        confirmedLive = true;
                         return;
                     }
                     if (info.has_password && !roomPassword) {
@@ -268,6 +274,7 @@
                 const data = await resp.json();
 
                 if (!data.room_id) {
+                    confirmedLive = false;
                     if (viewerState === 'live') { teardownConnection(); }
                     setState('offline');
                     return;
@@ -286,6 +293,11 @@
                 }
 
                 roomId = data.room_id;
+
+                if (!confirmedLive) {
+                    confirmedLive = true;
+                    return;
+                }
 
                 if (data.has_password && !roomPassword) {
                     setState('need_password');
@@ -402,6 +414,7 @@
                     } else {
                         stallCount++;
                         if (stallCount >= 5) {
+                            confirmedLive = false;
                             teardownConnection();
                             setState('offline');
                         }
@@ -419,6 +432,7 @@
                 checkRoomAlive();
                 startMediaWatchdog();
             } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+                confirmedLive = false;
                 teardownConnection();
                 setState('offline');
             }
@@ -465,6 +479,7 @@
                 });
 
                 if (response.status === 404) {
+                    confirmedLive = false;
                     teardownConnection();
                     setState('offline');
                     return;
@@ -495,6 +510,7 @@
 
                 connectTimeout = setTimeout(function () {
                     if (viewerState === 'connecting') {
+                        confirmedLive = false;
                         teardownConnection();
                         setState('offline');
                     }
@@ -502,6 +518,7 @@
 
             } catch (err) {
                 console.error('WHEP connection failed:', err);
+                confirmedLive = false;
                 teardownConnection();
                 setState('offline');
             }
@@ -527,11 +544,9 @@
 
         (async function init() {
             roomId = getRoomIdFromURL();
+            confirmedLive = true;
             if (roomId) {
                 roomIdFromURL = true;
-                await pollActive();
-                if (viewerState === 'init') setState('offline');
-                return;
             }
             await pollActive();
             if (viewerState === 'init') setState('offline');

@@ -474,8 +474,10 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
                     continue;
                 }
 
-                if let (Some(ref chosen), Some(ref actual)) = (&peer.chosen_rid, &data.rid) {
-                    if chosen != actual {
+                if let Some(ref actual_rid) = data.rid {
+                    let default_rid: Rid = "h".into();
+                    let target = peer.chosen_rid.as_ref().unwrap_or(&default_rid);
+                    if target != actual_rid {
                         continue;
                     }
                 }

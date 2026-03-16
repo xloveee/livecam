@@ -64,7 +64,6 @@ pub struct RoomInfo {
     pub max_viewers: u32,
     pub password: Option<String>,
     pub is_live: bool,
-    pub generation: u64,
 }
 
 impl Default for RoomInfo {
@@ -74,7 +73,6 @@ impl Default for RoomInfo {
             max_viewers: 0,
             password: None,
             is_live: false,
-            generation: 0,
         }
     }
 }
@@ -201,11 +199,6 @@ pub async fn run_sfu_loop(
                 }
             }
             if let Ok(mut state) = room_state.lock() {
-                let was_live: std::collections::HashSet<String> = state.iter()
-                    .filter(|(_, info)| info.is_live)
-                    .map(|(id, _)| id.clone())
-                    .collect();
-
                 for info in state.values_mut() {
                     info.viewer_count = 0;
                     info.is_live = false;
@@ -216,11 +209,9 @@ pub async fn run_sfu_loop(
                         .viewer_count = count;
                 }
                 for room_id in live_rooms {
-                    let info = state.entry(room_id.to_owned()).or_default();
-                    if !was_live.contains(room_id) {
-                        info.generation += 1;
-                    }
-                    info.is_live = true;
+                    state.entry(room_id.to_owned())
+                        .or_default()
+                        .is_live = true;
                 }
             }
         }

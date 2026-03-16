@@ -47,15 +47,8 @@ func main() {
 		port = "8443"
 	}
 
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api/") {
-			w.Header().Set("Cache-Control", "no-store")
-		}
-		mux.ServeHTTP(w, r)
-	})
-
 	fmt.Printf("Go proxy running on :%s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, handler))
+	log.Fatal(http.ListenAndServe(":"+port, mux))
 }
 
 func initConfig() {
@@ -335,7 +328,6 @@ type roomInfoResult struct {
 	MaxViewers  int32  `json:"max_viewers"`
 	HasPassword bool   `json:"has_password"`
 	IsLive      bool   `json:"is_live"`
-	Generation  uint64 `json:"generation"`
 	Password    string `json:"password,omitempty"`
 }
 
@@ -366,17 +358,15 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	info := fetchRoomInfo(roomID)
 
 	publicResp := struct {
-		ViewerCount int32  `json:"viewer_count"`
-		MaxViewers  int32  `json:"max_viewers"`
-		HasPassword bool   `json:"has_password"`
-		IsLive      bool   `json:"is_live"`
-		Generation  uint64 `json:"generation"`
+		ViewerCount int32 `json:"viewer_count"`
+		MaxViewers  int32 `json:"max_viewers"`
+		HasPassword bool  `json:"has_password"`
+		IsLive      bool  `json:"is_live"`
 	}{
 		ViewerCount: info.ViewerCount,
 		MaxViewers:  info.MaxViewers,
 		HasPassword: info.HasPassword,
 		IsLive:      info.IsLive,
-		Generation:  info.Generation,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

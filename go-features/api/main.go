@@ -267,6 +267,12 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	info := fetchRoomInfo(roomID)
 
+	if !info.IsLive {
+		log.Printf("Room '%s' is not live, rejecting viewer %s", roomID, ip)
+		http.Error(w, "Room is not live", http.StatusNotFound)
+		return
+	}
+
 	capAllowed := C.check_viewer_cap(C.int32_t(info.ViewerCount), C.int32_t(info.MaxViewers))
 	if capAllowed == 0 {
 		log.Printf("Room '%s' at capacity (%d/%d), rejecting viewer %s", roomID, info.ViewerCount, info.MaxViewers, ip)

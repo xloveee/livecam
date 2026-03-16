@@ -434,6 +434,12 @@
                     body: pc.localDescription.sdp
                 });
 
+                if (response.status === 404) {
+                    teardownConnection();
+                    setState('offline');
+                    setTimeout(pollActive, 1000);
+                    return;
+                }
                 if (response.status === 403) {
                     teardownConnection();
                     passwordError.textContent = roomPassword ? 'Incorrect password' : '';

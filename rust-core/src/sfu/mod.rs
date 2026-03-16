@@ -251,6 +251,16 @@ pub async fn run_sfu_loop(
             let role = new.role;
             let mut peer = Peer::new(peer_id, new.rtc, role, new.room_id);
 
+            if role == PeerRole::Broadcaster {
+                for old in peers.iter_mut().filter(|p| {
+                    p.role == PeerRole::Broadcaster && p.room_id == room_id
+                }) {
+                    tracing::info!("{}: evicting stale broadcaster from room '{}'", old.id, room_id);
+                    archive.stop_recording(&old.room_id);
+                    old.rtc.disconnect();
+                }
+            }
+
             if role == PeerRole::Viewer {
                 for bcast in peers.iter().filter(|p| {
                     p.role == PeerRole::Broadcaster && p.room_id == room_id

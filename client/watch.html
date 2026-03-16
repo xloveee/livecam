@@ -108,13 +108,62 @@
             font-size: 0.85rem;
             margin-top: 0.4rem;
         }
+        #password-overlay {
+            display: none;
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.82);
+            padding: 0.8rem 1rem;
+            text-align: center;
+            border-radius: 0 0 4px 4px;
+            font-size: 0.85rem;
+            z-index: 10;
+        }
+        #password-overlay label {
+            color: #ccc;
+            margin-right: 0.5rem;
+        }
+        #password-overlay input {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            border: 1px solid #444;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.85rem;
+            border-radius: 4px;
+            width: 180px;
+            margin-right: 0.4rem;
+        }
+        #password-overlay button {
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+        }
+        #password-overlay .overlay-error {
+            color: #ef5350;
+            font-size: 0.8rem;
+            margin-top: 0.3rem;
+        }
+        .video-wrapper {
+            position: relative;
+            width: 100%;
+            max-width: 960px;
+        }
     </style>
 </head>
 <body>
 
     <h1>livecam</h1>
 
-    <video id="player" autoplay controls playsinline></video>
+    <div class="video-wrapper">
+        <video id="player" autoplay controls playsinline></video>
+        <div id="password-overlay">
+            <label>Broadcaster enabled a password</label>
+            <input type="password" id="overlay-password-input" placeholder="Enter password" autocomplete="off">
+            <button id="btn-overlay-password">Save</button>
+            <div class="overlay-error" id="overlay-password-error"></div>
+        </div>
+    </div>
 
     <div id="controls">
         <select id="quality-select" disabled>
@@ -150,6 +199,10 @@
         const passwordInput  = document.getElementById('room-password-input');
         const btnPasswordSubmit = document.getElementById('btn-password-submit');
         const passwordError  = document.getElementById('password-error');
+        const passwordOverlay = document.getElementById('password-overlay');
+        const overlayPasswordInput = document.getElementById('overlay-password-input');
+        const btnOverlayPassword = document.getElementById('btn-overlay-password');
+        const overlayPasswordError = document.getElementById('overlay-password-error');
 
         let roomId = null;
         let roomIdFromURL = false;
@@ -174,6 +227,7 @@
         function renderState() {
             offlineBanner.style.display = 'none';
             passwordPrompt.style.display = 'none';
+            passwordOverlay.style.display = 'none';
             statusEl.classList.remove('error');
 
             switch (viewerState) {
@@ -189,6 +243,11 @@
                     passwordPrompt.style.display = 'block';
                     statusEl.textContent = 'Password required';
                     qualitySelect.disabled = true;
+                    break;
+                case 'need_password_live':
+                    passwordOverlay.style.display = 'block';
+                    statusEl.textContent = 'Live — password needed for reconnect';
+                    qualitySelect.disabled = false;
                     break;
                 case 'connecting':
                     statusEl.textContent = 'Connecting...';
@@ -237,13 +296,15 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
 
+                var isWatching = viewerState === 'live' || viewerState === 'need_password_live';
+
                 if (!data.room_id) {
-                    if (viewerState === 'live') { teardownConnection(); }
+                    if (isWatching) { teardownConnection(); }
                     setState('offline');
                     return;
                 }
 
-                if (viewerState === 'live') {
+                if (isWatching) {
                     if (!roomIdFromURL && data.room_id !== roomId) {
                         teardownConnection();
                         roomId = data.room_id;
@@ -288,6 +349,18 @@
                     return false;
                 }
                 viewerCountEl.textContent = info.viewer_count + ' watching';
+
+                if (info.has_password && !roomPassword) {
+                    setState('need_password_live');
+                } else if (!info.has_password && roomPassword) {
+                    roomPassword = '';
+                    passwordInput.value = '';
+                    overlayPasswordInput.value = '';
+                    if (viewerState === 'need_password_live') { setState('live'); }
+                } else if (!info.has_password && viewerState === 'need_password_live') {
+                    setState('live');
+                }
+
                 return true;
             } catch (e) { return true; }
         }
@@ -467,6 +540,22 @@
 
         passwordInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') btnPasswordSubmit.click();
+        });
+
+        btnOverlayPassword.onclick = function () {
+            var pw = overlayPasswordInput.value;
+            if (!pw) {
+                overlayPasswordError.textContent = 'Please enter a password';
+                return;
+            }
+            overlayPasswordError.textContent = '';
+            roomPassword = pw;
+            passwordInput.value = pw;
+            setState('live');
+        };
+
+        overlayPasswordInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') btnOverlayPassword.click();
         });
 
         /* ── Init ───────────────────────────────────────────────── */

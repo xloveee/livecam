@@ -399,9 +399,9 @@
                     if (totalBytes > lastBytesReceived) {
                         lastBytesReceived = totalBytes;
                         stallCount = 0;
-                    } else if (lastBytesReceived > 0) {
+                    } else {
                         stallCount++;
-                        if (stallCount >= 3) {
+                        if (stallCount >= 5) {
                             teardownConnection();
                             setState('offline');
                         }
@@ -527,7 +527,12 @@
 
         (async function init() {
             roomId = getRoomIdFromURL();
-            if (roomId) { roomIdFromURL = true; connectWHEP(); return; }
+            if (roomId) {
+                roomIdFromURL = true;
+                await pollActive();
+                if (viewerState === 'init') setState('offline');
+                return;
+            }
             await pollActive();
             if (viewerState === 'init') setState('offline');
         })();

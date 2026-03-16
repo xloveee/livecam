@@ -372,6 +372,7 @@
 
         async function connectWHEP() {
             if (!roomId) return;
+            if (viewerState === 'connecting') return;
 
             teardownConnection();
             setState('connecting');

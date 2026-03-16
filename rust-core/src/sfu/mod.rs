@@ -367,26 +367,36 @@ pub async fn run_sfu_loop(
             propagate(&prop, &mut peers);
         }
 
-        // Wait for either incoming UDP data or the next timeout.
+        // Drain all available UDP packets, then wait for more or a timeout.
         let wait = (next_timeout - Instant::now()).max(Duration::from_millis(1));
 
         match timeout(wait, socket.recv_from(&mut buf)).await {
             Ok(Ok((n, source))) => {
                 let now = Instant::now();
-                let receive = match Receive::new(
-                    Protocol::Udp,
-                    source,
-                    candidate_addr,
-                    &buf[..n],
-                ) {
-                    Ok(r) => r,
-                    Err(_) => continue,
-                };
-                let input = Input::Receive(now, receive);
+                if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
+                    let input = Input::Receive(now, receive);
+                    if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
+                        if let Err(e) = peer.rtc.handle_input(input) {
+                            tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                        }
+                    }
+                }
 
-                if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
-                    if let Err(e) = peer.rtc.handle_input(input) {
-                        tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                // Drain any remaining buffered packets without blocking.
+                loop {
+                    match socket.try_recv_from(&mut buf) {
+                        Ok((n, source)) => {
+                            let now = Instant::now();
+                            if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
+                                let input = Input::Receive(now, receive);
+                                if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
+                                    if let Err(e) = peer.rtc.handle_input(input) {
+                                        tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => break,
                     }
                 }
             }

@@ -230,7 +230,9 @@
 
         async function pollActive() {
             try {
+                const stateAtStart = viewerState;
                 const resp = await fetch('/api/active', { cache: 'no-store' });
+                if (viewerState !== stateAtStart) return;
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data.room_id) {
@@ -356,6 +358,7 @@
 
         async function connectWHEP() {
             if (!roomId) return;
+            if (viewerState === 'connecting') return;
 
             teardownConnection();
             setState('connecting');

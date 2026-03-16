@@ -1,6 +1,6 @@
-# Independent WebRTC Livestream Broadcasting Platform
+# livecam
 
-A modular, timeless architecture for independent WebRTC livestream broadcasting. Designed to allow independent creators to broadcast directly from OBS Studio, a phone browser, or any WebRTC-capable device to millions of viewers without relying on third-party platforms like Twitch or YouTube.
+Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, browser-based broadcast, simulcast SFU, viewer caps, VOD recording, HLS fallback. Built with Rust (str0m), Go, C99. Run your own livecam or creator stream — no Twitch, no YouTube, no middlemen. AGPLv3.
 
 ## Architecture Highlights
 
@@ -12,7 +12,7 @@ A modular, timeless architecture for independent WebRTC livestream broadcasting.
 ## Directory Structure
 
 ```text
-INDEP_BROADCASTING/
+livecam/
 ├── rust-core/           # Rust SFU, WHIP/WHEP API, and Archiving
 │   ├── src/
 │   │   ├── api.rs       # Internal WHIP/WHEP HTTP handlers
@@ -75,9 +75,10 @@ Navigate to `http://localhost:8443/watch/my-room` to load the viewer page.
 **Option B — Browser (phone, tablet, laptop — no app needed)**
 
 1. Navigate to `http://localhost:8443/broadcast`
-2. Grant camera and microphone permissions.
-3. Choose your camera, mic, and resolution from the dropdowns.
-4. Enter your stream key and click **Start Broadcast**.
+2. Enter the broadcast page password and your stream key, then click **Log In**.
+3. Grant camera and microphone permissions.
+4. Choose your camera, mic, and resolution from the dropdowns.
+5. Click **Start Broadcast**.
 
 Both options use the same WHIP endpoint and produce the same stream format. The stream key doubles as the room ID. Viewers at `/watch/{stream-key}` will receive the broadcast.
 
@@ -105,6 +106,8 @@ Both options use the same WHIP endpoint and produce the same stream format. The 
 | `TURN_URL` | *(none)* | Optional TURN relay URL |
 | `TURN_USERNAME` | *(none)* | TURN credential username |
 | `TURN_CREDENTIAL` | *(none)* | TURN credential password |
+| `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |
+| `BROADCAST_PASSWORD` | *(none — open mode)* | Page-level password required to access `/broadcast` |
 
 ### TLS (Required for production WebRTC)
 
@@ -132,13 +135,6 @@ server {
 }
 ```
 
-### Firewall
-
-```bash
-ufw allow 443/tcp       # HTTPS signaling
-ufw allow 50000/udp     # WebRTC media
-```
-
 ### STUN/TURN
 
 - **STUN** is sufficient when your server has a public IP and clients are on typical home/office NATs.
@@ -150,6 +146,7 @@ ufw allow 50000/udp     # WebRTC media
 |---|---|
 | **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{streamKey}` |
 | **Publish (Browser)** | `https://yourdomain.com/broadcast` |
+| **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` |
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |

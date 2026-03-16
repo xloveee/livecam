@@ -84,6 +84,16 @@ func initConfig() {
 	C.init_session_secret(cSecret)
 	C.free(unsafe.Pointer(cSecret))
 
+	broadcastPwd := os.Getenv("BROADCAST_PASSWORD")
+	if broadcastPwd != "" {
+		cPwd := C.CString(broadcastPwd)
+		C.init_broadcast_password(cPwd)
+		C.free(unsafe.Pointer(cPwd))
+		log.Printf("Broadcast page password: enabled")
+	} else {
+		log.Printf("Broadcast page password: disabled (open mode)")
+	}
+
 	stunURL := os.Getenv("STUN_URL")
 	if stunURL == "" {
 		stunURL = "stun:stun.l.google.com:19302"
@@ -162,6 +172,10 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet {
+		authBroadcastCheckHandler(w, r)
+		return
+	}
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -174,10 +188,18 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Password  string `json:"password"`
 		StreamKey string `json:"stream_key"`
 	}
 	if err := json.Unmarshal(body, &req); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	cPwd := C.CString(req.Password)
+	defer C.free(unsafe.Pointer(cPwd))
+	if C.check_broadcast_password(cPwd) == 0 {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -209,10 +231,34 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func authBroadcastCheckHandler(w http.ResponseWriter, r *http.Request) {
+	streamKey, ok := requireBroadcasterAuth(w, r)
+	if !ok {
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"status":     "ok",
+		"stream_key": streamKey,
+	})
+}
+
 func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Referrer-Policy", "no-referrer")
 	w.Header().Set("Cache-Control", "no-store")
-	http.ServeFile(w, r, clientDir+"/broadcast.html")
+
+	cookie, err := r.Cookie("broadcaster_session")
+	if err == nil && cookie.Value != "" {
+		cToken := C.CString(cookie.Value)
+		defer C.free(unsafe.Pointer(cToken))
+		var outKey [C.STREAM_KEY_EXACT_LEN + 1]C.char
+		if C.extract_stream_key_from_token(cToken, &outKey[0]) == 1 {
+			http.ServeFile(w, r, clientDir+"/broadcast.html")
+			return
+		}
+	}
+
+	http.ServeFile(w, r, clientDir+"/broadcast_login.html")
 }
 
 func watchHandler(w http.ResponseWriter, r *http.Request) {

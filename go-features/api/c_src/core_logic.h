@@ -12,6 +12,8 @@
 
 void    init_stream_key_whitelist(const char *csv);
 void    init_session_secret(const char *secret);
+void    init_broadcast_password(const char *password);
+int32_t check_broadcast_password(const char *submitted);
 int32_t validate_stream_key(const char *key);
 int32_t check_viewer_rate_limit(const char *ip_address);
 int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers);

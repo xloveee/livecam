@@ -160,6 +160,60 @@ int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers)
     return 1;
 }
 
+#define BROADCAST_PASSWORD_MAX_LEN 128
+static char g_broadcast_password[BROADCAST_PASSWORD_MAX_LEN + 1] = {0};
+static size_t g_broadcast_password_len = 0;
+
+void init_broadcast_password(const char *password)
+{
+    g_broadcast_password_len = 0;
+    g_broadcast_password[0] = '\0';
+    if (password == NULL) {
+        return;
+    }
+    const size_t len = bounded_strlen(password, BROADCAST_PASSWORD_MAX_LEN + 1);
+    if (len == 0 || len > BROADCAST_PASSWORD_MAX_LEN) {
+        return;
+    }
+    for (size_t i = 0; i < len; i++) {
+        g_broadcast_password[i] = password[i];
+    }
+    g_broadcast_password[len] = '\0';
+    g_broadcast_password_len = len;
+}
+
+/*
+ * Constant-time check of the broadcast page password.
+ * Returns 1 if no password is set (open mode) or if match, 0 if denied.
+ */
+int32_t check_broadcast_password(const char *submitted)
+{
+    if (g_broadcast_password_len == 0) {
+        return 1;
+    }
+
+    if (submitted == NULL) {
+        return 0;
+    }
+
+    const size_t submitted_len = bounded_strlen(submitted, BROADCAST_PASSWORD_MAX_LEN + 1);
+    const size_t cmp_len = (g_broadcast_password_len > submitted_len)
+                           ? g_broadcast_password_len : submitted_len;
+
+    volatile int32_t diff = 0;
+    for (size_t i = 0; i < cmp_len && i < BROADCAST_PASSWORD_MAX_LEN; i++) {
+        const char a = (i < submitted_len) ? submitted[i] : '\0';
+        const char b = (i < g_broadcast_password_len) ? g_broadcast_password[i] : '\0';
+        diff |= (a ^ b);
+    }
+
+    if (submitted_len != g_broadcast_password_len) {
+        diff |= 1;
+    }
+
+    return (diff == 0) ? 1 : 0;
+}
+
 #define SESSION_SECRET_LEN 32
 static char g_session_secret[SESSION_SECRET_LEN + 1] = {0};
 static int32_t g_session_secret_set = 0;

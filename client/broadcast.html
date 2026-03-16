@@ -127,18 +127,6 @@
 </head>
 <body>
 
-    <div id="login-gate" style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;width:100%;max-width:400px;">
-        <h1>Broadcaster Login</h1>
-        <div class="subtitle">Enter your stream key to access the broadcast studio</div>
-        <div style="width:100%;margin-top:1.5rem;">
-            <label for="login-key">Stream Key</label>
-            <input type="password" id="login-key" placeholder="32-character key" autocomplete="off" spellcheck="false">
-        </div>
-        <button id="btn-login" style="margin-top:1rem;width:100%;background:#d32f2f;">Log In</button>
-        <div id="login-error" style="margin-top:0.8rem;font-size:0.85rem;color:#ef5350;min-height:1.2em;"></div>
-    </div>
-
-    <div id="broadcast-ui" style="display:none;width:100%;flex-direction:column;align-items:center;">
     <h1>Go Live</h1>
     <div class="subtitle">Broadcast from your browser — phone or desktop</div>
 
@@ -202,15 +190,8 @@
     </div>
 
     <div class="stats" id="stats"></div>
-    </div>
 
     <script>
-        var loginGate = document.getElementById('login-gate');
-        var broadcastUI = document.getElementById('broadcast-ui');
-        var loginKeyInput = document.getElementById('login-key');
-        var btnLogin = document.getElementById('btn-login');
-        var loginError = document.getElementById('login-error');
-
         var preview = document.getElementById('preview');
         var btnStart = document.getElementById('btn-start');
         var btnStop = document.getElementById('btn-stop');
@@ -233,44 +214,21 @@
         var activeStreamKey = null;
         var authenticatedKey = '';
 
-        function showBroadcastUI(streamKey) {
-            authenticatedKey = streamKey;
-            streamKeyInput.value = streamKey;
-            loginGate.style.display = 'none';
-            broadcastUI.style.display = 'flex';
-            enumerateDevices();
-        }
-
-        btnLogin.onclick = async function () {
-            var key = loginKeyInput.value.trim();
-            loginError.textContent = '';
-            if (!key) {
-                loginError.textContent = 'Please enter your stream key';
-                return;
-            }
-            btnLogin.disabled = true;
+        (async function initSession() {
             try {
-                var resp = await fetch('/api/auth/broadcast', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ stream_key: key })
-                });
+                var resp = await fetch('/api/auth/broadcast');
                 if (!resp.ok) {
-                    loginError.textContent = 'Invalid stream key';
+                    window.location.reload();
                     return;
                 }
                 var data = await resp.json();
-                showBroadcastUI(data.stream_key);
+                authenticatedKey = data.stream_key;
+                streamKeyInput.value = data.stream_key;
+                enumerateDevices();
             } catch (e) {
-                loginError.textContent = 'Connection error — try again';
-            } finally {
-                btnLogin.disabled = false;
+                window.location.reload();
             }
-        };
-
-        loginKeyInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') { btnLogin.click(); }
-        });
+        })();
 
         async function enumerateDevices() {
             try {

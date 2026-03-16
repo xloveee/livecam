@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -171,15 +171,19 @@ pub async fn run_sfu_loop(
     archive_dir: String,
 ) {
     let mut peers: Vec<Peer> = Vec::new();
-    let mut propagation_queue: Vec<Propagated> = Vec::new();
+    let mut propagation_queue: VecDeque<Propagated> = VecDeque::new();
     let mut buf = vec![0u8; 2000];
     let mut archive = ArchiveModule::new(&archive_dir);
+    let mut last_housekeeping = Instant::now();
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
     loop {
-        // Clean up dead peers and kick viewers when their broadcaster is gone.
-        {
+        // ── Periodic housekeeping (~250ms) ────────────────────────
+        // Heavy work stays off the per-packet fast path.
+        if last_housekeeping.elapsed() >= Duration::from_millis(250) {
+            last_housekeeping = Instant::now();
+
             let mut dead_rooms: Vec<String> = Vec::new();
             for peer in peers.iter() {
                 if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
@@ -212,11 +216,8 @@ pub async fn run_sfu_loop(
             }
 
             peers.retain(|p| p.rtc.is_alive());
-        }
 
-        // Recompute viewer counts and broadcaster presence from the peer list.
-        // A broadcaster is only "live" if it sent media within the last 3 seconds.
-        {
+            // Recompute viewer counts and broadcaster liveness.
             let now = Instant::now();
             let media_timeout = Duration::from_secs(3);
             let mut viewer_counts: HashMap<&str, u32> = HashMap::new();
@@ -252,27 +253,7 @@ pub async fn run_sfu_loop(
             }
         }
 
-        // Apply any pending quality change requests.
-        while let Ok(qc) = quality_rx.try_recv() {
-            if let Some(peer) = peers.iter_mut().find(|p| {
-                p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
-            }) {
-                tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
-                peer.chosen_rid = qc.rid;
-            }
-        }
-
-        // Apply any pending explicit disconnect requests.
-        while let Ok(dc) = disconnect_rx.try_recv() {
-            if let Some(peer) = peers.iter_mut().find(|p| {
-                p.id == dc.peer_id && p.room_id == dc.room_id && p.role == PeerRole::Viewer
-            }) {
-                tracing::info!("{}: explicit disconnect from room '{}'", peer.id, peer.room_id);
-                peer.rtc.disconnect();
-            }
-        }
-
-        // Accept any newly connected peers from the HTTP layer.
+        // ── Accept new peers from HTTP handlers ───────────────────
         while let Ok(new) = new_peer_rx.try_recv() {
             let peer_id = new.peer_id;
             let room_id = new.room_id.clone();
@@ -309,7 +290,26 @@ pub async fn run_sfu_loop(
             peers.push(peer);
         }
 
-        // Poll every peer for outputs, collecting events to propagate.
+        // ── Process control channels ──────────────────────────────
+        while let Ok(qc) = quality_rx.try_recv() {
+            if let Some(peer) = peers.iter_mut().find(|p| {
+                p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
+            }) {
+                tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
+                peer.chosen_rid = qc.rid;
+            }
+        }
+
+        while let Ok(dc) = disconnect_rx.try_recv() {
+            if let Some(peer) = peers.iter_mut().find(|p| {
+                p.id == dc.peer_id && p.room_id == dc.room_id && p.role == PeerRole::Viewer
+            }) {
+                tracing::info!("{}: explicit disconnect from room '{}'", peer.id, peer.room_id);
+                peer.rtc.disconnect();
+            }
+        }
+
+        // ── Poll all peers for outputs ────────────────────────────
         let mut next_timeout = Instant::now() + Duration::from_millis(100);
 
         for peer in peers.iter_mut() {
@@ -330,7 +330,9 @@ pub async fn run_sfu_loop(
                     }
                     Ok(Output::Event(event)) => {
                         let prop = handle_peer_event(peer, event);
-                        propagation_queue.push(prop);
+                        if !matches!(prop, Propagated::Noop) {
+                            propagation_queue.push_back(prop);
+                        }
                     }
                     Err(e) => {
                         tracing::error!("{}: poll error: {:?}", peer.id, e);
@@ -341,34 +343,19 @@ pub async fn run_sfu_loop(
             }
         }
 
-        // Kick viewers immediately if a broadcaster died during this poll cycle.
-        {
-            let mut dead_rooms: Vec<String> = Vec::new();
-            for peer in peers.iter() {
-                if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
-                    dead_rooms.push(peer.room_id.clone());
-                }
-            }
-            if !dead_rooms.is_empty() {
-                for peer in peers.iter_mut() {
-                    if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
-                        tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
-                        peer.rtc.disconnect();
-                    }
-                }
-            }
-        }
-
-        // Propagate collected events to other peers and archive broadcaster media.
-        for prop in propagation_queue.drain(..) {
+        // ── Forward ONE queued event, then re-poll ────────────────
+        // Matches str0m's reference SFU pattern: after writing media
+        // to viewers, immediately loop back so poll_output flushes the
+        // resulting Transmit (outgoing SRTP) without delay.
+        if let Some(prop) = propagation_queue.pop_front() {
             if let Propagated::Media { room_id, data, .. } = &prop {
                 archive.write_sample(room_id, &data.data);
             }
             propagate(&prop, &mut peers);
+            continue;
         }
 
-        // Read one UDP packet per iteration so poll_output runs between each
-        // ingest, keeping outgoing audio/video forwarding steady.
+        // ── Read one UDP packet ───────────────────────────────────
         let wait = (next_timeout - Instant::now()).max(Duration::from_millis(1));
 
         match timeout(wait, socket.recv_from(&mut buf)).await {
@@ -386,12 +373,10 @@ pub async fn run_sfu_loop(
             Ok(Err(e)) => {
                 tracing::warn!("UDP recv error: {}", e);
             }
-            Err(_) => {
-                // Timeout expired — will drive time forward below.
-            }
+            Err(_) => {}
         }
 
-        // Drive time forward on all peers.
+        // ── Drive time forward on all peers ───────────────────────
         let now = Instant::now();
         for peer in peers.iter_mut() {
             if peer.rtc.is_alive() {

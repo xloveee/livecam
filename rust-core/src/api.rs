@@ -110,6 +110,20 @@ pub async fn whep_handler(
     let sdp_raw = String::from_utf8_lossy(&body);
     tracing::info!("WHEP offer for room '{}'", room_id);
 
+    let is_live = state.room_state.lock()
+        .ok()
+        .and_then(|s| s.get(&room_id).map(|info| info.is_live))
+        .unwrap_or(false);
+
+    if !is_live {
+        tracing::info!("WHEP rejected for room '{}': not live", room_id);
+        return (
+            StatusCode::NOT_FOUND,
+            [("Content-Type", "text/plain")],
+            "Room is not live",
+        ).into_response();
+    }
+
     let offer = match SdpOffer::from_sdp_string(&sdp_raw) {
         Ok(o) => o,
         Err(e) => {

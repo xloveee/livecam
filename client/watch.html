@@ -159,6 +159,7 @@
         let pollInterval = null;
         let lastBytesReceived = 0;
         let stallCount = 0;
+        let connectTimeout = null;
         let viewerState = 'init';
 
         /* ── State Machine ──────────────────────────────────────── */
@@ -232,6 +233,36 @@
 
         async function pollActive() {
             try {
+                if (roomIdFromURL && roomId) {
+                    var infoResp = await fetch('/api/room_info/' + roomId);
+                    if (!infoResp.ok) return;
+                    var info = await infoResp.json();
+
+                    if (viewerState === 'live') {
+                        if (!info.is_live) {
+                            teardownConnection();
+                            setState('offline');
+                        } else if (info.has_password && !roomPassword) {
+                            teardownConnection();
+                            setState('need_password');
+                        } else {
+                            viewerCountEl.textContent = info.viewer_count + ' watching';
+                        }
+                        return;
+                    }
+
+                    if (!info.is_live) {
+                        setState('offline');
+                        return;
+                    }
+                    if (info.has_password && !roomPassword) {
+                        setState('need_password');
+                    } else {
+                        connectWHEP();
+                    }
+                    return;
+                }
+
                 const resp = await fetch('/api/active');
                 if (!resp.ok) return;
                 const data = await resp.json();
@@ -243,7 +274,7 @@
                 }
 
                 if (viewerState === 'live') {
-                    if (!roomIdFromURL && data.room_id !== roomId) {
+                    if (data.room_id !== roomId) {
                         teardownConnection();
                         roomId = data.room_id;
                         roomPassword = '';
@@ -254,7 +285,7 @@
                     }
                 }
 
-                if (!roomIdFromURL) { roomId = data.room_id; }
+                roomId = data.room_id;
 
                 if (data.has_password && !roomPassword) {
                     setState('need_password');
@@ -331,6 +362,7 @@
 
         function teardownConnection() {
             clearPollTimer();
+            if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
             if (pc) {
                 if (sessionId && roomId) {
@@ -382,6 +414,7 @@
             if (!pc) return;
             var s = pc.iceConnectionState;
             if (s === 'connected' || s === 'completed') {
+                if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
                 setState('live');
                 checkRoomAlive();
                 startMediaWatchdog();
@@ -459,6 +492,13 @@
                 sessionId = response.headers.get('X-Session-Id');
                 const answerSdp = await response.text();
                 await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+
+                connectTimeout = setTimeout(function () {
+                    if (viewerState === 'connecting') {
+                        teardownConnection();
+                        setState('offline');
+                    }
+                }, 10000);
 
             } catch (err) {
                 console.error('WHEP connection failed:', err);

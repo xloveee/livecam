@@ -358,10 +358,10 @@
             mediaWatchdogInterval = setInterval(async function () {
                 if (!pc) return;
                 try {
-                    const stats = await pc.getStats();
-                    let totalBytes = 0;
+                    var stats = await pc.getStats();
+                    var totalBytes = 0;
                     stats.forEach(function (report) {
-                        if (report.type === 'inbound-rtp' && report.kind === 'video') {
+                        if (report.type === 'inbound-rtp') {
                             totalBytes += report.bytesReceived || 0;
                         }
                     });
@@ -370,7 +370,7 @@
                         stallCount = 0;
                     } else if (lastBytesReceived > 0) {
                         stallCount++;
-                        if (stallCount >= 2) {
+                        if (stallCount >= 3) {
                             teardownConnection();
                             setState('offline');
                             setTimeout(pollActive, 1000);

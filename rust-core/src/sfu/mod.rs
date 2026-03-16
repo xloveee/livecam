@@ -193,6 +193,22 @@ pub async fn run_sfu_loop(
                     }
                 }
             }
+
+            for peer in peers.iter_mut() {
+                if !peer.rtc.is_alive() {
+                    loop {
+                        match peer.rtc.poll_output() {
+                            Ok(Output::Transmit(t)) => {
+                                if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
+                                    tracing::warn!("{}: final UDP send error: {}", peer.id, e);
+                                }
+                            }
+                            _ => break,
+                        }
+                    }
+                }
+            }
+
             peers.retain(|p| p.rtc.is_alive());
         }
 

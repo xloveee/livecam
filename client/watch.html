@@ -217,8 +217,14 @@
             }
         }
 
-        function managePoll() {
+        function clearAllTimers() {
             if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
+        }
+
+        function managePoll() {
+            clearAllTimers();
 
             if (viewerState === 'offline' || viewerState === 'need_password') {
                 pollInterval = setInterval(pollActive, 5000);
@@ -233,12 +239,12 @@
                 if (!resp.ok) return;
                 const data = await resp.json();
                 if (!data.room_id) {
-                    if (viewerState !== 'offline') setState('offline');
+                    setState('offline');
                     return;
                 }
                 roomId = data.room_id;
                 if (data.has_password && !roomPassword) {
-                    if (viewerState !== 'need_password') setState('need_password');
+                    setState('need_password');
                 } else {
                     if (!data.has_password) { roomPassword = ''; passwordInput.value = ''; }
                     connectWHEP();
@@ -296,8 +302,7 @@
         /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
         function teardownConnection() {
-            if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
-            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
+            clearAllTimers();
             if (pc) {
                 const dying = pc;
                 pc = null;
@@ -338,10 +343,18 @@
             }, 1000);
         }
 
-        function handleStreamEnded() {
+        function onPeerStateChange() {
             if (!pc) return;
-            teardownConnection();
-            setState('offline');
+            var s = pc.iceConnectionState;
+            if (s === 'connected' || s === 'completed') {
+                setState('live');
+                pollViewerCount();
+                viewerPollInterval = setInterval(pollViewerCount, 5000);
+                startMediaWatchdog();
+            } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+                teardownConnection();
+                setState('offline');
+            }
         }
 
         async function connectWHEP() {
@@ -362,26 +375,8 @@
                 }
             };
 
-            pc.oniceconnectionstatechange = function () {
-                if (!pc) return;
-                const state = pc.iceConnectionState;
-                if (state === 'connected' || state === 'completed') {
-                    setState('live');
-                    pollViewerCount();
-                    viewerPollInterval = setInterval(pollViewerCount, 5000);
-                    startMediaWatchdog();
-                } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    handleStreamEnded();
-                }
-            };
-
-            pc.onconnectionstatechange = function () {
-                if (!pc) return;
-                const state = pc.connectionState;
-                if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    handleStreamEnded();
-                }
-            };
+            pc.oniceconnectionstatechange = onPeerStateChange;
+            pc.onconnectionstatechange = onPeerStateChange;
 
             pc.addTransceiver('video', { direction: 'recvonly' });
             pc.addTransceiver('audio', { direction: 'recvonly' });
@@ -402,18 +397,18 @@
                 });
 
                 if (response.status === 403) {
-                    pc.close(); pc = null;
+                    teardownConnection();
                     passwordError.textContent = roomPassword ? 'Incorrect password' : '';
                     setState('need_password');
                     return;
                 }
                 if (response.status === 503) {
-                    pc.close(); pc = null;
+                    teardownConnection();
                     setState('room_full');
                     return;
                 }
                 if (response.status === 429) {
-                    pc.close(); pc = null;
+                    teardownConnection();
                     setState('rate_limited');
                     return;
                 }
@@ -427,7 +422,7 @@
 
             } catch (err) {
                 console.error('WHEP connection failed:', err);
-                if (pc) { pc.close(); pc = null; }
+                teardownConnection();
                 setState('offline');
             }
         }
@@ -453,24 +448,8 @@
         (async function init() {
             roomId = getRoomIdFromURL();
             if (roomId) { connectWHEP(); return; }
-
-            try {
-                const resp = await fetch('/api/active');
-                if (resp.ok) {
-                    const data = await resp.json();
-                    if (data.room_id) {
-                        roomId = data.room_id;
-                        if (data.has_password) {
-                            setState('need_password');
-                        } else {
-                            connectWHEP();
-                        }
-                        return;
-                    }
-                }
-            } catch (e) { /* server unreachable */ }
-
-            setState('offline');
+            await pollActive();
+            if (viewerState === 'init') setState('offline');
         })();
     </script>
 </body>

@@ -378,6 +378,11 @@
             btnStart.style.display = 'none';
             btnStop.style.display = 'inline-block';
 
+            await Promise.all([
+                setViewerLimit(streamKey, maxViewersInput.value),
+                setRoomPassword(streamKey, roomPasswordInput.value.trim()),
+            ]);
+
             const config = await fetchICEConfig();
 
             pc = new RTCPeerConnection({
@@ -397,8 +402,6 @@
                     liveBadge.classList.add('visible');
                     startStats();
                     activeStreamKey = streamKey;
-                    setViewerLimit(streamKey, maxViewersInput.value);
-                    setRoomPassword(streamKey, roomPasswordInput.value.trim());
                     pollViewerCount();
                     viewerPollInterval = setInterval(pollViewerCount, 3000);
                 } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {

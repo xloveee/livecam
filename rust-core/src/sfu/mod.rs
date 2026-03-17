@@ -12,6 +12,11 @@ use tokio::time::timeout;
 
 use crate::archive::ArchiveModule;
 
+enum ArchiveMsg {
+    Sample { room_id: String, data: Vec<u8> },
+    Stop { room_id: String },
+}
+
 /// Unique identifier for a peer session (broadcaster or viewer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PeerId(u64);
@@ -173,10 +178,24 @@ pub async fn run_sfu_loop(
     let mut peers: Vec<Peer> = Vec::new();
     let mut propagation_queue: VecDeque<Propagated> = VecDeque::new();
     let mut buf = vec![0u8; 2000];
-    let mut archive = ArchiveModule::new(&archive_dir);
     let mut last_housekeeping = Instant::now();
     let mut media_fwd_count: u64 = 0;
     let mut last_media_log = Instant::now();
+
+    let (archive_tx, mut archive_rx) = mpsc::channel::<ArchiveMsg>(512);
+    tokio::spawn(async move {
+        let mut archive = ArchiveModule::new(&archive_dir);
+        while let Some(msg) = archive_rx.recv().await {
+            match msg {
+                ArchiveMsg::Sample { room_id, data } => {
+                    archive.write_sample(&room_id, &data);
+                }
+                ArchiveMsg::Stop { room_id } => {
+                    archive.stop_recording(&room_id);
+                }
+            }
+        }
+    });
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
@@ -189,7 +208,7 @@ pub async fn run_sfu_loop(
             let mut dead_rooms: Vec<String> = Vec::new();
             for peer in peers.iter() {
                 if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
-                    archive.stop_recording(&peer.room_id);
+                    let _ = archive_tx.try_send(ArchiveMsg::Stop { room_id: peer.room_id.clone() });
                     dead_rooms.push(peer.room_id.clone());
                 }
             }
@@ -268,7 +287,7 @@ pub async fn run_sfu_loop(
                     p.role == PeerRole::Broadcaster && p.room_id == room_id
                 }) {
                     tracing::info!("{}: evicting stale broadcaster from room '{}'", old.id, room_id);
-                    archive.stop_recording(&old.room_id);
+                    let _ = archive_tx.try_send(ArchiveMsg::Stop { room_id: old.room_id.clone() });
                     old.rtc.disconnect();
                 }
             }
@@ -351,7 +370,10 @@ pub async fn run_sfu_loop(
         // resulting Transmit (outgoing SRTP) without delay.
         if let Some(prop) = propagation_queue.pop_front() {
             if let Propagated::Media { room_id, data, .. } = &prop {
-                archive.write_sample(room_id, &data.data);
+                let _ = archive_tx.try_send(ArchiveMsg::Sample {
+                    room_id: room_id.clone(),
+                    data: data.data.to_vec(),
+                });
                 media_fwd_count += 1;
             }
             propagate(&prop, &mut peers);

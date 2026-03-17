@@ -288,9 +288,11 @@
                 },
                 audio: {
                     deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
+                    channelCount: 1,
+                    sampleRate: 48000,
+                    echoCancellation: false,
+                    noiseSuppression: false,
+                    autoGainControl: false
                 }
             };
 

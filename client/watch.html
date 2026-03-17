@@ -126,6 +126,7 @@
         <span id="status">Checking stream...</span>
     </div>
     <div class="viewer-count" id="viewer-count"></div>
+    <div id="audio-stats" style="font-size:0.75rem;color:#555;margin-top:0.4rem;font-family:monospace;white-space:pre;"></div>
 
     <div id="offline-banner">
         <span class="dot"></span>
@@ -150,6 +151,7 @@
         const passwordInput  = document.getElementById('room-password-input');
         const btnPasswordSubmit = document.getElementById('btn-password-submit');
         const passwordError  = document.getElementById('password-error');
+        const audioStatsEl   = document.getElementById('audio-stats');
         let roomId = null;
         let roomIdFromURL = false;
         let sessionId = null;
@@ -384,6 +386,7 @@
                 audioElement.remove();
                 audioElement = null;
             }
+            audioStatsEl.textContent = '';
             sessionId = null;
             lastBytesReceived = 0;
             stallCount = 0;
@@ -397,11 +400,22 @@
                 try {
                     var stats = await pc.getStats();
                     var totalBytes = 0;
+                    var audioLine = '';
                     stats.forEach(function (report) {
                         if (report.type === 'inbound-rtp') {
                             totalBytes += report.bytesReceived || 0;
+                            if (report.kind === 'audio') {
+                                var lost = report.packetsLost || 0;
+                                var recv = report.packetsReceived || 0;
+                                var concealed = report.concealedSamples || 0;
+                                var total = report.totalSamplesReceived || 1;
+                                var jitter = report.jitter ? (report.jitter * 1000).toFixed(1) : '?';
+                                var pct = (concealed / total * 100).toFixed(1);
+                                audioLine = 'audio: recv=' + recv + ' lost=' + lost + ' jitter=' + jitter + 'ms concealed=' + pct + '%';
+                            }
                         }
                     });
+                    audioStatsEl.textContent = audioLine;
                     if (totalBytes > lastBytesReceived) {
                         lastBytesReceived = totalBytes;
                         stallCount = 0;
@@ -458,6 +472,8 @@
                     }
                     audioElement = document.createElement('audio');
                     audioElement.autoplay = true;
+                    audioElement.style.display = 'none';
+                    document.body.appendChild(audioElement);
                     audioElement.srcObject = new MediaStream([track]);
                     audioElement.play().catch(function () {});
                     if (typeof event.receiver.jitterBufferTarget !== 'undefined') {

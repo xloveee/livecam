@@ -175,6 +175,8 @@ pub async fn run_sfu_loop(
     let mut buf = vec![0u8; 2000];
     let mut archive = ArchiveModule::new(&archive_dir);
     let mut last_housekeeping = Instant::now();
+    let mut media_fwd_count: u64 = 0;
+    let mut last_media_log = Instant::now();
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
@@ -350,9 +352,18 @@ pub async fn run_sfu_loop(
         if let Some(prop) = propagation_queue.pop_front() {
             if let Propagated::Media { room_id, data, .. } = &prop {
                 archive.write_sample(room_id, &data.data);
+                media_fwd_count += 1;
             }
             propagate(&prop, &mut peers);
             continue;
+        }
+
+        if last_media_log.elapsed() >= Duration::from_secs(5) {
+            if media_fwd_count > 0 {
+                tracing::info!("SFU media: {} events forwarded in 5s (~{}/s)", media_fwd_count, media_fwd_count / 5);
+            }
+            media_fwd_count = 0;
+            last_media_log = Instant::now();
         }
 
         // ── Read one UDP packet ───────────────────────────────────

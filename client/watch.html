@@ -437,10 +437,16 @@
                 iceServers: config.iceServers || []
             });
 
-            var remoteStream = new MediaStream();
-            video.srcObject = remoteStream;
+            var pendingTracks = [];
             pc.ontrack = function (event) {
-                remoteStream.addTrack(event.track);
+                pendingTracks.push(event.track);
+                if (pendingTracks.length >= 2) {
+                    video.srcObject = new MediaStream(pendingTracks);
+                    video.play().catch(function () {
+                        video.muted = true;
+                        video.play().catch(function () {});
+                    });
+                }
             };
 
             pc.oniceconnectionstatechange = onPeerStateChange;

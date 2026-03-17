@@ -401,6 +401,7 @@
                     var stats = await pc.getStats();
                     var totalBytes = 0;
                     var audioLine = '';
+                    var videoLine = '';
                     stats.forEach(function (report) {
                         if (report.type === 'inbound-rtp') {
                             totalBytes += report.bytesReceived || 0;
@@ -413,9 +414,19 @@
                                 var pct = (concealed / total * 100).toFixed(1);
                                 audioLine = 'audio: recv=' + recv + ' lost=' + lost + ' jitter=' + jitter + 'ms concealed=' + pct + '%';
                             }
+                            if (report.kind === 'video') {
+                                var vLost = report.packetsLost || 0;
+                                var vRecv = report.packetsReceived || 0;
+                                var decoded = report.framesDecoded || 0;
+                                var dropped = report.framesDropped || 0;
+                                var fps = report.framesPerSecond || 0;
+                                var vJitter = report.jitter ? (report.jitter * 1000).toFixed(1) : '?';
+                                var nacks = report.nackCount || 0;
+                                videoLine = 'video: recv=' + vRecv + ' lost=' + vLost + ' jitter=' + vJitter + 'ms fps=' + fps + ' decoded=' + decoded + ' dropped=' + dropped + ' nack=' + nacks;
+                            }
                         }
                     });
-                    audioStatsEl.textContent = audioLine;
+                    audioStatsEl.textContent = audioLine + '\n' + videoLine;
                     if (totalBytes > lastBytesReceived) {
                         lastBytesReceived = totalBytes;
                         stallCount = 0;
@@ -465,6 +476,9 @@
                         video.muted = true;
                         video.play().catch(function () {});
                     });
+                    if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
+                        event.receiver.jitterBufferTarget = 0.15;
+                    }
                 } else if (track.kind === 'audio') {
                     if (audioElement) {
                         audioElement.srcObject = null;

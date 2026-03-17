@@ -21,16 +21,9 @@ async fn main() {
     tracing::info!("UDP bind on {}", cfg.udp_bind_addr());
     tracing::info!("ICE candidate {}", cfg.udp_candidate_addr());
 
-    let std_socket = {
-        let s = std::net::UdpSocket::bind(cfg.udp_bind_addr())
-            .expect("failed to bind UDP socket");
-        s.set_nonblocking(true).expect("failed to set non-blocking");
-        let _ = s.set_recv_buffer_size(2 * 1024 * 1024);
-        let _ = s.set_send_buffer_size(2 * 1024 * 1024);
-        s
-    };
-    let udp_socket = tokio::net::UdpSocket::from_std(std_socket)
-        .expect("failed to wrap UDP socket");
+    let udp_socket = tokio::net::UdpSocket::bind(cfg.udp_bind_addr())
+        .await
+        .expect("failed to bind UDP socket");
 
     let (new_peer_tx, new_peer_rx) = mpsc::unbounded_channel();
     let (quality_tx, quality_rx) = mpsc::unbounded_channel();

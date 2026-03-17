@@ -155,6 +155,7 @@
         let sessionId = null;
         let roomPassword = '';
         let pc = null;
+        let audioElement = null;
         let mediaWatchdogInterval = null;
         let pollInterval = null;
         let lastBytesReceived = 0;
@@ -378,6 +379,11 @@
                 dying.close();
             }
             video.srcObject = null;
+            if (audioElement) {
+                audioElement.srcObject = null;
+                audioElement.remove();
+                audioElement = null;
+            }
             sessionId = null;
             lastBytesReceived = 0;
             stallCount = 0;
@@ -437,15 +443,26 @@
                 iceServers: config.iceServers || []
             });
 
-            var pendingTracks = [];
             pc.ontrack = function (event) {
-                pendingTracks.push(event.track);
-                if (pendingTracks.length >= 2) {
-                    video.srcObject = new MediaStream(pendingTracks);
+                var track = event.track;
+                if (track.kind === 'video') {
+                    video.srcObject = new MediaStream([track]);
                     video.play().catch(function () {
                         video.muted = true;
                         video.play().catch(function () {});
                     });
+                } else if (track.kind === 'audio') {
+                    if (audioElement) {
+                        audioElement.srcObject = null;
+                        audioElement.remove();
+                    }
+                    audioElement = document.createElement('audio');
+                    audioElement.autoplay = true;
+                    audioElement.srcObject = new MediaStream([track]);
+                    audioElement.play().catch(function () {});
+                    if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
+                        event.receiver.jitterBufferTarget = 0.15;
+                    }
                 }
             };
 

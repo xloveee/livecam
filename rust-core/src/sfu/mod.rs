@@ -485,11 +485,6 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
         }
 
         Propagated::Media { source_peer, room_id, data } => {
-            tracing::debug!(
-                "propagate media: mid={} pt={:?} rid={:?} from={}",
-                data.mid, data.pt, data.rid, source_peer,
-            );
-
             for peer in peers.iter_mut() {
                 if peer.role != PeerRole::Viewer
                     || peer.room_id != *room_id
@@ -502,10 +497,6 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
                     let default_rid: Rid = "h".into();
                     let target = peer.chosen_rid.as_ref().unwrap_or(&default_rid);
                     if target != actual_rid {
-                        tracing::debug!(
-                            "{}: RID filter skip mid={} actual={:?} target={:?}",
-                            peer.id, data.mid, actual_rid, target,
-                        );
                         continue;
                     }
                 }

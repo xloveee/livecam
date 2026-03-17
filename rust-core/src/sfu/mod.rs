@@ -8,12 +8,7 @@ use str0m::net::{Protocol, Receive};
 use str0m::{Event, IceConnectionState, Input, Output, Rtc};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
-use tokio::time::timeout;
-
-// Archive module available but not active by default — SFU is forwarding-only.
-// To enable VOD recording, gate archive calls behind a runtime flag.
-#[allow(unused_imports)]
-use crate::archive::ArchiveModule;
+use tokio::time::sleep;
 
 /// Unique identifier for a peer session (broadcaster or viewer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -311,50 +306,79 @@ pub async fn run_sfu_loop(
             }
         }
 
-        // ── Poll all peers for outputs ────────────────────────────
-        let mut next_timeout = Instant::now() + Duration::from_millis(100);
-
-        for peer in peers.iter_mut() {
-            loop {
-                if !peer.rtc.is_alive() {
-                    break;
-                }
-
-                match peer.rtc.poll_output() {
-                    Ok(Output::Timeout(t)) => {
-                        next_timeout = next_timeout.min(t);
-                        break;
-                    }
-                    Ok(Output::Transmit(t)) => {
-                        if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
-                            tracing::warn!("{}: UDP send error: {}", peer.id, e);
+        // ── Batch-read all available UDP packets ─────────────────
+        let mut read_something = false;
+        loop {
+            match socket.try_recv_from(&mut buf) {
+                Ok((n, source)) => {
+                    read_something = true;
+                    let now = Instant::now();
+                    if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
+                        let input = Input::Receive(now, receive);
+                        if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
+                            if let Err(e) = peer.rtc.handle_input(input) {
+                                tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                            }
                         }
                     }
-                    Ok(Output::Event(event)) => {
-                        let prop = handle_peer_event(peer, event);
-                        if !matches!(prop, Propagated::Noop) {
-                            propagation_queue.push_back(prop);
-                        }
-                    }
-                    Err(e) => {
-                        tracing::error!("{}: poll error: {:?}", peer.id, e);
-                        peer.rtc.disconnect();
-                        break;
-                    }
                 }
+                Err(_) => break,
             }
         }
 
-        // ── Forward ONE queued event, then re-poll ────────────────
-        // Matches str0m's reference SFU pattern: after writing media
-        // to viewers, immediately loop back so poll_output flushes the
-        // resulting Transmit (outgoing SRTP) without delay.
-        if let Some(prop) = propagation_queue.pop_front() {
-            if let Propagated::Media { .. } = &prop {
-                media_fwd_count += 1;
+        // ── Drive time forward on all peers (once per batch) ─────
+        let now = Instant::now();
+        for peer in peers.iter_mut() {
+            if peer.rtc.is_alive() {
+                let _ = peer.rtc.handle_input(Input::Timeout(now));
             }
-            propagate(&prop, &mut peers);
-            continue;
+        }
+
+        // ── Poll + propagate + flush in a tight loop ─────────────
+        // After batch-reading, poll all peers to collect events,
+        // then drain the propagation queue, flushing each write's
+        // resulting Transmit packets immediately before the next.
+        let mut next_timeout = Instant::now() + Duration::from_millis(100);
+
+        loop {
+            for peer in peers.iter_mut() {
+                if !peer.rtc.is_alive() { continue; }
+                loop {
+                    match peer.rtc.poll_output() {
+                        Ok(Output::Timeout(t)) => {
+                            next_timeout = next_timeout.min(t);
+                            break;
+                        }
+                        Ok(Output::Transmit(t)) => {
+                            if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
+                                tracing::warn!("{}: UDP send error: {}", peer.id, e);
+                            }
+                        }
+                        Ok(Output::Event(event)) => {
+                            let ev = handle_peer_event(peer, event);
+                            if !matches!(ev, Propagated::Noop) {
+                                propagation_queue.push_back(ev);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!("{}: poll error: {:?}", peer.id, e);
+                            peer.rtc.disconnect();
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if propagation_queue.is_empty() {
+                break;
+            }
+
+            while let Some(prop) = propagation_queue.pop_front() {
+                if let Propagated::Media { .. } = &prop {
+                    media_fwd_count += 1;
+                }
+                propagate(&prop, &mut peers);
+            }
         }
 
         if last_media_log.elapsed() >= Duration::from_secs(5) {
@@ -365,32 +389,13 @@ pub async fn run_sfu_loop(
             last_media_log = Instant::now();
         }
 
-        // ── Read one UDP packet ───────────────────────────────────
-        let wait = (next_timeout - Instant::now()).max(Duration::from_millis(1));
-
-        match timeout(wait, socket.recv_from(&mut buf)).await {
-            Ok(Ok((n, source))) => {
-                let now = Instant::now();
-                if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
-                    let input = Input::Receive(now, receive);
-                    if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
-                        if let Err(e) = peer.rtc.handle_input(input) {
-                            tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
-                        }
-                    }
-                }
-            }
-            Ok(Err(e)) => {
-                tracing::warn!("UDP recv error: {}", e);
-            }
-            Err(_) => {}
-        }
-
-        // ── Drive time forward on all peers ───────────────────────
-        let now = Instant::now();
-        for peer in peers.iter_mut() {
-            if peer.rtc.is_alive() {
-                let _ = peer.rtc.handle_input(Input::Timeout(now));
+        // ── Yield to tokio only when idle ────────────────────────
+        if !read_something {
+            let wait = next_timeout.saturating_duration_since(Instant::now())
+                .max(Duration::from_millis(1));
+            tokio::select! {
+                _ = socket.readable() => {}
+                _ = sleep(wait) => {}
             }
         }
     }

@@ -158,7 +158,6 @@ enum Propagated {
 /// `quality_rx`     — channel receiving quality change requests from the HTTP handlers
 /// `disconnect_rx`  — channel receiving explicit viewer disconnect requests
 /// `room_state`     — shared map of room metadata (viewer counts, caps)
-/// `_archive_dir`   — directory for VOD archive recordings (unused; recording is off by default)
 pub async fn run_sfu_loop(
     socket: UdpSocket,
     candidate_addr: SocketAddr,
@@ -166,7 +165,6 @@ pub async fn run_sfu_loop(
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
     mut disconnect_rx: mpsc::UnboundedReceiver<PeerDisconnect>,
     room_state: RoomStateMap,
-    _archive_dir: String,
 ) {
     let mut peers: Vec<Peer> = Vec::new();
     let mut propagation_queue: VecDeque<Propagated> = VecDeque::new();
@@ -374,10 +372,10 @@ pub async fn run_sfu_loop(
             }
 
             while let Some(prop) = propagation_queue.pop_front() {
-                if let Propagated::Media { .. } = &prop {
+                if matches!(&prop, Propagated::Media { .. }) {
                     media_fwd_count += 1;
                 }
-                propagate(&prop, &mut peers);
+                propagate(prop, &mut peers);
             }
         }
 
@@ -467,32 +465,38 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 }
 
 /// Forward a propagated event to all relevant peers.
-fn propagate(prop: &Propagated, peers: &mut [Peer]) {
+/// Takes ownership so frame data can be moved (zero-copy) to the last viewer.
+fn propagate(prop: Propagated, peers: &mut [Peer]) {
     match prop {
         Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
             for peer in peers.iter_mut() {
-                if peer.role != PeerRole::Viewer || peer.room_id != *room_id {
+                if peer.role != PeerRole::Viewer || peer.room_id != room_id {
                     continue;
                 }
                 let already_mapped = peer.tracks_out.iter().any(|t| {
-                    t.source_peer == *source_peer && t.source_mid == *mid
+                    t.source_peer == source_peer && t.source_mid == mid
                 });
                 if !already_mapped {
                     peer.tracks_out.push(TrackOut {
-                        source_peer: *source_peer,
-                        source_mid: *mid,
-                        kind: *kind,
+                        source_peer,
+                        source_mid: mid,
+                        kind,
                         local_mid: None,
                     });
                 }
             }
         }
 
-        Propagated::Media { source_peer, room_id, data } => {
+        Propagated::Media { source_peer, room_id, mut data } => {
+            let viewer_count = peers.iter().filter(|p| {
+                p.role == PeerRole::Viewer && p.room_id == room_id && p.id != source_peer
+            }).count();
+
+            let mut written = 0u32;
             for peer in peers.iter_mut() {
                 if peer.role != PeerRole::Viewer
-                    || peer.room_id != *room_id
-                    || peer.id == *source_peer
+                    || peer.room_id != room_id
+                    || peer.id == source_peer
                 {
                     continue;
                 }
@@ -506,7 +510,7 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
                 }
 
                 let local_mid = peer.tracks_out.iter()
-                    .find(|t| t.source_peer == *source_peer && t.source_mid == data.mid)
+                    .find(|t| t.source_peer == source_peer && t.source_mid == data.mid)
                     .and_then(|t| t.local_mid);
 
                 let Some(mid) = local_mid else {
@@ -521,7 +525,14 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
                     continue;
                 };
 
-                if let Err(e) = writer.write(pt, data.network_time, data.time, data.data.clone()) {
+                written += 1;
+                let frame = if written >= viewer_count as u32 {
+                    std::mem::take(&mut data.data)
+                } else {
+                    data.data.clone()
+                };
+
+                if let Err(e) = writer.write(pt, data.network_time, data.time, frame) {
                     tracing::warn!("{}: write error: {:?}", peer.id, e);
                     peer.rtc.disconnect();
                 }
@@ -529,8 +540,8 @@ fn propagate(prop: &Propagated, peers: &mut [Peer]) {
         }
 
         Propagated::Keyframe { target_peer, source_mid, request, .. } => {
-            if let Some(broadcaster) = peers.iter_mut().find(|p| p.id == *target_peer) {
-                if let Some(mut writer) = broadcaster.rtc.writer(*source_mid) {
+            if let Some(broadcaster) = peers.iter_mut().find(|p| p.id == target_peer) {
+                if let Some(mut writer) = broadcaster.rtc.writer(source_mid) {
                     let _ = writer.request_keyframe(request.rid, request.kind);
                 }
             }

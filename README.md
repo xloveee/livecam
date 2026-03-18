@@ -34,6 +34,7 @@ livecam/
 - **Rust** (1.83+ stable) — `rustup update stable`
 - **Go** (1.21+) — with CGo enabled (default)
 - **OBS Studio** (30+) — with WHIP output support
+- **Browser** — Chromium-based browsers only (Chrome, Edge, Brave, etc.). Firefox is not supported yet. Other browsers are TBD.
 
 ## Getting Started (Local Development)
 

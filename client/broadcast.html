@@ -327,24 +327,31 @@
             var videoTrack = localStream.getVideoTracks()[0];
             if (!videoTrack) return localStream;
 
+            var settings = videoTrack.getSettings();
+            var rawW = settings.width;
+            var rawH = settings.height;
             var displayW = preview.videoWidth;
             var displayH = preview.videoHeight;
-            if (!displayW || !displayH) return localStream;
 
-            var isPortrait = displayH > displayW;
-            if (!isPortrait) return localStream;
+            if (!rawW || !rawH || !displayW || !displayH) return localStream;
+
+            var needsRotation = (rawW > rawH) !== (displayW > displayH);
+            if (!needsRotation) return localStream;
 
             canvasEl = document.createElement('canvas');
             canvasEl.width = displayW;
             canvasEl.height = displayH;
             var ctx = canvasEl.getContext('2d');
-            ctx.imageSmoothingEnabled = false;
 
             orientedDrawActive = true;
             var useRVFC = ('requestVideoFrameCallback' in HTMLVideoElement.prototype);
             function draw() {
                 if (!orientedDrawActive) return;
-                ctx.drawImage(preview, 0, 0, displayW, displayH);
+                ctx.save();
+                ctx.translate(displayW / 2, displayH / 2);
+                ctx.rotate(-Math.PI / 2);
+                ctx.drawImage(preview, -displayH / 2, -displayW / 2, displayH, displayW);
+                ctx.restore();
                 if (useRVFC) {
                     preview.requestVideoFrameCallback(draw);
                 } else {
@@ -357,7 +364,6 @@
                 requestAnimationFrame(draw);
             }
 
-            var settings = videoTrack.getSettings();
             var fps = settings.frameRate || 30;
             canvasStream = canvasEl.captureStream(fps);
             localStream.getAudioTracks().forEach(function(t) {

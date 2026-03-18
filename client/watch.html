@@ -25,9 +25,11 @@
         video {
             width: 100%;
             max-width: 960px;
+            max-height: 80vh;
             background: #000;
             aspect-ratio: 16/9;
             border-radius: 4px;
+            object-fit: contain;
         }
         #controls {
             margin-top: 1.2rem;
@@ -162,6 +164,12 @@
         let stallCount = 0;
         let connectTimeout = null;
         let viewerState = 'init';
+
+        video.addEventListener('resize', function() {
+            if (video.videoWidth && video.videoHeight) {
+                video.style.aspectRatio = video.videoWidth + '/' + video.videoHeight;
+            }
+        });
 
         /* ── State Machine ──────────────────────────────────────── */
 
@@ -379,6 +387,7 @@
                 dying.close();
             }
             video.srcObject = null;
+            video.style.aspectRatio = '';
             if (audioElement) {
                 audioElement.srcObject = null;
                 audioElement.remove();

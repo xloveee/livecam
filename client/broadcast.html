@@ -34,10 +34,12 @@
         }
         video {
             width: 100%;
+            max-height: 70vh;
             background: #111;
             aspect-ratio: 16/9;
             border-radius: 6px;
             transform: scaleX(-1);
+            object-fit: contain;
         }
         .live-badge {
             display: none;
@@ -213,6 +215,9 @@
         var viewerPollInterval = null;
         var activeStreamKey = null;
         var authenticatedKey = '';
+        var orientedDrawActive = false;
+        var canvasEl = null;
+        var canvasStream = null;
 
         (async function initSession() {
             try {
@@ -279,11 +284,14 @@
             }
 
             const [w, h] = resolutionSelect.value.split('x').map(Number);
+            const isPortrait = (screen.orientation && screen.orientation.type)
+                ? screen.orientation.type.startsWith('portrait')
+                : window.matchMedia('(orientation: portrait)').matches;
             const constraints = {
                 video: {
                     deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-                    width: { ideal: w },
-                    height: { ideal: h },
+                    width: { ideal: isPortrait ? h : w },
+                    height: { ideal: isPortrait ? w : h },
                     frameRate: { ideal: 30 }
                 },
                 audio: {
@@ -308,6 +316,60 @@
         cameraSelect.onchange = startPreview;
         micSelect.onchange = startPreview;
         resolutionSelect.onchange = startPreview;
+
+        preview.addEventListener('resize', function() {
+            if (preview.videoWidth && preview.videoHeight) {
+                preview.style.aspectRatio = preview.videoWidth + '/' + preview.videoHeight;
+            }
+        });
+
+        function createOrientedStream() {
+            var videoTrack = localStream.getVideoTracks()[0];
+            if (!videoTrack) return localStream;
+
+            var settings = videoTrack.getSettings();
+            var displayW = preview.videoWidth;
+            var displayH = preview.videoHeight;
+            if (!displayW || !displayH) return localStream;
+
+            var trackW = settings.width || displayW;
+            var trackH = settings.height || displayH;
+            if (trackW === displayW && trackH === displayH) return localStream;
+
+            canvasEl = document.createElement('canvas');
+            canvasEl.width = displayW;
+            canvasEl.height = displayH;
+            var ctx = canvasEl.getContext('2d');
+
+            orientedDrawActive = true;
+            function draw() {
+                if (!orientedDrawActive) return;
+                ctx.drawImage(preview, 0, 0, displayW, displayH);
+                if ('requestVideoFrameCallback' in preview) {
+                    preview.requestVideoFrameCallback(draw);
+                } else {
+                    requestAnimationFrame(draw);
+                }
+            }
+            if ('requestVideoFrameCallback' in preview) {
+                preview.requestVideoFrameCallback(draw);
+            } else {
+                requestAnimationFrame(draw);
+            }
+
+            var fps = settings.frameRate || 30;
+            canvasStream = canvasEl.captureStream(fps);
+            localStream.getAudioTracks().forEach(function(t) {
+                canvasStream.addTrack(t);
+            });
+            return canvasStream;
+        }
+
+        function destroyOrientedStream() {
+            orientedDrawActive = false;
+            canvasEl = null;
+            canvasStream = null;
+        }
 
         async function setViewerLimit(streamKey, max) {
             try {
@@ -397,8 +459,9 @@
                 iceServers: config.iceServers || []
             });
 
-            localStream.getTracks().forEach(track => {
-                pc.addTrack(track, localStream);
+            var sendStream = createOrientedStream();
+            sendStream.getTracks().forEach(function(track) {
+                pc.addTrack(track, sendStream);
             });
 
             pc.oniceconnectionstatechange = () => {
@@ -457,6 +520,7 @@
         };
 
         function stopBroadcast() {
+            destroyOrientedStream();
             if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
             if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
             if (pc) { pc.close(); pc = null; }

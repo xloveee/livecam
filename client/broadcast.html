@@ -327,36 +327,37 @@
             var videoTrack = localStream.getVideoTracks()[0];
             if (!videoTrack) return localStream;
 
-            var settings = videoTrack.getSettings();
             var displayW = preview.videoWidth;
             var displayH = preview.videoHeight;
             if (!displayW || !displayH) return localStream;
 
-            var trackW = settings.width || displayW;
-            var trackH = settings.height || displayH;
-            if (trackW === displayW && trackH === displayH) return localStream;
+            var isPortrait = displayH > displayW;
+            if (!isPortrait) return localStream;
 
             canvasEl = document.createElement('canvas');
             canvasEl.width = displayW;
             canvasEl.height = displayH;
             var ctx = canvasEl.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
 
             orientedDrawActive = true;
+            var useRVFC = ('requestVideoFrameCallback' in HTMLVideoElement.prototype);
             function draw() {
                 if (!orientedDrawActive) return;
                 ctx.drawImage(preview, 0, 0, displayW, displayH);
-                if ('requestVideoFrameCallback' in preview) {
+                if (useRVFC) {
                     preview.requestVideoFrameCallback(draw);
                 } else {
                     requestAnimationFrame(draw);
                 }
             }
-            if ('requestVideoFrameCallback' in preview) {
+            if (useRVFC) {
                 preview.requestVideoFrameCallback(draw);
             } else {
                 requestAnimationFrame(draw);
             }
 
+            var settings = videoTrack.getSettings();
             var fps = settings.frameRate || 30;
             canvasStream = canvasEl.captureStream(fps);
             localStream.getAudioTracks().forEach(function(t) {
@@ -435,6 +436,19 @@
             }
         }
 
+        function waitForVideoReady() {
+            return new Promise(function(resolve) {
+                if (preview.videoWidth > 0 && preview.videoHeight > 0) {
+                    resolve();
+                    return;
+                }
+                preview.addEventListener('loadedmetadata', function handler() {
+                    preview.removeEventListener('loadedmetadata', handler);
+                    resolve();
+                });
+            });
+        }
+
         btnStart.onclick = async function () {
             var streamKey = authenticatedKey;
             if (!streamKey) {
@@ -452,6 +466,8 @@
             statusEl.classList.remove('error', 'connected');
             btnStart.style.display = 'none';
             btnStop.style.display = 'inline-block';
+
+            await waitForVideoReady();
 
             const config = await fetchICEConfig();
 

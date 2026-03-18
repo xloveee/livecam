@@ -517,13 +517,17 @@ fn propagate(prop: Propagated, peers: &mut [Peer]) {
                     continue;
                 };
 
-                let Some(writer) = peer.rtc.writer(mid) else {
+                let Some(mut writer) = peer.rtc.writer(mid) else {
                     continue;
                 };
 
                 let Some(pt) = writer.match_params(data.params) else {
                     continue;
                 };
+
+                if let Some(orientation) = data.ext_vals.video_orientation {
+                    writer = writer.video_orientation(orientation);
+                }
 
                 written += 1;
                 let frame = if written >= viewer_count as u32 {

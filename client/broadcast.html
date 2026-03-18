@@ -215,9 +215,6 @@
         var viewerPollInterval = null;
         var activeStreamKey = null;
         var authenticatedKey = '';
-        var orientedDrawActive = false;
-        var canvasEl = null;
-        var canvasStream = null;
 
         (async function initSession() {
             try {
@@ -323,61 +320,6 @@
             }
         });
 
-        function createOrientedStream() {
-            var videoTrack = localStream.getVideoTracks()[0];
-            if (!videoTrack) return localStream;
-
-            var settings = videoTrack.getSettings();
-            var rawW = settings.width;
-            var rawH = settings.height;
-            var displayW = preview.videoWidth;
-            var displayH = preview.videoHeight;
-
-            if (!rawW || !rawH || !displayW || !displayH) return localStream;
-
-            var needsRotation = (rawW > rawH) !== (displayW > displayH);
-            if (!needsRotation) return localStream;
-
-            canvasEl = document.createElement('canvas');
-            canvasEl.width = displayW;
-            canvasEl.height = displayH;
-            var ctx = canvasEl.getContext('2d');
-
-            orientedDrawActive = true;
-            var useRVFC = ('requestVideoFrameCallback' in HTMLVideoElement.prototype);
-            function draw() {
-                if (!orientedDrawActive) return;
-                ctx.save();
-                ctx.translate(displayW / 2, displayH / 2);
-                ctx.rotate(-Math.PI / 2);
-                ctx.drawImage(preview, -displayH / 2, -displayW / 2, displayH, displayW);
-                ctx.restore();
-                if (useRVFC) {
-                    preview.requestVideoFrameCallback(draw);
-                } else {
-                    requestAnimationFrame(draw);
-                }
-            }
-            if (useRVFC) {
-                preview.requestVideoFrameCallback(draw);
-            } else {
-                requestAnimationFrame(draw);
-            }
-
-            var fps = settings.frameRate || 30;
-            canvasStream = canvasEl.captureStream(fps);
-            localStream.getAudioTracks().forEach(function(t) {
-                canvasStream.addTrack(t);
-            });
-            return canvasStream;
-        }
-
-        function destroyOrientedStream() {
-            orientedDrawActive = false;
-            canvasEl = null;
-            canvasStream = null;
-        }
-
         async function setViewerLimit(streamKey, max) {
             try {
                 await fetch('/api/viewer_limit/' + streamKey, {
@@ -442,19 +384,6 @@
             }
         }
 
-        function waitForVideoReady() {
-            return new Promise(function(resolve) {
-                if (preview.videoWidth > 0 && preview.videoHeight > 0) {
-                    resolve();
-                    return;
-                }
-                preview.addEventListener('loadedmetadata', function handler() {
-                    preview.removeEventListener('loadedmetadata', handler);
-                    resolve();
-                });
-            });
-        }
-
         btnStart.onclick = async function () {
             var streamKey = authenticatedKey;
             if (!streamKey) {
@@ -473,17 +402,14 @@
             btnStart.style.display = 'none';
             btnStop.style.display = 'inline-block';
 
-            await waitForVideoReady();
-
             const config = await fetchICEConfig();
 
             pc = new RTCPeerConnection({
                 iceServers: config.iceServers || []
             });
 
-            var sendStream = createOrientedStream();
-            sendStream.getTracks().forEach(function(track) {
-                pc.addTrack(track, sendStream);
+            localStream.getTracks().forEach(function(track) {
+                pc.addTrack(track, localStream);
             });
 
             pc.oniceconnectionstatechange = () => {
@@ -542,7 +468,6 @@
         };
 
         function stopBroadcast() {
-            destroyOrientedStream();
             if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
             if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
             if (pc) { pc.close(); pc = null; }

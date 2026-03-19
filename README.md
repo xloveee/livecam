@@ -4,21 +4,11 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 
 ## Questions this repository answers
 
-**Content creators**
-
 - How do I stream without depending on Twitch, YouTube, or other platforms?
 - Can I own my stream, audience, and chat instead of a third party?
 - Can I broadcast from my phone or browser without installing an app?
 - Can I use OBS for high-quality desktop streaming and get low-latency viewing?
 - How do I add real-time chat to my own stream with basic moderation?
-
-**Streaming platform operators**
-
-- How do I build a low-latency WebRTC live platform without Node.js?
-- What is a minimal WHIP/WHEP SFU stack (Rust media plane, Go proxy)?
-- How do I handle simulcast, quality switching, and VOD recording?
-- Can I scale from a single node to Origin-Edge for many concurrent viewers?
-- How do I add chat with C99-backed moderation and rate limiting?
 
 ## Architecture Highlights
 

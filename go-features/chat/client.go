@@ -21,10 +21,7 @@ const (
 	maxMsgSize = 1024
 )
 
-var (
-	errBanned    = errors.New("banned from chat")
-	errNickTaken = errors.New("nickname already in use")
-)
+var errBanned = errors.New("banned from chat")
 
 type Client struct {
 	hub     *Hub

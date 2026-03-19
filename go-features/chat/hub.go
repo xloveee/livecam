@@ -76,8 +76,14 @@ func (h *Hub) Join(c *Client) error {
 	if room.banned[c.nick] {
 		return errBanned
 	}
-	if _, taken := room.nicks[c.nick]; taken {
-		return errNickTaken
+
+	if old, taken := room.nicks[c.nick]; taken {
+		old.Close()
+		delete(room.clients, old)
+		delete(room.nicks, old.nick)
+		if room.broadcaster == old {
+			room.broadcaster = nil
+		}
 	}
 
 	room.clients[c] = true
@@ -90,11 +96,10 @@ func (h *Hub) Join(c *Client) error {
 		c.role = RoleMod
 	}
 
-	sysMsg := OutboundMsg{
+	broadcastToRoom(room, OutboundMsg{
 		Type: "system",
 		Text: c.nick + " joined the chat",
-	}
-	broadcastToRoom(room, sysMsg, nil)
+	}, nil)
 
 	return nil
 }
@@ -106,17 +111,25 @@ func (h *Hub) Leave(c *Client) {
 	}
 
 	room.mu.Lock()
+	wasRegistered := false
+	if current, ok := room.nicks[c.nick]; ok && current == c {
+		delete(room.nicks, c.nick)
+		wasRegistered = true
+	}
 	delete(room.clients, c)
-	delete(room.nicks, c.nick)
 	if room.broadcaster == c {
 		room.broadcaster = nil
 	}
 	empty := len(room.clients) == 0
-	broadcastToRoom(room, OutboundMsg{
-		Type: "system",
-		Text: c.nick + " left the chat",
-	}, nil)
+	if wasRegistered {
+		broadcastToRoom(room, OutboundMsg{
+			Type: "system",
+			Text: c.nick + " left the chat",
+		}, nil)
+	}
 	room.mu.Unlock()
+
+	c.Close()
 
 	if empty {
 		h.removeRoomIfEmpty(c.roomID)

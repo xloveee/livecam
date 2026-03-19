@@ -731,7 +731,11 @@
 
         function chatDisconnect() {
             if (chatReconnectTimer) { clearTimeout(chatReconnectTimer); chatReconnectTimer = null; }
-            if (chatWs) { chatWs.close(); chatWs = null; }
+            if (chatWs) {
+                chatWs.onclose = null;
+                chatWs.close();
+                chatWs = null;
+            }
             chatConnected = false;
             chatStatusEl.textContent = 'Disconnected';
             chatStatusEl.className = 'chat-status';

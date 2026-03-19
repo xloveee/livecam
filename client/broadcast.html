@@ -655,6 +655,7 @@
         var chatNick = 'Broadcaster';
         var chatConnected = false;
         var chatReconnectTimer = null;
+        var chatErrorReceived = false;
         var chatMessagesEl = document.getElementById('chat-messages');
         var chatStatusEl = document.getElementById('chat-status');
         var chatSendEl = document.getElementById('chat-send');
@@ -672,6 +673,7 @@
             chatStatusEl.textContent = 'Connecting...';
             chatStatusEl.className = 'chat-status';
 
+            chatErrorReceived = false;
             chatWs.onopen = function () {
                 chatConnected = true;
                 chatStatusEl.textContent = 'Connected';
@@ -682,9 +684,11 @@
                 chatConnected = false;
                 chatStatusEl.textContent = 'Disconnected';
                 chatStatusEl.className = 'chat-status';
-                chatReconnectTimer = setTimeout(function () {
-                    if (authenticatedKey) chatConnect();
-                }, 3000);
+                if (!chatErrorReceived) {
+                    chatReconnectTimer = setTimeout(function () {
+                        if (authenticatedKey) chatConnect();
+                    }, 3000);
+                }
             };
 
             chatWs.onerror = function () {
@@ -724,6 +728,7 @@
                     break;
                 case 'error':
                     appendChatSystem(msg.text);
+                    chatErrorReceived = true;
                     break;
                 default:
                     break;

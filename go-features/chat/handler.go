@@ -54,12 +54,9 @@ func NewHandler(hub *Hub, auth AuthFunc) http.HandlerFunc {
 		client := newClient(hub, conn, roomID, nick, role, ip)
 
 		if err := hub.Join(client); err != nil {
-			msg := "error"
-			switch err {
-			case errBanned:
+			msg := err.Error()
+			if err == errBanned {
 				msg = "You are banned from this chat."
-			case errNickTaken:
-				msg = "Nickname is already in use."
 			}
 			conn.WriteJSON(OutboundMsg{Type: "error", Text: msg})
 			conn.Close()

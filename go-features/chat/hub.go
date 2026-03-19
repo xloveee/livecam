@@ -73,6 +73,12 @@ func (h *Hub) Join(c *Client) error {
 	room.mu.Lock()
 	defer room.mu.Unlock()
 
+	if c.role == RoleGuest {
+		room.clients[c] = true
+		c.room = room
+		return nil
+	}
+
 	if room.banned[c.nick] {
 		return errBanned
 	}
@@ -112,9 +118,11 @@ func (h *Hub) Leave(c *Client) {
 
 	room.mu.Lock()
 	wasRegistered := false
-	if current, ok := room.nicks[c.nick]; ok && current == c {
-		delete(room.nicks, c.nick)
-		wasRegistered = true
+	if c.role != RoleGuest {
+		if current, ok := room.nicks[c.nick]; ok && current == c {
+			delete(room.nicks, c.nick)
+			wasRegistered = true
+		}
 	}
 	delete(room.clients, c)
 	if room.broadcaster == c {

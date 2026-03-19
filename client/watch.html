@@ -188,63 +188,10 @@
             font-style: italic;
             font-size: 0.78rem;
         }
-        .chat-welcome {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            flex: 1;
-            padding: 1.5rem 1rem;
-            text-align: center;
-            color: #666;
-            gap: 0.6rem;
-        }
-        .chat-welcome .chat-welcome-icon {
-            font-size: 1.6rem;
-            opacity: 0.5;
-        }
-        .chat-welcome .chat-welcome-title {
-            font-size: 0.88rem;
-            font-weight: 600;
-            color: #aaa;
-        }
-        .chat-welcome .chat-welcome-hint {
-            font-size: 0.78rem;
-            color: #555;
-            line-height: 1.4;
-        }
         .chat-input-area {
             border-top: 1px solid #1a1a1a;
             padding: 0.6rem;
-        }
-        .chat-join-cta {
-            display: flex;
-            flex-direction: column;
-            gap: 0.4rem;
-        }
-        .chat-join-cta label {
-            font-size: 0.75rem;
-            color: #888;
-            font-weight: 500;
-            letter-spacing: 0.02em;
-        }
-        .chat-join-cta .chat-join-row {
-            display: flex;
-            gap: 0.4rem;
-        }
-        .chat-join-cta button {
-            background: #1e88e5;
-            font-weight: 600;
-        }
-        .chat-join-cta button:hover { background: #1565c0; }
-        .chat-join-error {
-            font-size: 0.72rem;
-            color: #ef5350;
-            min-height: 0;
-        }
-        .chat-send {
-            display: flex;
-            gap: 0.4rem;
+            position: relative;
         }
         .chat-input-area input {
             flex: 1;
@@ -261,6 +208,62 @@
             padding: 0.5rem 0.8rem;
             font-size: 0.82rem;
             white-space: nowrap;
+        }
+        .chat-guest-bar {
+            display: flex;
+            gap: 0.4rem;
+            cursor: pointer;
+        }
+        .chat-guest-bar input {
+            pointer-events: none;
+            opacity: 0.4;
+        }
+        .chat-guest-bar button {
+            opacity: 0.4;
+            pointer-events: none;
+        }
+        .chat-nick-prompt {
+            position: absolute;
+            bottom: 100%;
+            left: 0;
+            right: 0;
+            background: #151515;
+            border: 1px solid #2a2a2a;
+            border-bottom: none;
+            border-radius: 6px 6px 0 0;
+            padding: 0.7rem 0.6rem;
+            display: none;
+            flex-direction: column;
+            gap: 0.4rem;
+            box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+        }
+        .chat-nick-prompt.visible { display: flex; }
+        .chat-nick-prompt label {
+            font-size: 0.78rem;
+            color: #aaa;
+            font-weight: 600;
+        }
+        .chat-nick-prompt .nick-row {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .chat-nick-prompt button {
+            background: #1e88e5;
+            font-weight: 600;
+        }
+        .chat-nick-prompt button:hover { background: #1565c0; }
+        .chat-nick-prompt .nick-error {
+            font-size: 0.72rem;
+            color: #ef5350;
+            min-height: 0;
+        }
+        .chat-nick-prompt .nick-hint {
+            font-size: 0.68rem;
+            color: #555;
+        }
+        .chat-send {
+            display: flex;
+            gap: 0.4rem;
         }
         .chat-nick-badge {
             font-size: 0.72rem;
@@ -321,20 +324,20 @@
             <span>Chat</span>
             <span class="chat-status" id="chat-status"></span>
         </div>
-        <div class="chat-welcome" id="chat-welcome">
-            <span class="chat-welcome-icon">&#128172;</span>
-            <span class="chat-welcome-title">Join the conversation</span>
-            <span class="chat-welcome-hint">Pick a nickname below to connect to chat and start sending messages.</span>
-        </div>
-        <div class="chat-messages" id="chat-messages" style="display:none"></div>
+        <div class="chat-messages" id="chat-messages"></div>
         <div class="chat-input-area">
-            <div class="chat-join-cta" id="chat-join">
-                <label>Choose a nickname to join chat</label>
-                <div class="chat-join-row">
+            <div class="chat-nick-prompt" id="chat-nick-prompt">
+                <label>Choose a nickname to start chatting</label>
+                <div class="nick-row">
                     <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
-                    <button id="btn-chat-join">Join Chat</button>
+                    <button id="btn-chat-join">Join</button>
                 </div>
-                <div class="chat-join-error" id="chat-join-error"></div>
+                <div class="nick-error" id="nick-error"></div>
+                <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
+            </div>
+            <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()">
+                <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
+                <button disabled>Send</button>
             </div>
             <div id="chat-send" style="display:none">
                 <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
@@ -490,6 +493,7 @@
                 if (viewerState === 'live') {
                     if (data.room_id !== roomId) {
                         teardownConnection();
+                        chatDisconnect();
                         roomId = data.room_id;
                         roomPassword = '';
                         passwordInput.value = '';
@@ -649,6 +653,8 @@
             if (!roomId) return;
             if (viewerState === 'connecting') return;
 
+            if (!chatWs && !chatNick) chatConnectGuest();
+
             teardownConnection();
             setState('connecting');
 
@@ -770,25 +776,27 @@
 
         var chatWs = null;
         var chatNick = '';
+        var chatIsGuest = false;
         var chatConnected = false;
         var chatReconnectTimer = null;
-        var chatWelcomeEl = document.getElementById('chat-welcome');
         var chatMessagesEl = document.getElementById('chat-messages');
         var chatStatusEl = document.getElementById('chat-status');
-        var chatJoinEl = document.getElementById('chat-join');
-        var chatSendEl = document.getElementById('chat-send');
+        var chatGuestBar = document.getElementById('chat-guest-bar');
+        var chatNickPrompt = document.getElementById('chat-nick-prompt');
         var chatNickInput = document.getElementById('chat-nick');
+        var nickError = document.getElementById('nick-error');
+        var chatSendEl = document.getElementById('chat-send');
         var chatNickDisplay = document.getElementById('chat-nick-display');
         var chatInput = document.getElementById('chat-input');
         var btnChatJoin = document.getElementById('btn-chat-join');
         var btnChatSend = document.getElementById('btn-chat-send');
 
-        function chatConnect() {
-            if (!roomId || !chatNick) return;
-            if (chatWs) { chatWs.close(); chatWs = null; }
+        function chatConnect(nick) {
+            if (!roomId || !nick) return;
+            chatDisconnect();
 
             var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            var url = proto + '//' + location.host + '/api/chat/' + roomId + '?nick=' + encodeURIComponent(chatNick);
+            var url = proto + '//' + location.host + '/api/chat/' + roomId + '?nick=' + encodeURIComponent(nick);
             chatWs = new WebSocket(url);
             chatStatusEl.textContent = 'Connecting...';
             chatStatusEl.className = 'chat-status';
@@ -801,10 +809,11 @@
 
             chatWs.onclose = function () {
                 chatConnected = false;
-                chatStatusEl.textContent = 'Disconnected';
+                chatStatusEl.textContent = 'Reconnecting...';
                 chatStatusEl.className = 'chat-status';
+                var reconnectNick = chatNick || '_guest';
                 chatReconnectTimer = setTimeout(function () {
-                    if (chatNick && roomId) chatConnect();
+                    if (roomId) chatConnect(reconnectNick);
                 }, 3000);
             };
 
@@ -820,6 +829,11 @@
             };
         }
 
+        function chatConnectGuest() {
+            chatIsGuest = true;
+            chatConnect('_guest');
+        }
+
         function chatDisconnect() {
             if (chatReconnectTimer) { clearTimeout(chatReconnectTimer); chatReconnectTimer = null; }
             if (chatWs) {
@@ -828,7 +842,7 @@
                 chatWs = null;
             }
             chatConnected = false;
-            chatStatusEl.textContent = 'Disconnected';
+            chatStatusEl.textContent = '';
             chatStatusEl.className = 'chat-status';
         }
 
@@ -851,8 +865,10 @@
                     appendChatSystem(msg.text);
                     chatDisconnect();
                     chatNick = '';
-                    chatJoinEl.style.display = '';
+                    chatIsGuest = false;
                     chatSendEl.style.display = 'none';
+                    chatGuestBar.style.display = '';
+                    chatNickPrompt.classList.remove('visible');
                     break;
                 default:
                     break;
@@ -887,8 +903,13 @@
             }
         }
 
+        function showNickPrompt() {
+            chatNickPrompt.classList.add('visible');
+            chatNickInput.focus();
+        }
+
         function chatSendMessage() {
-            if (!chatWs || !chatConnected) return;
+            if (!chatWs || !chatConnected || chatIsGuest) return;
             var text = chatInput.value.trim();
             if (!text) return;
             var type = text[0] === '/' ? 'cmd' : 'msg';
@@ -896,27 +917,25 @@
             chatInput.value = '';
         }
 
-        var chatJoinError = document.getElementById('chat-join-error');
-
         btnChatJoin.onclick = function () {
             var nick = chatNickInput.value.trim();
-            chatJoinError.textContent = '';
+            nickError.textContent = '';
             if (!nick) {
-                chatJoinError.textContent = 'Please enter a nickname.';
+                nickError.textContent = 'Please enter a nickname.';
                 return;
             }
             if (!/^[a-zA-Z0-9_]{1,25}$/.test(nick)) {
-                chatJoinError.textContent = '1-25 chars, letters/numbers/underscore only.';
+                nickError.textContent = '1-25 chars, letters/numbers/underscore only.';
                 return;
             }
             chatNick = nick;
+            chatIsGuest = false;
             chatNickDisplay.textContent = nick;
-            chatWelcomeEl.style.display = 'none';
-            chatMessagesEl.style.display = '';
-            chatJoinEl.style.display = 'none';
+            chatNickPrompt.classList.remove('visible');
+            chatGuestBar.style.display = 'none';
             chatSendEl.style.display = '';
             chatInput.focus();
-            if (roomId) chatConnect();
+            chatConnect(nick);
         };
 
         chatNickInput.addEventListener('keydown', function (e) {
@@ -935,6 +954,7 @@
             roomId = getRoomIdFromURL();
             if (roomId) {
                 roomIdFromURL = true;
+                chatConnectGuest();
             }
             await pollActive();
             if (viewerState === 'init') setState('offline');

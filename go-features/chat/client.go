@@ -13,6 +13,7 @@ const (
 	RoleBroadcaster = "broadcaster"
 	RoleMod         = "mod"
 	RoleViewer      = "viewer"
+	RoleGuest       = "guest"
 
 	writeWait  = 10 * time.Second
 	pongWait   = 60 * time.Second
@@ -94,6 +95,10 @@ func (c *Client) readPump() {
 				log.Printf("[chat] read error [%s/%s]: %v", c.roomID, c.nick, err)
 			}
 			return
+		}
+
+		if c.role == RoleGuest {
+			continue
 		}
 
 		var msg InboundMsg

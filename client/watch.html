@@ -188,11 +188,61 @@
             font-style: italic;
             font-size: 0.78rem;
         }
+        .chat-welcome {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            flex: 1;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            color: #666;
+            gap: 0.6rem;
+        }
+        .chat-welcome .chat-welcome-icon {
+            font-size: 1.6rem;
+            opacity: 0.5;
+        }
+        .chat-welcome .chat-welcome-title {
+            font-size: 0.88rem;
+            font-weight: 600;
+            color: #aaa;
+        }
+        .chat-welcome .chat-welcome-hint {
+            font-size: 0.78rem;
+            color: #555;
+            line-height: 1.4;
+        }
         .chat-input-area {
             border-top: 1px solid #1a1a1a;
             padding: 0.6rem;
         }
-        .chat-join, .chat-send {
+        .chat-join-cta {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+        }
+        .chat-join-cta label {
+            font-size: 0.75rem;
+            color: #888;
+            font-weight: 500;
+            letter-spacing: 0.02em;
+        }
+        .chat-join-cta .chat-join-row {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .chat-join-cta button {
+            background: #1e88e5;
+            font-weight: 600;
+        }
+        .chat-join-cta button:hover { background: #1565c0; }
+        .chat-join-error {
+            font-size: 0.72rem;
+            color: #ef5350;
+            min-height: 0;
+        }
+        .chat-send {
             display: flex;
             gap: 0.4rem;
         }
@@ -202,7 +252,7 @@
             color: #e0e0e0;
             border: 1px solid #333;
             padding: 0.5rem 0.6rem;
-            font-size: 16px; /* Prevent iOS zoom on focus */
+            font-size: 16px;
             border-radius: 4px;
             outline: none;
         }
@@ -212,6 +262,12 @@
             font-size: 0.82rem;
             white-space: nowrap;
         }
+        .chat-nick-badge {
+            font-size: 0.72rem;
+            color: #555;
+            padding: 0 0.2rem 0.2rem;
+        }
+        .chat-nick-badge span { color: #1e88e5; font-weight: 600; }
 
         @media (max-width: 900px) {
             body { flex-direction: column; }
@@ -263,17 +319,29 @@
     <div class="chat-panel">
         <div class="chat-header">
             <span>Chat</span>
-            <span class="chat-status" id="chat-status">Disconnected</span>
+            <span class="chat-status" id="chat-status"></span>
         </div>
-        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-welcome" id="chat-welcome">
+            <span class="chat-welcome-icon">&#128172;</span>
+            <span class="chat-welcome-title">Join the conversation</span>
+            <span class="chat-welcome-hint">Pick a nickname below to connect to chat and start sending messages.</span>
+        </div>
+        <div class="chat-messages" id="chat-messages" style="display:none"></div>
         <div class="chat-input-area">
-            <div class="chat-join" id="chat-join">
-                <input type="text" id="chat-nick" placeholder="Choose a nickname" maxlength="25" autocomplete="off" spellcheck="false">
-                <button id="btn-chat-join">Join</button>
+            <div class="chat-join-cta" id="chat-join">
+                <label>Choose a nickname to join chat</label>
+                <div class="chat-join-row">
+                    <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
+                    <button id="btn-chat-join">Join Chat</button>
+                </div>
+                <div class="chat-join-error" id="chat-join-error"></div>
             </div>
-            <div class="chat-send" id="chat-send" style="display:none">
-                <input type="text" id="chat-input" placeholder="Send a message" maxlength="500" autocomplete="off" spellcheck="false">
-                <button id="btn-chat-send">Send</button>
+            <div id="chat-send" style="display:none">
+                <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
+                <div class="chat-send">
+                    <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
+                    <button id="btn-chat-send">Send</button>
+                </div>
             </div>
         </div>
     </div>
@@ -704,11 +772,13 @@
         var chatNick = '';
         var chatConnected = false;
         var chatReconnectTimer = null;
+        var chatWelcomeEl = document.getElementById('chat-welcome');
         var chatMessagesEl = document.getElementById('chat-messages');
         var chatStatusEl = document.getElementById('chat-status');
         var chatJoinEl = document.getElementById('chat-join');
         var chatSendEl = document.getElementById('chat-send');
         var chatNickInput = document.getElementById('chat-nick');
+        var chatNickDisplay = document.getElementById('chat-nick-display');
         var chatInput = document.getElementById('chat-input');
         var btnChatJoin = document.getElementById('btn-chat-join');
         var btnChatSend = document.getElementById('btn-chat-send');
@@ -780,6 +850,7 @@
                 case 'error':
                     appendChatSystem(msg.text);
                     chatDisconnect();
+                    chatNick = '';
                     chatJoinEl.style.display = '';
                     chatSendEl.style.display = 'none';
                     break;
@@ -825,14 +896,23 @@
             chatInput.value = '';
         }
 
+        var chatJoinError = document.getElementById('chat-join-error');
+
         btnChatJoin.onclick = function () {
             var nick = chatNickInput.value.trim();
-            if (!nick) return;
+            chatJoinError.textContent = '';
+            if (!nick) {
+                chatJoinError.textContent = 'Please enter a nickname.';
+                return;
+            }
             if (!/^[a-zA-Z0-9_]{1,25}$/.test(nick)) {
-                appendChatSystem('Nickname: 1-25 chars, letters/numbers/underscore only.');
+                chatJoinError.textContent = '1-25 chars, letters/numbers/underscore only.';
                 return;
             }
             chatNick = nick;
+            chatNickDisplay.textContent = nick;
+            chatWelcomeEl.style.display = 'none';
+            chatMessagesEl.style.display = '';
             chatJoinEl.style.display = 'none';
             chatSendEl.style.display = '';
             chatInput.focus();

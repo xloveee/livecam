@@ -161,6 +161,7 @@
             padding-bottom: 0.4rem;
         }
         .form-group.visible { display: flex; }
+
         label {
             font-size: 0.72rem;
             color: #777;
@@ -188,6 +189,55 @@
             font-size: 0.8rem;
             color: #888;
         }
+
+        /* ── Settings Overlay (mobile) ────────────────────── */
+        .settings-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 100;
+            background: rgba(0,0,0,0.92);
+            align-items: flex-start;
+            justify-content: center;
+            overflow-y: auto;
+            padding: 1rem;
+        }
+        .settings-overlay.visible { display: flex; }
+        .settings-overlay-backdrop {
+            position: fixed;
+            inset: 0;
+            cursor: pointer;
+        }
+        .settings-overlay-panel {
+            position: relative;
+            z-index: 1;
+            background: #111;
+            border: 1px solid #222;
+            border-radius: 8px;
+            padding: 1rem;
+            max-width: 400px;
+            width: 100%;
+            margin: auto;
+        }
+        .settings-overlay-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+            padding-bottom: 0.6rem;
+            border-bottom: 1px solid #222;
+        }
+        .settings-overlay-header span { font-size: 0.9rem; font-weight: 600; color: #fff; }
+        .settings-overlay-close {
+            background: transparent;
+            border: none;
+            color: #888;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 0.2rem 0.4rem;
+            line-height: 1;
+        }
+        .settings-overlay-close:hover { color: #fff; }
 
         /* ── Chat Panel ──────────────────────────────────── */
         .chat-panel {
@@ -310,6 +360,10 @@
             .controls-bar { padding: 0.6rem 0; }
             .form-group { display: flex; gap: 0.5rem; padding-bottom: 0; }
             .settings-toggle { display: none; }
+            .settings-overlay { display: flex !important; position: static; background: transparent; padding: 0; align-items: stretch; }
+            .settings-overlay-backdrop { display: none; }
+            .settings-overlay-panel { max-width: 720px; background: transparent; padding: 0; box-shadow: none; margin: 0; }
+            .settings-overlay-header { display: none; }
             .chat-panel {
                 width: 340px;
                 min-width: 340px;
@@ -356,7 +410,14 @@
             <div class="settings-divider"></div>
         </div>
 
-        <div class="form-group" id="form-group">
+        <div class="settings-overlay" id="settings-overlay">
+            <div class="settings-overlay-backdrop" onclick="closeSettings()"></div>
+            <div class="settings-overlay-panel">
+                <div class="settings-overlay-header">
+                    <span>Settings</span>
+                    <button type="button" class="settings-close" onclick="closeSettings()">&#215;</button>
+                </div>
+                <div class="form-group visible" id="form-group">
             <div class="row">
                 <div>
                     <label for="camera-select">Camera</label>
@@ -431,10 +492,15 @@
         var roomPasswordInput = document.getElementById('room-password');
 
         function toggleSettings() {
-            var fg = document.getElementById('form-group');
+            var overlay = document.getElementById('settings-overlay');
             var tog = document.getElementById('settings-toggle');
-            fg.classList.toggle('visible');
+            overlay.classList.toggle('visible');
             tog.classList.toggle('open');
+        }
+
+        function closeSettings() {
+            document.getElementById('settings-overlay').classList.remove('visible');
+            document.getElementById('settings-toggle').classList.remove('open');
         }
 
         var pc = null;

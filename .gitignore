@@ -30,4 +30,4 @@ td.md
 .vscode/
 !rust-core/vendor/**/.vscode/
 .cursorignore
-ckpt/
+ckpt/*

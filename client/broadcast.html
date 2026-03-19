@@ -281,14 +281,11 @@
             }
 
             const [w, h] = resolutionSelect.value.split('x').map(Number);
-            const isPortrait = (screen.orientation && screen.orientation.type)
-                ? screen.orientation.type.startsWith('portrait')
-                : window.matchMedia('(orientation: portrait)').matches;
             const constraints = {
                 video: {
                     deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-                    width: { ideal: isPortrait ? h : w },
-                    height: { ideal: isPortrait ? w : h },
+                    width: { ideal: w },
+                    height: { ideal: h },
                     frameRate: { ideal: 30 }
                 },
                 audio: {

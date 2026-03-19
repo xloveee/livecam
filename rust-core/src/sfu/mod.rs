@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use str0m::media::{KeyframeRequest, MediaData, Mid, Rid};
+use str0m::media::{KeyframeRequest, KeyframeRequestKind, MediaData, Mid, Rid};
 use str0m::net::{Protocol, Receive};
 use str0m::{Event, IceConnectionState, Input, Output, Rtc};
 use tokio::net::UdpSocket;
@@ -287,11 +287,38 @@ pub async fn run_sfu_loop(
 
         // ── Process control channels ──────────────────────────────
         while let Ok(qc) = quality_rx.try_recv() {
+            let mut keyframe_needed: Option<(PeerId, Rid)> = None;
+
             if let Some(peer) = peers.iter_mut().find(|p| {
                 p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
             }) {
                 tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
-                peer.chosen_rid = qc.rid;
+                peer.chosen_rid = qc.rid.clone();
+
+                let target_rid: Rid = match qc.rid {
+                    Some(rid) => rid,
+                    None => "h".into(),
+                };
+                if let Some(track_out) = peer.tracks_out.iter().find(|t| {
+                    t.kind == str0m::media::MediaKind::Video
+                }) {
+                    keyframe_needed = Some((track_out.source_peer, target_rid));
+                }
+            }
+
+            if let Some((broadcaster_id, rid)) = keyframe_needed {
+                if let Some(broadcaster) = peers.iter_mut().find(|p| p.id == broadcaster_id) {
+                    if let Some(track_in) = broadcaster.tracks_in.iter().find(|t| {
+                        t.kind == str0m::media::MediaKind::Video
+                    }) {
+                        if let Some(mut writer) = broadcaster.rtc.writer(track_in.mid) {
+                            let _ = writer.request_keyframe(
+                                Some(rid),
+                                KeyframeRequestKind::Pli,
+                            );
+                        }
+                    }
+                }
             }
         }
 

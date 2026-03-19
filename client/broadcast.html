@@ -11,10 +11,16 @@
             color: #e0e0e0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
+            flex-direction: row;
+            min-height: 100vh;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
             padding: 1.5rem 1rem;
+            min-width: 0;
         }
         h1 {
             font-size: 1.4rem;
@@ -125,73 +131,200 @@
             width: 100%;
             max-width: 720px;
         }
+
+        /* ── Chat Panel ──────────────────────────────────── */
+        .chat-panel {
+            width: 340px;
+            min-width: 340px;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #1a1a1a;
+            background: #0d0d0d;
+        }
+        .chat-header {
+            padding: 0.8rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .chat-status {
+            font-size: 0.7rem;
+            font-weight: 400;
+            color: #666;
+        }
+        .chat-status.connected { color: #4caf50; }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        .chat-msg {
+            font-size: 0.82rem;
+            line-height: 1.4;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            word-break: break-word;
+        }
+        .chat-msg:hover { background: rgba(255,255,255,0.03); }
+        .chat-msg .nick {
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+        .chat-msg .nick.broadcaster { color: #d32f2f; }
+        .chat-msg .nick.mod { color: #5e35b1; }
+        .chat-msg .nick.viewer { color: #1e88e5; }
+        .chat-msg.system {
+            color: #666;
+            font-style: italic;
+            font-size: 0.78rem;
+        }
+        .chat-input-area {
+            border-top: 1px solid #1a1a1a;
+            padding: 0.6rem;
+        }
+        .chat-send {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .chat-input-area input {
+            flex: 1;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 0.5rem 0.6rem;
+            font-size: 0.85rem;
+            border-radius: 4px;
+            outline: none;
+        }
+        .chat-input-area input:focus { border-color: #d32f2f; }
+        .chat-input-area button {
+            padding: 0.5rem 0.8rem;
+            font-size: 0.82rem;
+            white-space: nowrap;
+        }
+        .chat-mod-bar {
+            display: flex;
+            gap: 0.3rem;
+            padding: 0.4rem 0.6rem;
+            border-top: 1px solid #1a1a1a;
+            flex-wrap: wrap;
+        }
+        .chat-mod-bar button {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.72rem;
+            background: #222;
+            border-radius: 3px;
+        }
+        .chat-mod-bar button:hover { background: #333; }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            .chat-panel {
+                width: 100%;
+                min-width: auto;
+                height: 360px;
+                border-left: none;
+                border-top: 1px solid #1a1a1a;
+            }
+        }
     </style>
 </head>
 <body>
 
-    <h1>Go Live</h1>
-    <div class="subtitle">Broadcast from your browser — phone or desktop</div>
+    <div class="main-content">
+        <h1>Go Live</h1>
+        <div class="subtitle">Broadcast from your browser — phone or desktop</div>
 
-    <div class="preview-container">
-        <video id="preview" autoplay muted playsinline></video>
-        <div class="live-badge" id="live-badge">LIVE</div>
+        <div class="preview-container">
+            <video id="preview" autoplay muted playsinline></video>
+            <div class="live-badge" id="live-badge">LIVE</div>
+        </div>
+
+        <div class="form-group">
+            <div class="row">
+                <div>
+                    <label for="stream-key">Stream Key</label>
+                    <input type="text" id="stream-key" readonly style="opacity:0.6;cursor:default;">
+                </div>
+                <div>
+                    <label for="resolution">Resolution</label>
+                    <select id="resolution">
+                        <option value="1280x720">720p</option>
+                        <option value="1920x1080">1080p</option>
+                        <option value="854x480">480p</option>
+                        <option value="640x360">360p</option>
+                    </select>
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label for="max-viewers">Max Viewers (0 = unlimited)</label>
+                    <input type="number" id="max-viewers" value="0" min="0" max="10000">
+                </div>
+                <div>
+                    <label>Viewers</label>
+                    <div id="viewer-count" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">—</div>
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label for="room-password">Room Password (blank = open)</label>
+                    <input type="text" id="room-password" placeholder="Leave empty for public" autocomplete="off" spellcheck="false">
+                </div>
+                <div>
+                    <label>Access</label>
+                    <div id="access-status" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">Public</div>
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label for="camera-select">Camera</label>
+                    <select id="camera-select"><option value="">Loading...</option></select>
+                </div>
+                <div>
+                    <label for="mic-select">Microphone</label>
+                    <select id="mic-select"><option value="">Loading...</option></select>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <button id="btn-start">Start Broadcast</button>
+            <button id="btn-stop">Stop</button>
+            <span id="status">Ready</span>
+        </div>
+
+        <div class="stats" id="stats"></div>
     </div>
 
-    <div class="form-group">
-        <div class="row">
-            <div>
-                <label for="stream-key">Stream Key</label>
-                <input type="text" id="stream-key" readonly style="opacity:0.6;cursor:default;">
-            </div>
-            <div>
-                <label for="resolution">Resolution</label>
-                <select id="resolution">
-                    <option value="1280x720">720p</option>
-                    <option value="1920x1080">1080p</option>
-                    <option value="854x480">480p</option>
-                    <option value="640x360">360p</option>
-                </select>
-            </div>
+    <div class="chat-panel">
+        <div class="chat-header">
+            <span>Chat</span>
+            <span class="chat-status" id="chat-status">Disconnected</span>
         </div>
-        <div class="row">
-            <div>
-                <label for="max-viewers">Max Viewers (0 = unlimited)</label>
-                <input type="number" id="max-viewers" value="0" min="0" max="10000">
-            </div>
-            <div>
-                <label>Viewers</label>
-                <div id="viewer-count" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">—</div>
-            </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-mod-bar" id="chat-mod-bar">
+            <button onclick="chatModCmd('/clear')">Clear Chat</button>
+            <button onclick="chatModCmd('/slow 5')">Slow 5s</button>
+            <button onclick="chatModCmd('/slow 0')">Slow Off</button>
+            <button onclick="chatModCmd('/subscribers')">Sub Mode</button>
         </div>
-        <div class="row">
-            <div>
-                <label for="room-password">Room Password (blank = open)</label>
-                <input type="text" id="room-password" placeholder="Leave empty for public" autocomplete="off" spellcheck="false">
-            </div>
-            <div>
-                <label>Access</label>
-                <div id="access-status" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">Public</div>
-            </div>
-        </div>
-        <div class="row">
-            <div>
-                <label for="camera-select">Camera</label>
-                <select id="camera-select"><option value="">Loading...</option></select>
-            </div>
-            <div>
-                <label for="mic-select">Microphone</label>
-                <select id="mic-select"><option value="">Loading...</option></select>
+        <div class="chat-input-area">
+            <div class="chat-send" id="chat-send">
+                <input type="text" id="chat-input" placeholder="Send a message" maxlength="500" autocomplete="off" spellcheck="false">
+                <button id="btn-chat-send">Send</button>
             </div>
         </div>
     </div>
-
-    <div class="controls">
-        <button id="btn-start">Start Broadcast</button>
-        <button id="btn-stop">Stop</button>
-        <span id="status">Ready</span>
-    </div>
-
-    <div class="stats" id="stats"></div>
 
     <script>
         var preview = document.getElementById('preview');
@@ -226,6 +359,7 @@
                 var data = await resp.json();
                 authenticatedKey = data.stream_key;
                 streamKeyInput.value = data.stream_key;
+                chatConnect();
                 enumerateDevices();
             } catch (e) {
                 window.location.reload();
@@ -514,6 +648,135 @@
                 statsEl.textContent = parts.length > 0 ? parts.join(' · ') : '';
             }, 2000);
         }
+
+        /* ── Chat ──────────────────────────────────────────────── */
+
+        var chatWs = null;
+        var chatNick = 'Broadcaster';
+        var chatConnected = false;
+        var chatReconnectTimer = null;
+        var chatMessagesEl = document.getElementById('chat-messages');
+        var chatStatusEl = document.getElementById('chat-status');
+        var chatSendEl = document.getElementById('chat-send');
+        var chatInput = document.getElementById('chat-input');
+        var btnChatSend = document.getElementById('btn-chat-send');
+
+        function chatConnect() {
+            var roomId = authenticatedKey;
+            if (!roomId || !chatNick) return;
+            if (chatWs) { chatWs.close(); chatWs = null; }
+
+            var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            var url = proto + '//' + location.host + '/api/chat/' + roomId + '?nick=' + encodeURIComponent(chatNick);
+            chatWs = new WebSocket(url);
+            chatStatusEl.textContent = 'Connecting...';
+            chatStatusEl.className = 'chat-status';
+
+            chatWs.onopen = function () {
+                chatConnected = true;
+                chatStatusEl.textContent = 'Connected';
+                chatStatusEl.className = 'chat-status connected';
+            };
+
+            chatWs.onclose = function () {
+                chatConnected = false;
+                chatStatusEl.textContent = 'Disconnected';
+                chatStatusEl.className = 'chat-status';
+                chatReconnectTimer = setTimeout(function () {
+                    if (authenticatedKey) chatConnect();
+                }, 3000);
+            };
+
+            chatWs.onerror = function () {
+                chatConnected = false;
+            };
+
+            chatWs.onmessage = function (ev) {
+                try {
+                    var msg = JSON.parse(ev.data);
+                    handleChatMsg(msg);
+                } catch (e) { /* ignore */ }
+            };
+        }
+
+        function chatDisconnect() {
+            if (chatReconnectTimer) { clearTimeout(chatReconnectTimer); chatReconnectTimer = null; }
+            if (chatWs) { chatWs.close(); chatWs = null; }
+            chatConnected = false;
+            chatStatusEl.textContent = 'Disconnected';
+            chatStatusEl.className = 'chat-status';
+        }
+
+        function handleChatMsg(msg) {
+            switch (msg.type) {
+                case 'msg':
+                    appendChatMessage(msg.nick, msg.text, msg.role);
+                    break;
+                case 'system':
+                    appendChatSystem(msg.text);
+                    break;
+                case 'clear':
+                    chatMessagesEl.innerHTML = '';
+                    appendChatSystem('Chat has been cleared.');
+                    break;
+                case 'ban':
+                    appendChatSystem(msg.nick + ' has been banned.');
+                    break;
+                case 'error':
+                    appendChatSystem(msg.text);
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function appendChatMessage(nick, text, role) {
+            var el = document.createElement('div');
+            el.className = 'chat-msg';
+            var nickSpan = document.createElement('span');
+            nickSpan.className = 'nick ' + (role || 'viewer');
+            nickSpan.textContent = nick + ':';
+            el.appendChild(nickSpan);
+            el.appendChild(document.createTextNode(' ' + text));
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
+        }
+
+        function appendChatSystem(text) {
+            var el = document.createElement('div');
+            el.className = 'chat-msg system';
+            el.textContent = text;
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
+        }
+
+        function autoScrollChat() {
+            var el = chatMessagesEl;
+            var atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            if (atBottom) {
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+
+        function chatSendMessage() {
+            if (!chatWs || !chatConnected) return;
+            var text = chatInput.value.trim();
+            if (!text) return;
+            var type = text[0] === '/' ? 'cmd' : 'msg';
+            chatWs.send(JSON.stringify({ type: type, text: text }));
+            chatInput.value = '';
+        }
+
+        function chatModCmd(cmd) {
+            if (!chatWs || !chatConnected) return;
+            chatWs.send(JSON.stringify({ type: 'cmd', text: cmd }));
+        }
+
+        btnChatSend.onclick = chatSendMessage;
+
+        chatInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') chatSendMessage();
+        });
 
     </script>
 </body>

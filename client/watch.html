@@ -11,10 +11,16 @@
             color: #e0e0e0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
+            flex-direction: row;
+            min-height: 100vh;
+        }
+        .main-content {
+            flex: 1;
+            display: flex;
             flex-direction: column;
             align-items: center;
-            min-height: 100vh;
             padding: 2rem 1rem;
+            min-width: 0;
         }
         h1 {
             font-size: 1.4rem;
@@ -110,35 +116,146 @@
             font-size: 0.85rem;
             margin-top: 0.4rem;
         }
+
+        /* ── Chat Panel ──────────────────────────────────── */
+        .chat-panel {
+            width: 340px;
+            min-width: 340px;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #1a1a1a;
+            background: #0d0d0d;
+        }
+        .chat-header {
+            padding: 0.8rem 1rem;
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #fff;
+            border-bottom: 1px solid #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .chat-status {
+            font-size: 0.7rem;
+            font-weight: 400;
+            color: #666;
+        }
+        .chat-status.connected { color: #4caf50; }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 0.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        .chat-msg {
+            font-size: 0.82rem;
+            line-height: 1.4;
+            padding: 0.15rem 0.4rem;
+            border-radius: 3px;
+            word-break: break-word;
+        }
+        .chat-msg:hover { background: rgba(255,255,255,0.03); }
+        .chat-msg .nick {
+            font-weight: 600;
+            margin-right: 0.3rem;
+        }
+        .chat-msg .nick.broadcaster { color: #d32f2f; }
+        .chat-msg .nick.mod { color: #5e35b1; }
+        .chat-msg .nick.viewer { color: #1e88e5; }
+        .chat-msg.system {
+            color: #666;
+            font-style: italic;
+            font-size: 0.78rem;
+        }
+        .chat-input-area {
+            border-top: 1px solid #1a1a1a;
+            padding: 0.6rem;
+        }
+        .chat-join, .chat-send {
+            display: flex;
+            gap: 0.4rem;
+        }
+        .chat-input-area input {
+            flex: 1;
+            background: #1a1a1a;
+            color: #e0e0e0;
+            border: 1px solid #333;
+            padding: 0.5rem 0.6rem;
+            font-size: 0.85rem;
+            border-radius: 4px;
+            outline: none;
+        }
+        .chat-input-area input:focus { border-color: #d32f2f; }
+        .chat-input-area button {
+            padding: 0.5rem 0.8rem;
+            font-size: 0.82rem;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 900px) {
+            body { flex-direction: column; }
+            .chat-panel {
+                width: 100%;
+                min-width: auto;
+                height: 360px;
+                border-left: none;
+                border-top: 1px solid #1a1a1a;
+            }
+        }
     </style>
 </head>
 <body>
 
-    <h1>Independent Broadcasting - Github xloveee/livecam</h1>
+    <div class="main-content">
+        <h1>Independent Broadcasting - Github xloveee/livecam</h1>
 
-    <video id="player" autoplay controls playsinline></video>
+        <video id="player" autoplay controls playsinline></video>
 
-    <div id="controls">
-        <select id="quality-select" disabled>
-            <option value="">Auto</option>
-            <option value="h">High (1080p)</option>
-            <option value="m">Medium (720p)</option>
-            <option value="l">Low (360p)</option>
-        </select>
-        <span id="status">Checking stream...</span>
+        <div id="controls">
+            <select id="quality-select" disabled>
+                <option value="">Auto</option>
+                <option value="h">High (1080p)</option>
+                <option value="m">Medium (720p)</option>
+                <option value="l">Low (360p)</option>
+            </select>
+            <span id="status">Checking stream...</span>
+        </div>
+        <div class="viewer-count" id="viewer-count"></div>
+
+        <div id="offline-banner">
+            <span class="dot"></span>
+            <span id="offline-text">No broadcast right now</span>
+        </div>
+
+        <div id="password-prompt">
+            <label>This broadcast requires a password</label><br><br>
+            <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
+            <button id="btn-password-submit">Join</button>
+            <div id="password-error"></div>
+        </div>
     </div>
-    <div class="viewer-count" id="viewer-count"></div>
 
-    <div id="offline-banner">
-        <span class="dot"></span>
-        <span id="offline-text">No broadcast right now</span>
-    </div>
-
-    <div id="password-prompt">
-        <label>This broadcast requires a password</label><br><br>
-        <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
-        <button id="btn-password-submit">Join</button>
-        <div id="password-error"></div>
+    <div class="chat-panel">
+        <div class="chat-header">
+            <span>Chat</span>
+            <span class="chat-status" id="chat-status">Disconnected</span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-input-area">
+            <div class="chat-join" id="chat-join">
+                <input type="text" id="chat-nick" placeholder="Choose a nickname" maxlength="25" autocomplete="off" spellcheck="false">
+                <button id="btn-chat-join">Join</button>
+            </div>
+            <div class="chat-send" id="chat-send" style="display:none">
+                <input type="text" id="chat-input" placeholder="Send a message" maxlength="500" autocomplete="off" spellcheck="false">
+                <button id="btn-chat-send">Send</button>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -558,6 +675,153 @@
 
         passwordInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') btnPasswordSubmit.click();
+        });
+
+        /* ── Chat ──────────────────────────────────────────────── */
+
+        var chatWs = null;
+        var chatNick = '';
+        var chatConnected = false;
+        var chatReconnectTimer = null;
+        var chatMessagesEl = document.getElementById('chat-messages');
+        var chatStatusEl = document.getElementById('chat-status');
+        var chatJoinEl = document.getElementById('chat-join');
+        var chatSendEl = document.getElementById('chat-send');
+        var chatNickInput = document.getElementById('chat-nick');
+        var chatInput = document.getElementById('chat-input');
+        var btnChatJoin = document.getElementById('btn-chat-join');
+        var btnChatSend = document.getElementById('btn-chat-send');
+
+        function chatConnect() {
+            if (!roomId || !chatNick) return;
+            if (chatWs) { chatWs.close(); chatWs = null; }
+
+            var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            var url = proto + '//' + location.host + '/api/chat/' + roomId + '?nick=' + encodeURIComponent(chatNick);
+            chatWs = new WebSocket(url);
+            chatStatusEl.textContent = 'Connecting...';
+            chatStatusEl.className = 'chat-status';
+
+            chatWs.onopen = function () {
+                chatConnected = true;
+                chatStatusEl.textContent = 'Connected';
+                chatStatusEl.className = 'chat-status connected';
+            };
+
+            chatWs.onclose = function () {
+                chatConnected = false;
+                chatStatusEl.textContent = 'Disconnected';
+                chatStatusEl.className = 'chat-status';
+                chatReconnectTimer = setTimeout(function () {
+                    if (chatNick && roomId) chatConnect();
+                }, 3000);
+            };
+
+            chatWs.onerror = function () {
+                chatConnected = false;
+            };
+
+            chatWs.onmessage = function (ev) {
+                try {
+                    var msg = JSON.parse(ev.data);
+                    handleChatMsg(msg);
+                } catch (e) { /* ignore */ }
+            };
+        }
+
+        function chatDisconnect() {
+            if (chatReconnectTimer) { clearTimeout(chatReconnectTimer); chatReconnectTimer = null; }
+            if (chatWs) { chatWs.close(); chatWs = null; }
+            chatConnected = false;
+            chatStatusEl.textContent = 'Disconnected';
+            chatStatusEl.className = 'chat-status';
+        }
+
+        function handleChatMsg(msg) {
+            switch (msg.type) {
+                case 'msg':
+                    appendChatMessage(msg.nick, msg.text, msg.role);
+                    break;
+                case 'system':
+                    appendChatSystem(msg.text);
+                    break;
+                case 'clear':
+                    chatMessagesEl.innerHTML = '';
+                    appendChatSystem('Chat has been cleared.');
+                    break;
+                case 'ban':
+                    appendChatSystem(msg.nick + ' has been banned.');
+                    break;
+                case 'error':
+                    appendChatSystem(msg.text);
+                    chatDisconnect();
+                    chatJoinEl.style.display = '';
+                    chatSendEl.style.display = 'none';
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        function appendChatMessage(nick, text, role) {
+            var el = document.createElement('div');
+            el.className = 'chat-msg';
+            var nickSpan = document.createElement('span');
+            nickSpan.className = 'nick ' + (role || 'viewer');
+            nickSpan.textContent = nick + ':';
+            el.appendChild(nickSpan);
+            el.appendChild(document.createTextNode(' ' + text));
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
+        }
+
+        function appendChatSystem(text) {
+            var el = document.createElement('div');
+            el.className = 'chat-msg system';
+            el.textContent = text;
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
+        }
+
+        function autoScrollChat() {
+            var el = chatMessagesEl;
+            var atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+            if (atBottom) {
+                el.scrollTop = el.scrollHeight;
+            }
+        }
+
+        function chatSendMessage() {
+            if (!chatWs || !chatConnected) return;
+            var text = chatInput.value.trim();
+            if (!text) return;
+            var type = text[0] === '/' ? 'cmd' : 'msg';
+            chatWs.send(JSON.stringify({ type: type, text: text }));
+            chatInput.value = '';
+        }
+
+        btnChatJoin.onclick = function () {
+            var nick = chatNickInput.value.trim();
+            if (!nick) return;
+            if (!/^[a-zA-Z0-9_]{1,25}$/.test(nick)) {
+                appendChatSystem('Nickname: 1-25 chars, letters/numbers/underscore only.');
+                return;
+            }
+            chatNick = nick;
+            chatJoinEl.style.display = 'none';
+            chatSendEl.style.display = '';
+            chatInput.focus();
+            if (roomId) chatConnect();
+        };
+
+        chatNickInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') btnChatJoin.click();
+        });
+
+        btnChatSend.onclick = chatSendMessage;
+
+        chatInput.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter') chatSendMessage();
         });
 
         /* ── Init ───────────────────────────────────────────────── */

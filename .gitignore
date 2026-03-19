@@ -26,3 +26,8 @@ deploy/
 build-plan-story.md
 Build-plan.md
 td.md
+
+.vscode/
+!rust-core/vendor/**/.vscode/
+.cursorignore
+ckpt/

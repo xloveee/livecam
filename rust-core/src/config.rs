@@ -11,8 +11,6 @@ pub struct Config {
     pub public_ip: IpAddr,
     /// UDP port the SFU media socket binds to for all WebRTC traffic.
     pub udp_port: u16,
-    /// Directory for VOD archive recordings.
-    pub archive_dir: String,
 }
 
 impl Config {
@@ -42,15 +40,11 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(50000);
 
-        let archive_dir = std::env::var("SFU_ARCHIVE_DIR")
-            .unwrap_or_else(|_| "archive".to_string());
-
         Self {
             http_bind: SocketAddr::new(http_host, http_port),
             bind_ip,
             public_ip,
             udp_port,
-            archive_dir,
         }
     }
 

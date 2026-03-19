@@ -16,6 +16,8 @@ import (
 	"os"
 	"strings"
 	"unsafe"
+
+	"livecam/chat"
 )
 
 var (
@@ -27,8 +29,24 @@ var (
 func main() {
 	initConfig()
 
+	chatHub := chat.NewHub()
+	chatAuth := chat.AuthFunc(func(r *http.Request) (string, bool) {
+		cookie, err := r.Cookie("broadcaster_session")
+		if err != nil || cookie.Value == "" {
+			return "", false
+		}
+		cToken := C.CString(cookie.Value)
+		defer C.free(unsafe.Pointer(cToken))
+		var outKey [C.STREAM_KEY_EXACT_LEN + 1]C.char
+		if C.extract_stream_key_from_token(cToken, &outKey[0]) == 0 {
+			return "", false
+		}
+		return C.GoString(&outKey[0]), true
+	})
+
 	mux := http.NewServeMux()
 
+	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth))
 	mux.HandleFunc("/api/whip/", whipProxyHandler)
 	mux.HandleFunc("/api/whep/", whepProxyHandler)
 	mux.HandleFunc("/api/quality/", qualityProxyHandler)

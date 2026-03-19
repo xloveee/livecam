@@ -17,15 +17,15 @@ livecam/
 │   ├── src/
 │   │   ├── api.rs       # Internal WHIP/WHEP HTTP handlers
 │   │   ├── config.rs    # Environment-based configuration
-│   │   ├── archive/     # VOD recording logic
 │   │   ├── sfu/         # Media routing event loop
 │   │   └── main.rs
 ├── go-features/         # Go HTTP wrappers bridging to C99 logic
 │   ├── api/             # Main proxy, config endpoint, static serving
-│   │   └── c_src/       # Strict C99 implementation files
-│   ├── auth/            # Authentication and JWT validation
-│   └── chat/            # Real-time chat and moderation engine
-├── client/              # Static HTML/JS — WHEP Viewer + Browser Broadcast
+│   │   └── c_src/       # Strict C99 implementation files (auth, rate limiting)
+│   ├── chat/            # Real-time chat (WebSocket hub + moderation)
+│   │   └── c_src/       # C99 chat logic (command parser, rate limiter)
+│   └── vendor/          # Vendored Go dependencies (gorilla/websocket)
+├── client/              # Static HTML/JS — WHEP Viewer + Browser Broadcast + Chat
 └── deploy/              # Configs, scripts (Docker, Systemd, TURN)
 ```
 
@@ -110,17 +110,9 @@ Both options use the same WHIP endpoint and produce the same stream format. The 
 | `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |
 | `BROADCAST_PASSWORD` | *(none — open mode)* | Page-level password required to access `/broadcast` |
 
-### TLS (Required for production WebRTC)
+### TLS + nginx (Required for production WebRTC)
 
-Browsers require HTTPS for WebRTC. Place a reverse proxy (Caddy or nginx) in front of the Go service:
-
-**Caddy** (auto-TLS):
-
-```
-broadcast.yourdomain.com {
-    reverse_proxy localhost:8443
-}
-```
+Browsers require HTTPS for WebRTC. Place a reverse proxy in front of the Go service. The chat system uses WebSocket, which requires special proxy headers.
 
 **nginx** (with Let's Encrypt):
 
@@ -130,9 +122,36 @@ server {
     server_name broadcast.yourdomain.com;
     ssl_certificate     /etc/letsencrypt/live/broadcast.yourdomain.com/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/broadcast.yourdomain.com/privkey.pem;
+
+    # WebSocket — required for chat
+    location /api/chat/ {
+        proxy_pass http://127.0.0.1:8443;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 86400s;
+        proxy_send_timeout 86400s;
+    }
+
+    # Everything else (HTTP API, static files, WHIP/WHEP)
     location / {
         proxy_pass http://127.0.0.1:8443;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
+}
+```
+
+**Caddy** (auto-TLS, handles WebSocket automatically):
+
+```
+broadcast.yourdomain.com {
+    reverse_proxy localhost:8443
 }
 ```
 
@@ -140,6 +159,41 @@ server {
 
 - **STUN** is sufficient when your server has a public IP and clients are on typical home/office NATs.
 - **TURN** (relay) is needed for clients behind symmetric NATs or restrictive firewalls. Self-host with [coturn](https://github.com/coturn/coturn) or use a managed service.
+
+## Real-time Chat
+
+The chat system runs over WebSocket alongside the video stream. It connects automatically when a viewer joins or a broadcaster logs in.
+
+### Features
+
+- Per-room chat rooms (room ID = stream key)
+- Broadcaster and moderator roles with command support
+- Rate limiting (slow mode) enforced in C99
+- Message sanitization (control character stripping, length caps)
+- Nickname validation (1–25 chars, alphanumeric + underscore)
+- Auto-reconnect on connection drop
+
+### Chat Commands (Broadcaster / Mod only)
+
+| Command | Effect |
+|---------|--------|
+| `/ban username` | Permanent ban from room chat |
+| `/unban username` | Remove ban |
+| `/timeout username seconds` | Temporary mute (default 300s) |
+| `/slow seconds` | Minimum seconds between messages (0 = off) |
+| `/subscribers` | Toggle subscriber-only mode |
+| `/clear` | Clear chat for all viewers |
+| `/mod username` | Grant mod role to user |
+| `/unmod username` | Revoke mod role |
+
+### Chat Protocol
+
+Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages are JSON:
+
+```json
+{"type": "msg", "text": "hello chat"}
+{"type": "cmd", "text": "/slow 5"}
+```
 
 ## URL Model
 
@@ -151,3 +205,14 @@ server {
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
+| **Chat (WebSocket)** | `wss://yourdomain.com/api/chat/{roomId}?nick=Name` |
+
+## Branch Strategy
+
+| Branch | Features |
+|--------|----------|
+| `main` | Stream only (WHIP/WHEP, browser broadcast, viewer page) |
+| `feature/chat` | Stream + real-time chat |
+| `feature/donations` | Stream + chat + donations *(planned)* |
+
+Each tier builds on the previous. Merge upstream fixes from `main` into feature branches with `git merge main`.

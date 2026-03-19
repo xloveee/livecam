@@ -11,28 +11,23 @@
             color: #e0e0e0;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
-            flex-direction: row;
+            flex-direction: column;
             min-height: 100vh;
+            min-height: 100dvh;
         }
         .main-content {
-            flex: 1;
+            flex: 1 1 auto;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 1.5rem 1rem;
+            padding: 0.6rem 0.5rem 0;
             min-width: 0;
+            overflow-y: auto;
         }
-        h1 {
-            font-size: 1.4rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            color: #fff;
-        }
-        .subtitle {
-            font-size: 0.85rem;
-            color: #888;
-            margin-bottom: 1.5rem;
-        }
+        h1 { display: none; }
+        .subtitle { display: none; }
+
+        /* ── Preview ─────────────────────────────────────── */
         .preview-container {
             position: relative;
             width: 100%;
@@ -40,46 +35,136 @@
         }
         video {
             width: 100%;
-            max-height: 70vh;
+            max-height: 35vh;
             background: #111;
             aspect-ratio: 16/9;
-            border-radius: 6px;
+            border-radius: 4px;
             transform: scaleX(-1);
             object-fit: contain;
         }
         .live-badge {
             display: none;
             position: absolute;
-            top: 12px;
-            left: 12px;
+            top: 6px;
+            left: 6px;
             background: #d32f2f;
             color: #fff;
-            font-size: 0.75rem;
+            font-size: 0.65rem;
             font-weight: 700;
-            padding: 3px 10px;
+            padding: 2px 7px;
             border-radius: 3px;
             letter-spacing: 0.05em;
         }
         .live-badge.visible { display: block; }
+        .stats-overlay {
+            position: absolute;
+            bottom: 6px;
+            right: 6px;
+            font-size: 0.65rem;
+            color: rgba(255,255,255,0.6);
+            background: rgba(0,0,0,0.55);
+            padding: 2px 6px;
+            border-radius: 3px;
+            pointer-events: none;
+        }
 
-        .form-group {
-            margin-top: 1.2rem;
+        /* ── Controls Bar ────────────────────────────────── */
+        .controls-bar {
             width: 100%;
             max-width: 720px;
             display: flex;
-            flex-direction: column;
-            gap: 0.6rem;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.4rem 0;
         }
-        label {
-            font-size: 0.85rem;
+        .controls-bar button {
+            flex-shrink: 0;
+        }
+        #status {
+            font-size: 0.75rem;
             color: #aaa;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .error { color: #ef5350; }
+        .connected { color: #4caf50; }
+        .viewer-badge {
+            font-size: 0.7rem;
+            color: #888;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        /* ── Buttons ─────────────────────────────────────── */
+        button {
+            color: #fff;
+            border: none;
+            padding: 0.45rem 1rem;
+            font-size: 0.82rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.15s;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #btn-start { background: #d32f2f; }
+        #btn-start:hover { background: #b71c1c; }
+        #btn-stop { background: #555; display: none; }
+        #btn-stop:hover { background: #777; }
+        button:disabled { background: #333; cursor: default; }
+
+        /* ── Settings Toggle ─────────────────────────────── */
+        .settings-toggle {
+            width: 100%;
+            max-width: 720px;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.3rem 0;
+            cursor: pointer;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .settings-toggle .arrow {
+            font-size: 0.65rem;
+            color: #666;
+            transition: transform 0.2s;
+        }
+        .settings-toggle.open .arrow { transform: rotate(90deg); }
+        .settings-toggle span {
+            font-size: 0.72rem;
+            color: #666;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+        }
+        .settings-divider {
+            flex: 1;
+            height: 1px;
+            background: #1a1a1a;
+        }
+
+        /* ── Form Group ──────────────────────────────────── */
+        .form-group {
+            width: 100%;
+            max-width: 720px;
+            display: none;
+            flex-direction: column;
+            gap: 0.4rem;
+            padding-bottom: 0.4rem;
+        }
+        .form-group.visible { display: flex; }
+        label {
+            font-size: 0.72rem;
+            color: #777;
         }
         input, select {
-            background: #1a1a1a;
+            background: #141414;
             color: #e0e0e0;
-            border: 1px solid #333;
-            padding: 0.6rem 0.8rem;
-            font-size: 0.9rem;
+            border: 1px solid #282828;
+            padding: 0.4rem 0.5rem;
+            font-size: 0.8rem;
             border-radius: 4px;
             width: 100%;
         }
@@ -88,71 +173,38 @@
             border-color: #d32f2f;
         }
         .row {
-            display: flex;
-            gap: 0.8rem;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.4rem;
         }
-        .row > * { flex: 1; }
-
-        .controls {
-            margin-top: 1.2rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            width: 100%;
-            max-width: 720px;
-        }
-        button {
-            color: #fff;
-            border: none;
-            padding: 0.65rem 1.8rem;
-            font-size: 0.95rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.15s;
-        }
-        #btn-start { background: #d32f2f; }
-        #btn-start:hover { background: #b71c1c; }
-        #btn-stop { background: #555; display: none; }
-        #btn-stop:hover { background: #777; }
-        button:disabled { background: #333; cursor: default; }
-
-        #status {
-            font-size: 0.85rem;
-            color: #aaa;
-        }
-        .error { color: #ef5350; }
-        .connected { color: #4caf50; }
-
-        .stats {
-            margin-top: 0.8rem;
+        .row-info {
+            padding: 0.35rem 0;
             font-size: 0.8rem;
-            color: #666;
-            width: 100%;
-            max-width: 720px;
+            color: #888;
         }
 
         /* ── Chat Panel ──────────────────────────────────── */
         .chat-panel {
-            width: 340px;
-            min-width: 340px;
+            flex: 1 1 0;
+            min-height: 180px;
             display: flex;
             flex-direction: column;
-            border-left: 1px solid #1a1a1a;
+            border-top: 1px solid #1a1a1a;
             background: #0d0d0d;
         }
         .chat-header {
-            padding: 0.8rem 1rem;
-            font-size: 0.9rem;
+            padding: 0.4rem 0.6rem;
+            font-size: 0.78rem;
             font-weight: 600;
             color: #fff;
             border-bottom: 1px solid #1a1a1a;
             display: flex;
             align-items: center;
             justify-content: space-between;
+            flex-shrink: 0;
         }
         .chat-status {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             font-weight: 400;
             color: #666;
         }
@@ -160,81 +212,116 @@
         .chat-messages {
             flex: 1;
             overflow-y: auto;
-            padding: 0.5rem;
+            padding: 0.3rem;
             display: flex;
             flex-direction: column;
-            gap: 0.15rem;
+            gap: 0.1rem;
             scrollbar-width: thin;
             scrollbar-color: #333 transparent;
+            -webkit-overflow-scrolling: touch;
         }
         .chat-msg {
-            font-size: 0.82rem;
-            line-height: 1.4;
-            padding: 0.15rem 0.4rem;
+            font-size: 0.78rem;
+            line-height: 1.3;
+            padding: 0.1rem 0.3rem;
             border-radius: 3px;
             word-break: break-word;
         }
         .chat-msg:hover { background: rgba(255,255,255,0.03); }
         .chat-msg .nick {
             font-weight: 600;
-            margin-right: 0.3rem;
+            margin-right: 0.25rem;
         }
         .chat-msg .nick.broadcaster { color: #d32f2f; }
         .chat-msg .nick.mod { color: #5e35b1; }
         .chat-msg .nick.viewer { color: #1e88e5; }
         .chat-msg.system {
-            color: #666;
+            color: #555;
             font-style: italic;
-            font-size: 0.78rem;
+            font-size: 0.72rem;
         }
+        .chat-mod-bar {
+            display: flex;
+            gap: 0.25rem;
+            padding: 0.3rem 0.4rem;
+            border-top: 1px solid #1a1a1a;
+            flex-wrap: wrap;
+            flex-shrink: 0;
+        }
+        .chat-mod-bar button {
+            padding: 0.2rem 0.5rem;
+            font-size: 0.65rem;
+            background: #1a1a1a;
+            border-radius: 3px;
+        }
+        .chat-mod-bar button:hover { background: #282828; }
         .chat-input-area {
             border-top: 1px solid #1a1a1a;
-            padding: 0.6rem;
+            padding: 0.4rem;
+            flex-shrink: 0;
         }
         .chat-send {
             display: flex;
-            gap: 0.4rem;
+            gap: 0.3rem;
         }
         .chat-input-area input {
             flex: 1;
-            background: #1a1a1a;
+            background: #141414;
             color: #e0e0e0;
-            border: 1px solid #333;
-            padding: 0.5rem 0.6rem;
-            font-size: 0.85rem;
+            border: 1px solid #282828;
+            padding: 0.4rem 0.5rem;
+            font-size: 0.8rem;
             border-radius: 4px;
             outline: none;
         }
         .chat-input-area input:focus { border-color: #d32f2f; }
         .chat-input-area button {
-            padding: 0.5rem 0.8rem;
-            font-size: 0.82rem;
+            padding: 0.4rem 0.7rem;
+            font-size: 0.78rem;
             white-space: nowrap;
         }
-        .chat-mod-bar {
-            display: flex;
-            gap: 0.3rem;
-            padding: 0.4rem 0.6rem;
-            border-top: 1px solid #1a1a1a;
-            flex-wrap: wrap;
-        }
-        .chat-mod-bar button {
-            padding: 0.3rem 0.6rem;
-            font-size: 0.72rem;
-            background: #222;
-            border-radius: 3px;
-        }
-        .chat-mod-bar button:hover { background: #333; }
 
-        @media (max-width: 900px) {
-            body { flex-direction: column; }
-            .chat-panel {
-                width: 100%;
-                min-width: auto;
-                height: 360px;
-                border-left: none;
-                border-top: 1px solid #1a1a1a;
+        /* ── Desktop: side-by-side ───────────────────────── */
+        @media (min-width: 901px) {
+            body { flex-direction: row; }
+            h1 {
+                display: block;
+                font-size: 1.2rem;
+                font-weight: 600;
+                margin-bottom: 0.4rem;
+                color: #fff;
             }
+            .subtitle {
+                display: block;
+                font-size: 0.8rem;
+                color: #888;
+                margin-bottom: 1rem;
+            }
+            .main-content { padding: 1.2rem 1rem; }
+            video { max-height: 65vh; border-radius: 6px; }
+            .live-badge { top: 10px; left: 10px; font-size: 0.72rem; padding: 3px 9px; }
+            .stats-overlay { bottom: 10px; right: 10px; font-size: 0.72rem; }
+            .controls-bar { padding: 0.6rem 0; }
+            .form-group { display: flex; gap: 0.5rem; padding-bottom: 0; }
+            .settings-toggle { display: none; }
+            .chat-panel {
+                width: 340px;
+                min-width: 340px;
+                flex: none;
+                min-height: auto;
+                border-top: none;
+                border-left: 1px solid #1a1a1a;
+            }
+            .chat-header { padding: 0.6rem 0.8rem; font-size: 0.85rem; }
+            .chat-messages { padding: 0.4rem; }
+            .chat-msg { font-size: 0.8rem; }
+            button { padding: 0.55rem 1.4rem; font-size: 0.88rem; }
+        }
+
+        /* ── Tiny phones (≤380px) ────────────────────────── */
+        @media (max-width: 380px) {
+            .row { grid-template-columns: 1fr; }
+            .controls-bar button { padding: 0.4rem 0.7rem; font-size: 0.78rem; }
         }
     </style>
 </head>
@@ -247,44 +334,23 @@
         <div class="preview-container">
             <video id="preview" autoplay muted playsinline></video>
             <div class="live-badge" id="live-badge">LIVE</div>
+            <div class="stats-overlay" id="stats"></div>
         </div>
 
-        <div class="form-group">
-            <div class="row">
-                <div>
-                    <label for="stream-key">Stream Key</label>
-                    <input type="text" id="stream-key" readonly style="opacity:0.6;cursor:default;">
-                </div>
-                <div>
-                    <label for="resolution">Resolution</label>
-                    <select id="resolution">
-                        <option value="1280x720">720p</option>
-                        <option value="1920x1080">1080p</option>
-                        <option value="854x480">480p</option>
-                        <option value="640x360">360p</option>
-                    </select>
-                </div>
-            </div>
-            <div class="row">
-                <div>
-                    <label for="max-viewers">Max Viewers (0 = unlimited)</label>
-                    <input type="number" id="max-viewers" value="0" min="0" max="10000">
-                </div>
-                <div>
-                    <label>Viewers</label>
-                    <div id="viewer-count" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">—</div>
-                </div>
-            </div>
-            <div class="row">
-                <div>
-                    <label for="room-password">Room Password (blank = open)</label>
-                    <input type="text" id="room-password" placeholder="Leave empty for public" autocomplete="off" spellcheck="false">
-                </div>
-                <div>
-                    <label>Access</label>
-                    <div id="access-status" style="padding:0.6rem 0; font-size:0.9rem; color:#aaa;">Public</div>
-                </div>
-            </div>
+        <div class="controls-bar">
+            <button id="btn-start">Go Live</button>
+            <button id="btn-stop">Stop</button>
+            <span id="status">Ready</span>
+            <span class="viewer-badge" id="viewer-count"></span>
+        </div>
+
+        <div class="settings-toggle" id="settings-toggle" onclick="toggleSettings()">
+            <span class="arrow">&#9654;</span>
+            <span>Settings</span>
+            <div class="settings-divider"></div>
+        </div>
+
+        <div class="form-group" id="form-group">
             <div class="row">
                 <div>
                     <label for="camera-select">Camera</label>
@@ -295,15 +361,32 @@
                     <select id="mic-select"><option value="">Loading...</option></select>
                 </div>
             </div>
+            <div class="row">
+                <div>
+                    <label for="resolution">Resolution</label>
+                    <select id="resolution">
+                        <option value="1280x720">720p</option>
+                        <option value="1920x1080">1080p</option>
+                        <option value="854x480">480p</option>
+                        <option value="640x360">360p</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="max-viewers">Max Viewers (0 = unlim)</label>
+                    <input type="number" id="max-viewers" value="0" min="0" max="10000">
+                </div>
+            </div>
+            <div class="row">
+                <div>
+                    <label for="room-password">Room Password</label>
+                    <input type="text" id="room-password" placeholder="Open (no password)" autocomplete="off" spellcheck="false">
+                </div>
+                <div>
+                    <label>Stream Key</label>
+                    <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
+                </div>
+            </div>
         </div>
-
-        <div class="controls">
-            <button id="btn-start">Start Broadcast</button>
-            <button id="btn-stop">Stop</button>
-            <span id="status">Ready</span>
-        </div>
-
-        <div class="stats" id="stats"></div>
     </div>
 
     <div class="chat-panel">
@@ -340,7 +423,13 @@
         var maxViewersInput = document.getElementById('max-viewers');
         var viewerCountEl = document.getElementById('viewer-count');
         var roomPasswordInput = document.getElementById('room-password');
-        var accessStatusEl = document.getElementById('access-status');
+
+        function toggleSettings() {
+            var fg = document.getElementById('form-group');
+            var tog = document.getElementById('settings-toggle');
+            fg.classList.toggle('visible');
+            tog.classList.toggle('open');
+        }
 
         var pc = null;
         var localStream = null;
@@ -470,7 +559,6 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ password: password || '' })
                 });
-                accessStatusEl.textContent = password ? 'Password Protected' : 'Public';
             } catch (e) {
                 console.warn('Failed to set room password:', e);
             }
@@ -482,7 +570,7 @@
                 const resp = await fetch('/api/room_info/' + activeStreamKey);
                 if (resp.ok) {
                     const info = await resp.json();
-                    viewerCountEl.textContent = info.viewer_count + (info.max_viewers > 0 ? ' / ' + info.max_viewers : '');
+                    viewerCountEl.textContent = info.viewer_count + ' watching' + (info.max_viewers > 0 ? ' / ' + info.max_viewers + ' max' : '');
                 }
             } catch (e) {
                 /* ignore */
@@ -608,7 +696,7 @@
             btnStart.disabled = false;
             btnStop.style.display = 'none';
             statsEl.textContent = '';
-            viewerCountEl.textContent = '—';
+            viewerCountEl.textContent = '';
         }
 
         function startStats() {

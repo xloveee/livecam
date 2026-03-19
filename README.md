@@ -222,5 +222,3 @@ Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages
 | `main` | Stream only (WHIP/WHEP, browser broadcast, viewer page) |
 | `feature/chat` | Stream + real-time chat |
 | `feature/donations` | Stream + chat + donations *(planned)* |
-
-Each tier builds on the previous. Merge upstream fixes from `main` into feature branches with `git merge main`.

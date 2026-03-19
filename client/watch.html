@@ -6,6 +6,11 @@
     <title>livecam</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            overflow-x: hidden;
+        }
         body {
             background-color: #0a0a0a;
             color: #e0e0e0;
@@ -13,35 +18,42 @@
             display: flex;
             flex-direction: row;
             min-height: 100vh;
+            min-height: 100dvh;
         }
         .main-content {
             flex: 1;
+            min-height: 0;
+            min-width: 0;
             display: flex;
             flex-direction: column;
             align-items: center;
-            padding: 2rem 1rem;
-            min-width: 0;
+            padding: 1rem;
+            overflow-y: auto;
         }
         h1 {
-            font-size: 1.4rem;
+            font-size: 1.2rem;
             font-weight: 600;
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             color: #fff;
+            flex-shrink: 0;
         }
         video {
             width: 100%;
             max-width: 960px;
-            max-height: 80vh;
+            flex: 1 1 auto;
+            min-height: 0;
+            max-height: 100%;
             background: #000;
             aspect-ratio: 16/9;
             border-radius: 4px;
             object-fit: contain;
         }
         #controls {
-            margin-top: 1.2rem;
+            margin-top: 0.6rem;
             display: flex;
             align-items: center;
             gap: 1rem;
+            flex-shrink: 0;
         }
         select {
             background: #1e1e1e;
@@ -73,14 +85,16 @@
         .viewer-count {
             font-size: 0.8rem;
             color: #666;
-            margin-top: 0.6rem;
+            margin-top: 0.4rem;
+            flex-shrink: 0;
         }
         #offline-banner {
             display: none;
-            margin-top: 2rem;
+            margin-top: 0.8rem;
             text-align: center;
             color: #888;
-            font-size: 1rem;
+            font-size: 0.9rem;
+            flex-shrink: 0;
         }
         #offline-banner .dot {
             display: inline-block;
@@ -94,8 +108,9 @@
         #offline-banner.live .dot { background: #d32f2f; }
         #password-prompt {
             display: none;
-            margin-top: 1.5rem;
+            margin-top: 0.8rem;
             text-align: center;
+            flex-shrink: 0;
         }
         #password-prompt input {
             background: #1e1e1e;
@@ -121,6 +136,7 @@
         .chat-panel {
             width: 340px;
             min-width: 340px;
+            min-height: 0;
             display: flex;
             flex-direction: column;
             border-left: 1px solid #1a1a1a;
@@ -199,10 +215,14 @@
 
         @media (max-width: 900px) {
             body { flex-direction: column; }
+            .main-content { padding: 0.8rem; }
+            h1 { font-size: 1rem; margin-bottom: 0.4rem; }
+            video { max-height: 45vh; }
             .chat-panel {
                 width: 100%;
                 min-width: auto;
-                height: 360px;
+                flex: 1 1 0;
+                min-height: 180px;
                 border-left: none;
                 border-top: 1px solid #1a1a1a;
             }

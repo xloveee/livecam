@@ -335,7 +335,7 @@
                 <div class="nick-error" id="nick-error"></div>
                 <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
             </div>
-            <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()">
+            <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()" style="pointer-events:none;opacity:0.25">
                 <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
                 <button disabled>Send</button>
             </div>
@@ -401,11 +401,13 @@
                     statusEl.textContent = 'Offline';
                     viewerCountEl.textContent = '';
                     qualitySelect.disabled = true;
+                    disableChat();
                     break;
                 case 'need_password':
                     passwordPrompt.style.display = 'block';
                     statusEl.textContent = 'Password required';
                     qualitySelect.disabled = true;
+                    disableChat();
                     break;
                 case 'connecting':
                     statusEl.textContent = 'Connecting...';
@@ -414,6 +416,7 @@
                 case 'live':
                     statusEl.textContent = 'Live';
                     qualitySelect.disabled = false;
+                    enableChat();
                     break;
                 case 'room_full':
                     offlineBanner.style.display = 'block';
@@ -421,6 +424,7 @@
                     offlineText.textContent = 'Room is full — retrying...';
                     statusEl.textContent = 'Waiting';
                     qualitySelect.disabled = true;
+                    disableChat();
                     break;
                 case 'rate_limited':
                     offlineBanner.style.display = 'block';
@@ -428,6 +432,7 @@
                     offlineText.textContent = 'Too many requests — retrying...';
                     statusEl.textContent = 'Waiting';
                     qualitySelect.disabled = true;
+                    disableChat();
                     break;
                 default:
                     break;
@@ -652,8 +657,6 @@
         async function connectWHEP() {
             if (!roomId) return;
             if (viewerState === 'connecting') return;
-
-            if (!chatWs && !chatNick) chatConnectGuest();
 
             teardownConnection();
             setState('connecting');
@@ -904,8 +907,32 @@
         }
 
         function showNickPrompt() {
+            if (viewerState !== 'live') return;
             chatNickPrompt.classList.add('visible');
             chatNickInput.focus();
+        }
+
+        function enableChat() {
+            if (!roomId) return;
+            if (chatNick) {
+                chatGuestBar.style.display = 'none';
+                chatSendEl.style.display = '';
+                chatConnect(chatNick);
+            } else {
+                chatGuestBar.style.display = '';
+                chatGuestBar.style.pointerEvents = '';
+                chatGuestBar.style.opacity = '';
+                chatConnectGuest();
+            }
+        }
+
+        function disableChat() {
+            chatDisconnect();
+            chatNickPrompt.classList.remove('visible');
+            chatSendEl.style.display = 'none';
+            chatGuestBar.style.display = '';
+            chatGuestBar.style.pointerEvents = 'none';
+            chatGuestBar.style.opacity = '0.25';
         }
 
         function chatSendMessage() {
@@ -954,7 +981,6 @@
             roomId = getRoomIdFromURL();
             if (roomId) {
                 roomIdFromURL = true;
-                chatConnectGuest();
             }
             await pollActive();
             if (viewerState === 'init') setState('offline');

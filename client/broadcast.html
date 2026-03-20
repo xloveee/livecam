@@ -1215,8 +1215,21 @@
 
         function loadDonationConfig() {
             fetch('/api/donations/setup', { method: 'GET' })
-                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (r) {
+                    if (r.status === 503) {
+                        donationStatusEl.textContent = 'Donations service unavailable on server';
+                        donationStatusEl.style.color = '#ef5350';
+                        return null;
+                    }
+                    if (r.status === 401) {
+                        donationStatusEl.textContent = 'Not authenticated — go live first';
+                        donationStatusEl.style.color = '#ef5350';
+                        return null;
+                    }
+                    return r.ok ? r.json() : [];
+                })
                 .then(function (configs) {
+                    if (!configs) return;
                     configs.forEach(function (c) {
                         var data = {};
                         try { data = JSON.parse(c.config_data); } catch (e) {}
@@ -1243,7 +1256,10 @@
                         }
                     });
                 })
-                .catch(function () {});
+                .catch(function () {
+                    donationStatusEl.textContent = 'Could not load donation config';
+                    donationStatusEl.style.color = '#ef5350';
+                });
         }
 
         var donationSaveDebounce = {};
@@ -1288,10 +1304,25 @@
                 body: JSON.stringify({ provider: provider, config_data: JSON.stringify(configData), enabled: enabled })
             })
             .then(function (r) {
-                donationStatusEl.textContent = r.ok ? 'Saved' : 'Save failed';
-                setTimeout(function () { donationStatusEl.textContent = ''; }, 2000);
+                if (r.ok) {
+                    donationStatusEl.style.color = '#4caf50';
+                    donationStatusEl.textContent = 'Saved';
+                } else if (r.status === 503) {
+                    donationStatusEl.style.color = '#ef5350';
+                    donationStatusEl.textContent = 'Donations service unavailable on server';
+                } else if (r.status === 401) {
+                    donationStatusEl.style.color = '#ef5350';
+                    donationStatusEl.textContent = 'Not authenticated — go live first';
+                } else {
+                    donationStatusEl.style.color = '#ef5350';
+                    donationStatusEl.textContent = 'Save failed (server error)';
+                }
+                setTimeout(function () { donationStatusEl.textContent = ''; donationStatusEl.style.color = ''; }, 3000);
             })
-            .catch(function () { donationStatusEl.textContent = 'Save failed'; });
+            .catch(function () {
+                donationStatusEl.style.color = '#ef5350';
+                donationStatusEl.textContent = 'Network error — could not reach server';
+            });
         }
 
         ['stripe-key', 'paypal-email', 'crypto-btc', 'crypto-eth', 'bank-merchant', 'bank-url', 'bank-apikey'].forEach(function (id) {

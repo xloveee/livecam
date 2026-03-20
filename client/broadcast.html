@@ -74,6 +74,63 @@
             pointer-events: none;
         }
 
+        /* ── Debug Panel ────────────────────────────────── */
+        .debug-toggle {
+            display: none;
+            width: 100%;
+            max-width: 720px;
+            padding: 0.2rem 0;
+        }
+        .debug-toggle button {
+            background: transparent;
+            border: 1px solid #222;
+            color: #666;
+            font-size: 0.62rem;
+            padding: 0.2rem 0.6rem;
+            border-radius: 3px;
+            cursor: pointer;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .debug-toggle button:hover { color: #aaa; border-color: #444; }
+        .debug-panel {
+            display: none;
+            width: 100%;
+            max-width: 720px;
+            background: #0c0c0c;
+            border: 1px solid #1a1a1a;
+            border-radius: 4px;
+            padding: 0.5rem 0.6rem;
+            font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+            font-size: 0.62rem;
+            line-height: 1.6;
+            color: #888;
+            margin-bottom: 0.3rem;
+            overflow-x: auto;
+        }
+        .debug-panel.visible { display: block; }
+        .debug-section {
+            margin-bottom: 0.3rem;
+        }
+        .debug-section-title {
+            color: #555;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 700;
+            font-size: 0.58rem;
+            margin-bottom: 0.1rem;
+        }
+        .debug-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0 0.2rem;
+        }
+        .debug-label { color: #666; }
+        .debug-val { color: #ccc; font-weight: 600; }
+        .debug-val.warn { color: #ffb300; }
+        .debug-val.bad { color: #ef5350; }
+        .debug-val.good { color: #4caf50; }
+
         /* ── Controls Bar ────────────────────────────────── */
         .controls-bar {
             width: 100%;
@@ -601,6 +658,11 @@
             <span class="viewer-badge" id="viewer-count"></span>
         </div>
 
+        <div class="debug-toggle" id="debug-toggle">
+            <button onclick="toggleDebugPanel()">WebRTC Debug</button>
+        </div>
+        <div class="debug-panel" id="debug-panel"></div>
+
         <div class="settings-toggle" id="settings-toggle" onclick="toggleSettings()">
             <span class="arrow">&#9654;</span>
             <span>Settings</span>
@@ -1092,44 +1154,164 @@
             btnStop.style.display = 'none';
             statsEl.textContent = '';
             viewerCountEl.textContent = '';
+            debugToggleEl.style.display = 'none';
+            debugPanelEl.classList.remove('visible');
+            debugPanelEl.innerHTML = '';
+            debugVisible = false;
         }
+
+        var debugPanelEl = document.getElementById('debug-panel');
+        var debugToggleEl = document.getElementById('debug-toggle');
+        var debugVisible = false;
+
+        function toggleDebugPanel() {
+            debugVisible = !debugVisible;
+            debugPanelEl.classList.toggle('visible', debugVisible);
+        }
+
+        var prevVideoStats = { bytesSent: 0, packetsSent: 0, nackCount: 0, retransmittedBytesSent: 0, timestamp: 0, framesEncoded: 0, qpSum: 0 };
+        var prevAudioStats = { bytesSent: 0, timestamp: 0 };
 
         function startStats() {
             if (statsInterval) clearInterval(statsInterval);
-            let prevBytesSent = 0;
-            let prevTimestamp = 0;
+            debugToggleEl.style.display = '';
+            prevVideoStats = { bytesSent: 0, packetsSent: 0, nackCount: 0, retransmittedBytesSent: 0, timestamp: 0, framesEncoded: 0, qpSum: 0 };
+            prevAudioStats = { bytesSent: 0, timestamp: 0 };
+
             statsInterval = setInterval(async () => {
                 if (!pc) return;
-                const stats = await pc.getStats();
-                let videoBitrate = '';
-                let audioBitrate = '';
-                let resolution = '';
-                let fps = '';
+                var reports = await pc.getStats();
+                var video = null, audio = null, transport = null, candidatePair = null;
+                var localCandidate = null, remoteCandidate = null;
 
-                stats.forEach(report => {
-                    if (report.type === 'outbound-rtp' && report.kind === 'video') {
-                        if (prevTimestamp > 0) {
-                            const dt = (report.timestamp - prevTimestamp) / 1000;
-                            const db = (report.bytesSent - prevBytesSent) * 8;
-                            videoBitrate = (db / dt / 1000).toFixed(0) + ' kbps';
-                        }
-                        prevBytesSent = report.bytesSent;
-                        prevTimestamp = report.timestamp;
-                        if (report.frameWidth) {
-                            resolution = report.frameWidth + 'x' + report.frameHeight;
-                        }
-                        if (report.framesPerSecond) {
-                            fps = report.framesPerSecond + ' fps';
-                        }
+                reports.forEach(function (r) {
+                    if (r.type === 'outbound-rtp' && r.kind === 'video') video = r;
+                    if (r.type === 'outbound-rtp' && r.kind === 'audio') audio = r;
+                    if (r.type === 'transport') transport = r;
+                    if (r.type === 'candidate-pair' && r.state === 'succeeded') candidatePair = r;
+                    if (r.type === 'local-candidate' && r.candidateType) {
+                        if (!localCandidate || r.timestamp > localCandidate.timestamp) localCandidate = r;
                     }
-                    if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-                        // Audio bitrate is always low; skip for display
+                    if (r.type === 'remote-candidate' && r.candidateType) {
+                        if (!remoteCandidate || r.timestamp > remoteCandidate.timestamp) remoteCandidate = r;
                     }
                 });
 
-                const parts = [resolution, fps, videoBitrate].filter(Boolean);
-                statsEl.textContent = parts.length > 0 ? parts.join(' · ') : '';
+                if (candidatePair && !localCandidate) {
+                    reports.forEach(function (r) {
+                        if (r.id === candidatePair.localCandidateId) localCandidate = r;
+                        if (r.id === candidatePair.remoteCandidateId) remoteCandidate = r;
+                    });
+                }
+
+                var overlayParts = [];
+                var vBitrate = 0, resolution = '', fps = '';
+
+                if (video) {
+                    var dt = prevVideoStats.timestamp > 0 ? (video.timestamp - prevVideoStats.timestamp) / 1000 : 0;
+                    if (dt > 0) {
+                        vBitrate = ((video.bytesSent - prevVideoStats.bytesSent) * 8 / dt / 1000);
+                    }
+                    resolution = video.frameWidth ? video.frameWidth + 'x' + video.frameHeight : '';
+                    fps = video.framesPerSecond ? video.framesPerSecond + ' fps' : '';
+                    overlayParts = [resolution, fps, vBitrate > 0 ? vBitrate.toFixed(0) + ' kbps' : ''].filter(Boolean);
+                }
+
+                statsEl.textContent = overlayParts.length > 0 ? overlayParts.join(' · ') : '';
+
+                if (!debugVisible) {
+                    if (video) {
+                        prevVideoStats = { bytesSent: video.bytesSent, packetsSent: video.packetsSent || 0, nackCount: video.nackCount || 0, retransmittedBytesSent: video.retransmittedBytesSent || 0, timestamp: video.timestamp, framesEncoded: video.framesEncoded || 0, qpSum: video.qpSum || 0 };
+                    }
+                    if (audio) {
+                        prevAudioStats = { bytesSent: audio.bytesSent, timestamp: audio.timestamp };
+                    }
+                    return;
+                }
+
+                var html = '';
+                var dt = prevVideoStats.timestamp > 0 ? (video ? (video.timestamp - prevVideoStats.timestamp) / 1000 : 0) : 0;
+
+                if (video) {
+                    var nackDelta = (video.nackCount || 0) - prevVideoStats.nackCount;
+                    var retxKB = ((video.retransmittedBytesSent || 0) - prevVideoStats.retransmittedBytesSent) / 1024;
+                    var pktDelta = (video.packetsSent || 0) - prevVideoStats.packetsSent;
+                    var encFrames = dt > 0 ? ((video.framesEncoded || 0) - prevVideoStats.framesEncoded) / dt : 0;
+                    var avgQP = (video.framesEncoded || 0) > prevVideoStats.framesEncoded
+                        ? ((video.qpSum || 0) - prevVideoStats.qpSum) / ((video.framesEncoded || 0) - prevVideoStats.framesEncoded)
+                        : 0;
+
+                    html += '<div class="debug-section">';
+                    html += '<div class="debug-section-title">Video (outbound)</div>';
+                    html += debugRow('Resolution', resolution || '—');
+                    html += debugRow('Frame rate', fps || '—');
+                    html += debugRow('Encode rate', encFrames > 0 ? encFrames.toFixed(1) + ' fps' : '—');
+                    html += debugRow('Bitrate', vBitrate > 0 ? vBitrate.toFixed(0) + ' kbps' : '—', vBitrate < 500 ? 'bad' : vBitrate < 1500 ? 'warn' : 'good');
+                    html += debugRow('Packets sent', pktDelta + ' / interval');
+                    html += debugRow('NACKs received', nackDelta.toString(), nackDelta > 10 ? 'bad' : nackDelta > 3 ? 'warn' : '');
+                    html += debugRow('Retransmitted', retxKB > 0 ? retxKB.toFixed(1) + ' KB' : '0', retxKB > 50 ? 'bad' : retxKB > 10 ? 'warn' : '');
+                    html += debugRow('Avg QP', avgQP > 0 ? avgQP.toFixed(1) : '—', avgQP > 35 ? 'bad' : avgQP > 28 ? 'warn' : '');
+                    html += debugRow('Total sent', (video.bytesSent / 1048576).toFixed(1) + ' MB');
+                    html += debugRow('Codec', video.codecId || '—');
+                    html += '</div>';
+
+                    prevVideoStats = { bytesSent: video.bytesSent, packetsSent: video.packetsSent || 0, nackCount: video.nackCount || 0, retransmittedBytesSent: video.retransmittedBytesSent || 0, timestamp: video.timestamp, framesEncoded: video.framesEncoded || 0, qpSum: video.qpSum || 0 };
+                }
+
+                if (audio) {
+                    var aDt = prevAudioStats.timestamp > 0 ? (audio.timestamp - prevAudioStats.timestamp) / 1000 : 0;
+                    var aBitrate = aDt > 0 ? ((audio.bytesSent - prevAudioStats.bytesSent) * 8 / aDt / 1000) : 0;
+                    html += '<div class="debug-section">';
+                    html += '<div class="debug-section-title">Audio (outbound)</div>';
+                    html += debugRow('Bitrate', aBitrate > 0 ? aBitrate.toFixed(0) + ' kbps' : '—');
+                    html += debugRow('Packets sent', (audio.packetsSent || 0).toString());
+                    html += '</div>';
+                    prevAudioStats = { bytesSent: audio.bytesSent, timestamp: audio.timestamp };
+                }
+
+                if (candidatePair) {
+                    var rtt = candidatePair.currentRoundTripTime;
+                    var rttMs = rtt !== undefined ? (rtt * 1000).toFixed(0) + ' ms' : '—';
+                    var rttClass = rtt > 0.3 ? 'bad' : rtt > 0.1 ? 'warn' : 'good';
+                    var availBw = candidatePair.availableOutgoingBitrate;
+                    html += '<div class="debug-section">';
+                    html += '<div class="debug-section-title">Connection</div>';
+                    html += debugRow('RTT', rttMs, rtt !== undefined ? rttClass : '');
+                    html += debugRow('Available BW', availBw ? (availBw / 1000).toFixed(0) + ' kbps' : '—', availBw && availBw < 1000000 ? 'warn' : '');
+                    html += debugRow('Bytes sent/recv', ((candidatePair.bytesSent || 0) / 1048576).toFixed(1) + ' / ' + ((candidatePair.bytesReceived || 0) / 1048576).toFixed(1) + ' MB');
+                    html += debugRow('Requests sent/recv', (candidatePair.requestsSent || 0) + ' / ' + (candidatePair.responsesReceived || 0));
+                    html += '</div>';
+                }
+
+                if (transport || localCandidate || remoteCandidate) {
+                    html += '<div class="debug-section">';
+                    html += '<div class="debug-section-title">Transport</div>';
+                    if (transport) {
+                        html += debugRow('State', transport.dtlsState || '—');
+                        html += debugRow('ICE state', transport.iceLocalCandidateId ? 'active' : transport.iceState || '—');
+                    }
+                    if (localCandidate) {
+                        html += debugRow('Local', (localCandidate.address || localCandidate.ip || '?') + ':' + (localCandidate.port || '?') + ' ' + (localCandidate.protocol || '') + ' (' + (localCandidate.candidateType || '') + ')');
+                    }
+                    if (remoteCandidate) {
+                        html += debugRow('Remote', (remoteCandidate.address || remoteCandidate.ip || '?') + ':' + (remoteCandidate.port || '?') + ' ' + (remoteCandidate.protocol || '') + ' (' + (remoteCandidate.candidateType || '') + ')');
+                    }
+                    html += '</div>';
+                }
+
+                html += '<div class="debug-section">';
+                html += '<div class="debug-section-title">Peer Connection</div>';
+                html += debugRow('ICE', pc.iceConnectionState || '—', pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed' ? 'good' : 'warn');
+                html += debugRow('Signaling', pc.signalingState || '—');
+                html += debugRow('Connection', pc.connectionState || '—');
+                html += '</div>';
+
+                debugPanelEl.innerHTML = html;
             }, 2000);
+        }
+
+        function debugRow(label, value, cls) {
+            return '<div class="debug-row"><span class="debug-label">' + label + '</span><span class="debug-val' + (cls ? ' ' + cls : '') + '">' + value + '</span></div>';
         }
 
         /* ── Chat ──────────────────────────────────────────────── */

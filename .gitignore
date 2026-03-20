@@ -32,3 +32,5 @@ td.md
 .cursorignore
 ckpt/*
 ckpt/
+old/
+old/*

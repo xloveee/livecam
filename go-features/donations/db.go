@@ -61,17 +61,6 @@ func (d *DB) migrate() error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_donations_stream_key ON donations(stream_key);
 	CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);
-	CREATE TABLE IF NOT EXISTS channel_panels (
-		stream_key TEXT NOT NULL,
-		slot       INTEGER NOT NULL,
-		title      TEXT NOT NULL DEFAULT '',
-		body       TEXT NOT NULL DEFAULT '',
-		image_url  TEXT NOT NULL DEFAULT '',
-		link_url   TEXT NOT NULL DEFAULT '',
-		enabled    INTEGER NOT NULL DEFAULT 1,
-		updated_at INTEGER NOT NULL DEFAULT 0,
-		PRIMARY KEY (stream_key, slot)
-	);
 	`
 	_, err := d.db.Exec(schema)
 	return err
@@ -233,83 +222,4 @@ func (d *DB) GetHistory(streamKey string, limit int) ([]DonationRecord, error) {
 		records = append(records, rec)
 	}
 	return records, rows.Err()
-}
-
-/* ── Channel Panels ──────────────────────────────────────── */
-
-func (d *DB) SavePanel(streamKey string, panel *ChannelPanel) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	enabledInt := 0
-	if panel.Enabled {
-		enabledInt = 1
-	}
-	now := time.Now().Unix()
-
-	_, err := d.db.Exec(`
-		INSERT INTO channel_panels (stream_key, slot, title, body, image_url, link_url, enabled, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(stream_key, slot)
-		DO UPDATE SET title=excluded.title, body=excluded.body, image_url=excluded.image_url,
-		              link_url=excluded.link_url, enabled=excluded.enabled, updated_at=excluded.updated_at`,
-		streamKey, panel.Slot, panel.Title, panel.Body, panel.ImageURL, panel.LinkURL, enabledInt, now)
-	return err
-}
-
-func (d *DB) GetPanels(streamKey string) ([]ChannelPanel, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	rows, err := d.db.Query(
-		`SELECT slot, title, body, image_url, link_url, enabled
-		 FROM channel_panels WHERE stream_key = ? ORDER BY slot ASC`, streamKey)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var panels []ChannelPanel
-	for rows.Next() {
-		var p ChannelPanel
-		var enabled int
-		if err := rows.Scan(&p.Slot, &p.Title, &p.Body, &p.ImageURL, &p.LinkURL, &enabled); err != nil {
-			return nil, err
-		}
-		p.Enabled = enabled != 0
-		panels = append(panels, p)
-	}
-	return panels, rows.Err()
-}
-
-func (d *DB) GetEnabledPanels(streamKey string) ([]ChannelPanel, error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	rows, err := d.db.Query(
-		`SELECT slot, title, body, image_url, link_url, enabled
-		 FROM channel_panels WHERE stream_key = ? AND enabled = 1 ORDER BY slot ASC`, streamKey)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var panels []ChannelPanel
-	for rows.Next() {
-		var p ChannelPanel
-		if err := rows.Scan(&p.Slot, &p.Title, &p.Body, &p.ImageURL, &p.LinkURL, new(int)); err != nil {
-			return nil, err
-		}
-		p.Enabled = true
-		panels = append(panels, p)
-	}
-	return panels, rows.Err()
-}
-
-func (d *DB) DeletePanel(streamKey string, slot int) error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	_, err := d.db.Exec(`DELETE FROM channel_panels WHERE stream_key = ? AND slot = ?`, streamKey, slot)
-	return err
 }

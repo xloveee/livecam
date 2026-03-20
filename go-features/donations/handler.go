@@ -32,6 +32,11 @@ func NewHandler(db *DB, hub *chat.Hub, auth AuthFunc) *Handler {
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if h.db == nil {
+		http.Error(w, "Donations are not available", http.StatusServiceUnavailable)
+		return
+	}
+
 	path := strings.TrimPrefix(r.URL.Path, "/api/donations")
 	path = strings.TrimSuffix(path, "/")
 

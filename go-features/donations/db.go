@@ -32,7 +32,9 @@ func OpenDB(path string) (*DB, error) {
 }
 
 func (d *DB) Close() {
-	d.db.Close()
+	if d != nil && d.db != nil {
+		d.db.Close()
+	}
 }
 
 func (d *DB) migrate() error {

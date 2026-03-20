@@ -47,19 +47,22 @@ func main() {
 
 	donationDBPath := os.Getenv("DONATION_DB_PATH")
 	if donationDBPath == "" {
-		donationDBPath = "./donations.db"
+		donationDBPath = "/opt/livecam/data/donations.db"
 	}
+
+	var donationDB *donations.DB
 	donationDB, err := donations.OpenDB(donationDBPath)
 	if err != nil {
-		log.Fatalf("Failed to open donations database: %v", err)
-	}
-	defer donationDB.Close()
-	log.Printf("Donations database: %s", donationDBPath)
+		log.Printf("WARNING: Donations disabled — could not open database at %s: %v", donationDBPath, err)
+	} else {
+		defer donationDB.Close()
+		log.Printf("Donations database: %s", donationDBPath)
 
-	stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-	if stripeWebhookSecret != "" {
-		donations.SetStripeWebhookSecret(stripeWebhookSecret)
-		log.Printf("Stripe webhook signature verification: enabled")
+		stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+		if stripeWebhookSecret != "" {
+			donations.SetStripeWebhookSecret(stripeWebhookSecret)
+			log.Printf("Stripe webhook signature verification: enabled")
+		}
 	}
 
 	donationHandler := donations.NewHandler(

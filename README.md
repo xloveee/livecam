@@ -2,6 +2,7 @@
 
 Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, browser-based broadcast, simulcast SFU, viewer caps, VOD recording, HLS fallback. Built with Rust (str0m), Go, C99. Run your own livecam or creator stream — no Twitch, no YouTube, no middlemen. AGPLv3.
 
+
 ## Questions this repository answers
 
 - How do I stream without depending on Twitch, YouTube, or other platforms?
@@ -9,6 +10,18 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 - Can I broadcast from my phone or browser without installing an app?
 - Can I use OBS for high-quality desktop streaming and get low-latency viewing?
 - How do I add real-time chat to my own stream with basic moderation?
+
+## URL Model
+
+| Flow | URL |
+|---|---|
+| **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{streamKey}` |
+| **Publish (Browser)** | `https://yourdomain.com/broadcast` |
+| **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` |
+| **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
+| **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
+| **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
+| **Chat (WebSocket)** | `wss://yourdomain.com/api/chat/{roomId}?nick=Name` |
 
 ## Architecture Highlights
 
@@ -203,18 +216,6 @@ Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages
 {"type": "cmd", "text": "/slow 5"}
 ```
 
-## URL Model
-
-| Flow | URL |
-|---|---|
-| **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{streamKey}` |
-| **Publish (Browser)** | `https://yourdomain.com/broadcast` |
-| **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` |
-| **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
-| **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
-| **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
-| **Chat (WebSocket)** | `wss://yourdomain.com/api/chat/{roomId}?nick=Name` |
-
 ## Branch Strategy
 
 | Branch | Features |
@@ -222,3 +223,5 @@ Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages
 | `main` | Stream only (WHIP/WHEP, browser broadcast, viewer page) |
 | `feature/chat` | Stream + real-time chat |
 | `feature/donations` | Stream + chat + donations *(planned)* |
+
+Development sponsored by xlovecam.com, ad hominem is not welcome. 

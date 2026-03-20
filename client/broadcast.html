@@ -74,6 +74,62 @@
             pointer-events: none;
         }
 
+        /* ── Health Indicator ───────────────────────────────── */
+        .health-indicator {
+            display: none;
+            align-items: center;
+            gap: 0.35rem;
+            margin-left: auto;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            background: rgba(255,255,255,0.04);
+            cursor: default;
+            position: relative;
+        }
+        .health-indicator.visible { display: flex; }
+        .health-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #555;
+            flex-shrink: 0;
+        }
+        .health-dot.excellent { background: #4caf50; box-shadow: 0 0 4px rgba(76,175,80,0.5); }
+        .health-dot.good { background: #8bc34a; }
+        .health-dot.fair { background: #ffb300; box-shadow: 0 0 4px rgba(255,179,0,0.4); }
+        .health-dot.poor { background: #ff5722; box-shadow: 0 0 4px rgba(255,87,34,0.5); animation: pulse-health 1.2s infinite; }
+        @keyframes pulse-health {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        .health-label {
+            font-size: 0.68rem;
+            font-weight: 600;
+            color: #888;
+        }
+        .health-detail {
+            font-size: 0.62rem;
+            color: #666;
+            white-space: nowrap;
+        }
+        .health-tooltip {
+            display: none;
+            position: absolute;
+            bottom: calc(100% + 6px);
+            right: 0;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 6px;
+            padding: 0.5rem 0.6rem;
+            font-size: 0.68rem;
+            color: #ccc;
+            white-space: nowrap;
+            z-index: 10;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+            line-height: 1.5;
+        }
+        .health-indicator:hover .health-tooltip { display: block; }
+
         /* ── Controls Bar ────────────────────────────────── */
         .controls-bar {
             width: 100%;
@@ -537,6 +593,12 @@
             <button id="btn-stop">Stop</button>
             <span id="status">Ready</span>
             <span class="viewer-badge" id="viewer-count"></span>
+            <div class="health-indicator" id="health-indicator">
+                <span class="health-dot" id="health-dot"></span>
+                <span class="health-label" id="health-label"></span>
+                <span class="health-detail" id="health-detail"></span>
+                <div class="health-tooltip" id="health-tooltip"></div>
+            </div>
         </div>
 
         <div class="settings-toggle" id="settings-toggle" onclick="toggleSettings()">
@@ -991,44 +1053,136 @@
             btnStop.style.display = 'none';
             statsEl.textContent = '';
             viewerCountEl.textContent = '';
+            healthIndicator.classList.remove('visible');
         }
+
+        var healthIndicator = document.getElementById('health-indicator');
+        var healthDot = document.getElementById('health-dot');
+        var healthLabel = document.getElementById('health-label');
+        var healthDetail = document.getElementById('health-detail');
+        var healthTooltip = document.getElementById('health-tooltip');
+        var prevVideoBytes = 0;
+        var prevVideoTimestamp = 0;
+        var prevPacketsSent = 0;
+        var prevNackCount = 0;
 
         function startStats() {
             if (statsInterval) clearInterval(statsInterval);
-            let prevBytesSent = 0;
-            let prevTimestamp = 0;
+            prevVideoBytes = 0;
+            prevVideoTimestamp = 0;
+            prevPacketsSent = 0;
+            prevNackCount = 0;
+            healthIndicator.classList.add('visible');
+
             statsInterval = setInterval(async () => {
                 if (!pc) return;
-                const stats = await pc.getStats();
-                let videoBitrate = '';
-                let audioBitrate = '';
-                let resolution = '';
-                let fps = '';
+                var stats;
+                try { stats = await pc.getStats(); } catch (e) { return; }
 
-                stats.forEach(report => {
+                var resolution = '';
+                var fps = 0;
+                var bitrateKbps = 0;
+                var rttMs = 0;
+                var packetLossPct = 0;
+                var qualityLimit = '';
+                var nackRate = 0;
+
+                stats.forEach(function (report) {
                     if (report.type === 'outbound-rtp' && report.kind === 'video') {
-                        if (prevTimestamp > 0) {
-                            const dt = (report.timestamp - prevTimestamp) / 1000;
-                            const db = (report.bytesSent - prevBytesSent) * 8;
-                            videoBitrate = (db / dt / 1000).toFixed(0) + ' kbps';
+                        if (prevVideoTimestamp > 0) {
+                            var dt = (report.timestamp - prevVideoTimestamp) / 1000;
+                            if (dt > 0) {
+                                bitrateKbps = ((report.bytesSent - prevVideoBytes) * 8) / dt / 1000;
+                            }
+                            var sentDelta = (report.packetsSent || 0) - prevPacketsSent;
+                            var nackDelta = (report.nackCount || 0) - prevNackCount;
+                            if (sentDelta > 0) {
+                                nackRate = nackDelta / sentDelta;
+                            }
                         }
-                        prevBytesSent = report.bytesSent;
-                        prevTimestamp = report.timestamp;
-                        if (report.frameWidth) {
-                            resolution = report.frameWidth + 'x' + report.frameHeight;
-                        }
-                        if (report.framesPerSecond) {
-                            fps = report.framesPerSecond + ' fps';
+                        prevVideoBytes = report.bytesSent;
+                        prevVideoTimestamp = report.timestamp;
+                        prevPacketsSent = report.packetsSent || 0;
+                        prevNackCount = report.nackCount || 0;
+
+                        if (report.frameWidth) resolution = report.frameWidth + 'x' + report.frameHeight;
+                        fps = report.framesPerSecond || 0;
+                        qualityLimit = report.qualityLimitationReason || 'none';
+                    }
+
+                    if (report.type === 'remote-inbound-rtp' && report.kind === 'video') {
+                        rttMs = (report.roundTripTime || 0) * 1000;
+                        if (typeof report.fractionLost === 'number') {
+                            packetLossPct = report.fractionLost * 100;
                         }
                     }
-                    if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-                        // Audio bitrate is always low; skip for display
+
+                    if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+                        if (report.currentRoundTripTime) {
+                            rttMs = report.currentRoundTripTime * 1000;
+                        }
                     }
                 });
 
-                const parts = [resolution, fps, videoBitrate].filter(Boolean);
-                statsEl.textContent = parts.length > 0 ? parts.join(' · ') : '';
+                var score = computeHealthScore(bitrateKbps, fps, rttMs, packetLossPct, nackRate, qualityLimit);
+                updateHealthUI(score, bitrateKbps, fps, rttMs, packetLossPct, qualityLimit, resolution);
+
+                var overlayParts = [resolution, fps ? fps.toFixed(0) + ' fps' : '', bitrateKbps ? bitrateKbps.toFixed(0) + ' kbps' : ''].filter(Boolean);
+                statsEl.textContent = overlayParts.length > 0 ? overlayParts.join(' · ') : '';
             }, 2000);
+        }
+
+        function computeHealthScore(bitrateKbps, fps, rttMs, lossPercent, nackRate, qualityLimit) {
+            var score = 100;
+
+            if (bitrateKbps < 500) score -= 30;
+            else if (bitrateKbps < 1000) score -= 15;
+            else if (bitrateKbps < 1500) score -= 5;
+
+            if (fps < 10) score -= 30;
+            else if (fps < 20) score -= 15;
+            else if (fps < 25) score -= 5;
+
+            if (rttMs > 300) score -= 25;
+            else if (rttMs > 150) score -= 12;
+            else if (rttMs > 80) score -= 5;
+
+            if (lossPercent > 5) score -= 25;
+            else if (lossPercent > 2) score -= 12;
+            else if (lossPercent > 0.5) score -= 5;
+
+            if (nackRate > 0.05) score -= 10;
+
+            if (qualityLimit === 'bandwidth') score -= 10;
+            else if (qualityLimit === 'cpu') score -= 15;
+
+            return Math.max(0, Math.min(100, score));
+        }
+
+        function updateHealthUI(score, bitrateKbps, fps, rttMs, lossPct, qualityLimit, resolution) {
+            var level, label;
+            if (score >= 80) { level = 'excellent'; label = 'Excellent'; }
+            else if (score >= 60) { level = 'good'; label = 'Good'; }
+            else if (score >= 35) { level = 'fair'; label = 'Unstable'; }
+            else { level = 'poor'; label = 'Poor'; }
+
+            healthDot.className = 'health-dot ' + level;
+            healthLabel.textContent = label;
+            healthLabel.style.color = level === 'excellent' ? '#4caf50' : level === 'good' ? '#8bc34a' : level === 'fair' ? '#ffb300' : '#ff5722';
+
+            healthDetail.textContent = bitrateKbps ? bitrateKbps.toFixed(0) + ' kbps' : '';
+
+            var lines = [];
+            lines.push('Bitrate: ' + (bitrateKbps ? bitrateKbps.toFixed(0) + ' kbps' : '—'));
+            lines.push('Framerate: ' + (fps ? fps.toFixed(0) + ' fps' : '—'));
+            lines.push('Resolution: ' + (resolution || '—'));
+            lines.push('RTT: ' + (rttMs ? rttMs.toFixed(0) + ' ms' : '—'));
+            lines.push('Packet loss: ' + (lossPct > 0 ? lossPct.toFixed(1) + '%' : '0%'));
+            if (qualityLimit && qualityLimit !== 'none') {
+                lines.push('Limited by: ' + qualityLimit);
+            }
+            lines.push('Score: ' + score + '/100');
+            healthTooltip.innerHTML = lines.join('<br>');
         }
 
         /* ── Chat ──────────────────────────────────────────────── */

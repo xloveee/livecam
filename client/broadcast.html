@@ -970,6 +970,9 @@
             }
         }
 
+        var broadcastIceTimer = null;
+        var broadcastDidInit = false;
+
         btnStart.onclick = async function () {
             var streamKey = authenticatedKey;
             if (!streamKey) {
@@ -998,23 +1001,47 @@
                 pc.addTrack(track, localStream);
             });
 
+            broadcastIceTimer = null;
+            broadcastDidInit = false;
+
             pc.oniceconnectionstatechange = () => {
                 const state = pc.iceConnectionState;
                 if (state === 'connected' || state === 'completed') {
-                    statusEl.textContent = 'Live';
-                    statusEl.classList.add('connected');
+                    if (broadcastIceTimer) { clearTimeout(broadcastIceTimer); broadcastIceTimer = null; }
                     statusEl.classList.remove('error');
-                    liveBadge.classList.add('visible');
-                    startStats();
-                    activeStreamKey = streamKey;
-                    setViewerLimit(streamKey, maxViewersInput.value);
-                    setRoomPassword(streamKey, roomPasswordInput.value.trim());
-                    pollViewerCount();
-                    viewerPollInterval = setInterval(pollViewerCount, 3000);
-                } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+                    if (!broadcastDidInit) {
+                        broadcastDidInit = true;
+                        statusEl.textContent = 'Live';
+                        statusEl.classList.add('connected');
+                        liveBadge.classList.add('visible');
+                        startStats();
+                        activeStreamKey = streamKey;
+                        setViewerLimit(streamKey, maxViewersInput.value);
+                        setRoomPassword(streamKey, roomPasswordInput.value.trim());
+                        pollViewerCount();
+                        viewerPollInterval = setInterval(pollViewerCount, 3000);
+                    } else {
+                        statusEl.textContent = 'Live';
+                        statusEl.classList.add('connected');
+                    }
+                } else if (state === 'failed' || state === 'closed') {
+                    if (broadcastIceTimer) { clearTimeout(broadcastIceTimer); broadcastIceTimer = null; }
                     stopBroadcast();
                     statusEl.textContent = 'Disconnected';
                     statusEl.classList.add('error');
+                } else if (state === 'disconnected') {
+                    statusEl.textContent = 'Reconnecting...';
+                    statusEl.classList.remove('connected');
+                    if (!broadcastIceTimer) {
+                        broadcastIceTimer = setTimeout(function () {
+                            broadcastIceTimer = null;
+                            if (pc && pc.iceConnectionState === 'disconnected') {
+                                stopBroadcast();
+                                statusEl.textContent = 'Disconnected';
+                                statusEl.classList.add('error');
+                            }
+                        }, 6000);
+                    }
                 }
             };
 
@@ -1054,6 +1081,7 @@
         };
 
         function stopBroadcast() {
+            if (broadcastIceTimer) { clearTimeout(broadcastIceTimer); broadcastIceTimer = null; }
             if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
             if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
             if (pc) { pc.close(); pc = null; }

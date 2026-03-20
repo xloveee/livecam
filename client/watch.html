@@ -581,7 +581,6 @@
         let sessionId = null;
         let roomPassword = '';
         let pc = null;
-        let audioElement = null;
         let mediaWatchdogInterval = null;
         let pollInterval = null;
         let lastBytesReceived = 0;
@@ -819,11 +818,6 @@
             }
             video.srcObject = null;
             video.style.aspectRatio = '';
-            if (audioElement) {
-                audioElement.srcObject = null;
-                audioElement.remove();
-                audioElement = null;
-            }
             sessionId = null;
             lastBytesReceived = 0;
             stallCount = 0;
@@ -836,6 +830,7 @@
             stallCount = 0;
             mediaWatchdogInterval = setInterval(async function () {
                 if (!pc) return;
+                if (document.hidden) { stallCount = 0; return; }
                 try {
                     var stats = await pc.getStats();
                     var totalBytes = 0;
@@ -849,13 +844,13 @@
                         stallCount = 0;
                     } else {
                         stallCount++;
-                        if (stallCount >= 5) {
+                        if (stallCount >= 8) {
                             teardownConnection();
                             setState('offline');
                         }
                     }
                 } catch (e) { /* pc may have closed mid-check */ }
-            }, 1000);
+            }, 1500);
         }
 
         var iceDisconnectTimer = null;
@@ -899,31 +894,23 @@
                 iceServers: config.iceServers || []
             });
 
+            var combinedStream = new MediaStream();
+
             pc.ontrack = function (event) {
                 var track = event.track;
-                if (track.kind === 'video') {
-                    video.srcObject = new MediaStream([track]);
+                if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
+                    event.receiver.jitterBufferTarget = 150;
+                }
+                combinedStream.getTrackById(track.id) || combinedStream.addTrack(track);
+                track.onended = function () {
+                    combinedStream.removeTrack(track);
+                };
+                if (track.kind === 'video' && video.srcObject !== combinedStream) {
+                    video.srcObject = combinedStream;
                     video.play().catch(function () {
                         video.muted = true;
                         video.play().catch(function () {});
                     });
-                    if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
-                        event.receiver.jitterBufferTarget = 0.15;
-                    }
-                } else if (track.kind === 'audio') {
-                    if (audioElement) {
-                        audioElement.srcObject = null;
-                        audioElement.remove();
-                    }
-                    audioElement = document.createElement('audio');
-                    audioElement.autoplay = true;
-                    audioElement.style.display = 'none';
-                    document.body.appendChild(audioElement);
-                    audioElement.srcObject = new MediaStream([track]);
-                    audioElement.play().catch(function () {});
-                    if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
-                        event.receiver.jitterBufferTarget = 0.15;
-                    }
                 }
             };
 

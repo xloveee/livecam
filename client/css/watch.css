@@ -1,0 +1,452 @@
+/* watch.css — viewer page styles */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    height: 100%;
+    overflow-x: hidden;
+}
+body {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: row;
+    min-height: 100vh;
+    min-height: 100dvh;
+}
+
+/* ── Stream Column ──────────────────────────── */
+
+main.stream-column {
+    flex: 1;
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+.stream-header {
+    width: 100%;
+    max-width: 960px;
+    flex-shrink: 0;
+    margin-bottom: 0.5rem;
+}
+.stream-header h1 {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #fff;
+}
+.stream-header h1 a {
+    color: #1e88e5;
+    text-decoration: none;
+}
+.stream-header h1 a:hover { text-decoration: underline; }
+
+/* ── Video Player ───────────────────────────── */
+
+video {
+    width: 100%;
+    max-width: 960px;
+    flex-shrink: 0;
+    max-height: 65vh;
+    background: #000;
+    aspect-ratio: 16/9;
+    border-radius: 4px;
+    object-fit: contain;
+}
+
+/* ── Stream Controls ────────────────────────── */
+
+.stream-controls {
+    width: 100%;
+    max-width: 960px;
+    margin-top: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-shrink: 0;
+}
+select {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 0.5rem 0.8rem;
+    font-size: 0.9rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+select:disabled { opacity: 0.4; cursor: default; }
+button {
+    background: #d32f2f;
+    color: #fff;
+    border: none;
+    padding: 0.6rem 1.6rem;
+    font-size: 0.95rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+button:hover { background: #b71c1c; }
+button:disabled { background: #555; cursor: default; }
+#status {
+    font-size: 0.85rem;
+    color: #aaa;
+}
+.error { color: #ef5350; }
+.viewer-count {
+    font-size: 0.8rem;
+    color: #666;
+    margin-top: 0.4rem;
+    flex-shrink: 0;
+    width: 100%;
+    max-width: 960px;
+}
+
+/* ── Offline Banner ─────────────────────────── */
+
+#offline-banner {
+    display: none;
+    margin-top: 0.8rem;
+    text-align: center;
+    color: #888;
+    font-size: 0.9rem;
+    flex-shrink: 0;
+}
+#offline-banner .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: #555;
+    margin-right: 0.5rem;
+    vertical-align: middle;
+}
+#offline-banner.live .dot { background: #d32f2f; }
+
+/* ── Password Prompt ────────────────────────── */
+
+#password-prompt {
+    display: none;
+    margin-top: 0.8rem;
+    text-align: center;
+    flex-shrink: 0;
+}
+#password-prompt input {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 0.5rem 0.8rem;
+    font-size: 16px;
+    border-radius: 4px;
+    width: 220px;
+    margin-right: 0.5rem;
+}
+#password-prompt button {
+    padding: 0.5rem 1.2rem;
+    font-size: 0.9rem;
+}
+#password-error {
+    color: #ef5350;
+    font-size: 0.85rem;
+    margin-top: 0.4rem;
+}
+
+/* ── Below-Stream Panels ────────────────────── */
+
+.panels-section {
+    width: 100%;
+    max-width: 960px;
+    padding: 0.8rem 0 0;
+    flex-shrink: 0;
+}
+.panel-card {
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.5rem;
+}
+.panel-donate {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(135deg, #111 0%, #151210 100%);
+    border-color: #2a2000;
+}
+.panel-donate-body h3 {
+    font-size: 0.88rem;
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+}
+.panel-donate-body p {
+    font-size: 0.72rem;
+    color: #888;
+    line-height: 1.4;
+}
+.btn-donate {
+    background: #ffb300;
+    color: #000;
+    font-weight: 700;
+    padding: 0.5rem 1.2rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.btn-donate:hover { background: #ffa000; }
+
+.panel-about {
+    color: #999;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.panel-about h3 {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 0.3rem;
+}
+
+/* ── Chat Panel ─────────────────────────────── */
+
+.chat-panel {
+    width: 340px;
+    min-width: 340px;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #1a1a1a;
+    background: #0d0d0d;
+}
+.chat-header {
+    padding: 0.8rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.chat-status {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #666;
+}
+.chat-status.connected { color: #4caf50; }
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+    -webkit-overflow-scrolling: touch;
+}
+.chat-msg {
+    font-size: 0.82rem;
+    line-height: 1.4;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    word-break: break-word;
+}
+.chat-msg:hover { background: rgba(255,255,255,0.03); }
+.chat-msg .nick { font-weight: 600; margin-right: 0.3rem; }
+.chat-msg .nick.broadcaster { color: #d32f2f; }
+.chat-msg .nick.mod { color: #5e35b1; }
+.chat-msg .nick.viewer { color: #1e88e5; }
+.chat-msg.system {
+    color: #666;
+    font-style: italic;
+    font-size: 0.78rem;
+}
+.chat-input-area {
+    border-top: 1px solid #1a1a1a;
+    padding: 0.6rem;
+    position: relative;
+}
+.chat-input-area input {
+    flex: 1;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    padding: 0.5rem 0.6rem;
+    font-size: 16px;
+    border-radius: 4px;
+    outline: none;
+}
+.chat-input-area input:focus { border-color: #d32f2f; }
+.chat-input-area button {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+.chat-guest-bar {
+    display: flex;
+    gap: 0.4rem;
+    cursor: pointer;
+}
+.chat-guest-bar input { pointer-events: none; opacity: 0.4; }
+.chat-guest-bar button { opacity: 0.4; pointer-events: none; }
+.chat-nick-prompt {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: #151515;
+    border: 1px solid #2a2a2a;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 0.7rem 0.6rem;
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+}
+.chat-nick-prompt.visible { display: flex; }
+.chat-nick-prompt label { font-size: 0.78rem; color: #aaa; font-weight: 600; }
+.chat-nick-prompt .nick-row { display: flex; gap: 0.4rem; }
+.chat-nick-prompt button { background: #1e88e5; font-weight: 600; }
+.chat-nick-prompt button:hover { background: #1565c0; }
+.chat-nick-prompt .nick-error { font-size: 0.72rem; color: #ef5350; min-height: 0; }
+.chat-nick-prompt .nick-hint { font-size: 0.68rem; color: #555; }
+.chat-send { display: flex; gap: 0.4rem; }
+.chat-nick-badge { font-size: 0.72rem; color: #555; padding: 0 0.2rem 0.2rem; }
+.chat-nick-badge span { color: #1e88e5; font-weight: 600; }
+
+/* ── Donation Chat Messages ─────────────────── */
+
+.chat-msg.donation {
+    background: linear-gradient(135deg, rgba(255,179,0,0.12), rgba(255,152,0,0.06));
+    border-left: 3px solid #ffb300;
+    padding: 0.35rem 0.5rem;
+    margin: 0.15rem 0;
+    border-radius: 4px;
+}
+.chat-msg.donation.tier-2 {
+    background: linear-gradient(135deg, rgba(66,165,245,0.15), rgba(33,150,243,0.08));
+    border-left-color: #42a5f5;
+}
+.chat-msg.donation.tier-3 {
+    background: linear-gradient(135deg, rgba(255,179,0,0.2), rgba(255,152,0,0.12));
+    border-left-color: #ffb300;
+}
+.chat-msg.donation.tier-4 {
+    background: linear-gradient(135deg, rgba(255,87,34,0.2), rgba(244,67,54,0.12));
+    border-left-color: #ff5722;
+}
+.chat-msg.donation.tier-5 {
+    background: linear-gradient(135deg, rgba(233,30,99,0.2), rgba(156,39,176,0.12));
+    border-left-color: #e91e63;
+    font-size: 0.9rem;
+}
+.chat-msg.donation .donation-amount {
+    display: inline-block;
+    background: #ffb300;
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 0.3rem;
+}
+.chat-msg.donation.tier-2 .donation-amount { background: #42a5f5; color: #fff; }
+.chat-msg.donation.tier-3 .donation-amount { background: #ffb300; }
+.chat-msg.donation.tier-4 .donation-amount { background: #ff5722; color: #fff; }
+.chat-msg.donation.tier-5 .donation-amount { background: #e91e63; color: #fff; font-size: 0.8rem; padding: 2px 7px; }
+.chat-msg.donation .donation-text {
+    display: block;
+    margin-top: 0.15rem;
+    color: #fff;
+}
+
+/* ── Donate Modal ───────────────────────────── */
+
+.donate-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0,0,0,0.75);
+    align-items: center;
+    justify-content: center;
+}
+.donate-modal-overlay.visible { display: flex; }
+.donate-modal {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1.2rem;
+    max-width: 360px;
+    width: 90%;
+}
+.donate-modal h3 {
+    font-size: 0.95rem;
+    color: #fff;
+    margin-bottom: 0.8rem;
+}
+.donate-modal label {
+    font-size: 0.75rem;
+    color: #888;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+.donate-modal select,
+.donate-modal input {
+    width: 100%;
+    margin-bottom: 0.6rem;
+    background: #111;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    padding: 0.5rem 0.6rem;
+    font-size: 16px;
+    border-radius: 4px;
+}
+.donate-modal .donate-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+.donate-modal .donate-actions button { flex: 1; padding: 0.5rem; font-size: 0.85rem; }
+.donate-modal .donate-cancel { background: #333; }
+.donate-modal .donate-cancel:hover { background: #444; }
+.donate-modal .donate-submit { background: #ffb300; color: #000; font-weight: 700; }
+.donate-modal .donate-submit:hover { background: #ffa000; }
+.donate-modal .donate-error { font-size: 0.75rem; color: #ef5350; min-height: 1rem; }
+.donate-modal .donate-hint { font-size: 0.72rem; color: #888; margin-bottom: 0.5rem; }
+.donate-methods { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.donate-methods button { padding: 0.3rem 0.6rem; font-size: 0.72rem; background: #282828; border-radius: 4px; }
+.donate-methods button:hover { background: #333; }
+.donate-methods button.active { background: #ffb300; color: #000; }
+
+/* ── Mobile: stack vertically ───────────────── */
+
+@media (max-width: 900px) {
+    body { flex-direction: column; overflow-y: auto; }
+    main.stream-column { padding: 0.6rem; flex: none; overflow-y: visible; }
+    .stream-header h1 { font-size: 1rem; margin-bottom: 0.4rem; }
+    video { max-height: 40vh; }
+    .panels-section { padding: 0.5rem 0 0; }
+    .chat-panel {
+        width: 100%;
+        min-width: 0;
+        flex: 1 1 0;
+        min-height: 240px;
+        border-left: none;
+        border-top: 1px solid #1a1a1a;
+    }
+}
+
+@media (max-width: 480px) {
+    .panel-donate { flex-direction: column; align-items: stretch; text-align: center; }
+    .btn-donate { width: 100%; }
+}

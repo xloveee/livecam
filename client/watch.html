@@ -802,6 +802,7 @@
         function teardownConnection() {
             clearPollTimer();
             if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+            if (iceDisconnectTimer) { clearTimeout(iceDisconnectTimer); iceDisconnectTimer = null; }
             if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
             if (pc) {
                 if (sessionId && roomId) {
@@ -830,6 +831,7 @@
         }
 
         function startMediaWatchdog() {
+            if (mediaWatchdogInterval) return;
             lastBytesReceived = 0;
             stallCount = 0;
             mediaWatchdogInterval = setInterval(async function () {
@@ -856,17 +858,31 @@
             }, 1000);
         }
 
+        var iceDisconnectTimer = null;
+
         function onPeerStateChange() {
             if (!pc) return;
             var s = pc.iceConnectionState;
             if (s === 'connected' || s === 'completed') {
+                if (iceDisconnectTimer) { clearTimeout(iceDisconnectTimer); iceDisconnectTimer = null; }
                 if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
                 setState('live');
                 checkRoomAlive();
                 startMediaWatchdog();
-            } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+            } else if (s === 'failed' || s === 'closed') {
+                if (iceDisconnectTimer) { clearTimeout(iceDisconnectTimer); iceDisconnectTimer = null; }
                 teardownConnection();
                 setState('offline');
+            } else if (s === 'disconnected') {
+                if (!iceDisconnectTimer) {
+                    iceDisconnectTimer = setTimeout(function () {
+                        iceDisconnectTimer = null;
+                        if (pc && pc.iceConnectionState === 'disconnected') {
+                            teardownConnection();
+                            setState('offline');
+                        }
+                    }, 4000);
+                }
             }
         }
 
@@ -1137,12 +1153,12 @@
             if (chatNick) {
                 chatGuestBar.style.display = 'none';
                 chatSendEl.style.display = '';
-                chatConnect(chatNick);
+                if (!chatConnected && !chatWs) chatConnect(chatNick);
             } else {
                 chatGuestBar.style.display = '';
                 chatGuestBar.style.pointerEvents = '';
                 chatGuestBar.style.opacity = '';
-                chatConnectGuest();
+                if (!chatConnected && !chatWs) chatConnectGuest();
             }
         }
 

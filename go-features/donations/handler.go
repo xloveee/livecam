@@ -55,6 +55,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConfirm(w, r, donationID)
 	case path == "/history" || path == "/history/":
 		h.handleHistory(w, r)
+	case path == "/panels" || path == "/panels/":
+		h.handlePanelsSetup(w, r)
+	case strings.HasPrefix(path, "/panels/"):
+		roomID := strings.TrimPrefix(path, "/panels/")
+		h.handlePanelsPublic(w, r, roomID)
 	default:
 		http.NotFound(w, r)
 	}
@@ -383,6 +388,100 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(records)
+}
+
+/* ── Channel Panels (broadcaster CRUD) ───────────────────── */
+
+func (h *Handler) handlePanelsSetup(w http.ResponseWriter, r *http.Request) {
+	streamKey, ok := h.auth(w, r)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		panels, err := h.db.GetPanels(streamKey)
+		if err != nil {
+			log.Printf("[donations] panels get error: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		if panels == nil {
+			panels = []ChannelPanel{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(panels)
+
+	case http.MethodPost:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		var panel ChannelPanel
+		if err := json.Unmarshal(body, &panel); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		if panel.Slot < 0 || panel.Slot > 9 {
+			http.Error(w, "Slot must be 0-9", http.StatusBadRequest)
+			return
+		}
+		if err := h.db.SavePanel(streamKey, &panel); err != nil {
+			log.Printf("[donations] panel save error: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	case http.MethodDelete:
+		slotStr := r.URL.Query().Get("slot")
+		if slotStr == "" {
+			http.Error(w, "Missing slot parameter", http.StatusBadRequest)
+			return
+		}
+		slot := 0
+		for _, c := range slotStr {
+			if c < '0' || c > '9' {
+				http.Error(w, "Invalid slot", http.StatusBadRequest)
+				return
+			}
+			slot = slot*10 + int(c-'0')
+		}
+		if err := h.db.DeletePanel(streamKey, slot); err != nil {
+			log.Printf("[donations] panel delete error: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (h *Handler) handlePanelsPublic(w http.ResponseWriter, r *http.Request, roomID string) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if roomID == "" {
+		http.Error(w, "Missing room ID", http.StatusBadRequest)
+		return
+	}
+	panels, err := h.db.GetEnabledPanels(roomID)
+	if err != nil {
+		log.Printf("[donations] panels public error: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if panels == nil {
+		panels = []ChannelPanel{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(panels)
 }
 
 /* ── Chat broadcast ──────────────────────────────────────── */

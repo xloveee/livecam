@@ -281,6 +281,68 @@
             font-weight: 600;
         }
 
+        /* ── Panel Editor Card ──────────────────────────────── */
+        .panel-editor {
+            background: #141414;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 0.6rem;
+            margin-bottom: 0.5rem;
+        }
+        .panel-editor-header {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.35rem;
+        }
+        .panel-editor-header input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            accent-color: #d32f2f;
+        }
+        .panel-editor-header span {
+            font-size: 0.72rem;
+            font-weight: 600;
+            color: #888;
+        }
+        .panel-editor-header .panel-delete {
+            margin-left: auto;
+            background: transparent;
+            border: none;
+            color: #555;
+            font-size: 0.9rem;
+            cursor: pointer;
+            padding: 0 0.3rem;
+            line-height: 1;
+        }
+        .panel-editor-header .panel-delete:hover { color: #ef5350; }
+        .panel-editor-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .panel-editor-fields input,
+        .panel-editor-fields textarea {
+            font-size: 14px;
+            padding: 0.35rem 0.45rem;
+        }
+        .panel-editor-fields textarea {
+            resize: vertical;
+            min-height: 2.5rem;
+            max-height: 8rem;
+            font-family: inherit;
+            background: #141414;
+            color: #e0e0e0;
+            border: 1px solid #282828;
+            border-radius: 4px;
+            width: 100%;
+        }
+        .panel-editor-fields textarea:focus {
+            outline: none;
+            border-color: #d32f2f;
+        }
+
         /* ── Provider Card ──────────────────────────────────── */
         .provider-card {
             background: #141414;
@@ -559,6 +621,9 @@
                     <button class="settings-tab" onclick="switchSettingsTab('room', this)">
                         <span class="settings-tab-icon">&#9711;</span>Room
                     </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('channel', this)">
+                        <span class="settings-tab-icon">&#9783;</span>Channel
+                    </button>
                     <button class="settings-tab" onclick="switchSettingsTab('donations', this)">
                         <span class="settings-tab-icon">&#9733;</span>Donations
                     </button>
@@ -608,9 +673,17 @@
                         </div>
                     </div>
 
+                    <div class="settings-page" id="settings-channel">
+                        <div class="settings-page-title">Below-Stream Panels</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Configure panels that appear below the video for viewers. Use them for about info, sponsors, social links, or banners. Panels work regardless of how you stream (browser, OBS, etc.).</div>
+                        <div id="channel-panel-list"></div>
+                        <button type="button" id="btn-add-panel" style="margin-top:0.4rem;background:#1e1e1e;color:#aaa;padding:0.4rem 0.8rem;font-size:0.75rem;border:1px solid #333;border-radius:4px;cursor:pointer;width:100%;">+ Add Panel</button>
+                        <div class="row-info" id="panel-status"></div>
+                    </div>
+
                     <div class="settings-page" id="settings-donations">
                         <div class="settings-page-title">Payment Providers</div>
-                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Enable at least one provider below. Viewers will see a <strong style="color:#ffb300;">Donate</strong> button in chat and can choose from your enabled methods. Payments are processed externally — donations appear highlighted in the live chat.</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Enable at least one provider below. Viewers will see a <strong style="color:#ffb300;">Donate</strong> button below the stream. Payments are processed externally — donations appear highlighted in the live chat.</div>
 
                         <div class="provider-card">
                             <div class="provider-card-header">
@@ -1334,6 +1407,147 @@
         });
 
         loadDonationConfig();
+
+        /* ── Channel Panels ────────────────────────────────────── */
+
+        var panelListEl = document.getElementById('channel-panel-list');
+        var panelStatusEl = document.getElementById('panel-status');
+        var btnAddPanel = document.getElementById('btn-add-panel');
+        var channelPanels = [];
+
+        function loadChannelPanels() {
+            fetch('/api/donations/panels', { method: 'GET' })
+                .then(function (r) {
+                    if (r.status === 503 || r.status === 401) return null;
+                    return r.ok ? r.json() : [];
+                })
+                .then(function (panels) {
+                    if (!panels) return;
+                    channelPanels = panels;
+                    renderPanelEditors();
+                })
+                .catch(function () {});
+        }
+
+        function renderPanelEditors() {
+            panelListEl.innerHTML = '';
+            channelPanels.forEach(function (p, i) {
+                panelListEl.appendChild(createPanelEditor(p, i));
+            });
+        }
+
+        function createPanelEditor(panel, index) {
+            var card = document.createElement('div');
+            card.className = 'panel-editor';
+
+            var header = document.createElement('div');
+            header.className = 'panel-editor-header';
+
+            var cb = document.createElement('input');
+            cb.type = 'checkbox';
+            cb.checked = panel.enabled;
+            cb.onchange = function () { panel.enabled = cb.checked; savePanelDebounced(panel); };
+            header.appendChild(cb);
+
+            var label = document.createElement('span');
+            label.textContent = 'Panel ' + (panel.slot + 1);
+            header.appendChild(label);
+
+            var del = document.createElement('button');
+            del.className = 'panel-delete';
+            del.innerHTML = '&#215;';
+            del.title = 'Remove panel';
+            del.onclick = function () { deletePanel(panel.slot, index); };
+            header.appendChild(del);
+
+            card.appendChild(header);
+
+            var fields = document.createElement('div');
+            fields.className = 'panel-editor-fields';
+
+            var titleInput = document.createElement('input');
+            titleInput.type = 'text';
+            titleInput.placeholder = 'Panel title (e.g. About, Sponsors)';
+            titleInput.value = panel.title || '';
+            titleInput.oninput = function () { panel.title = titleInput.value; savePanelDebounced(panel); };
+            fields.appendChild(titleInput);
+
+            var bodyInput = document.createElement('textarea');
+            bodyInput.placeholder = 'Description or text content (supports URLs)';
+            bodyInput.value = panel.body || '';
+            bodyInput.oninput = function () { panel.body = bodyInput.value; savePanelDebounced(panel); };
+            fields.appendChild(bodyInput);
+
+            var imgInput = document.createElement('input');
+            imgInput.type = 'text';
+            imgInput.placeholder = 'Banner image URL (optional)';
+            imgInput.value = panel.image_url || '';
+            imgInput.oninput = function () { panel.image_url = imgInput.value; savePanelDebounced(panel); };
+            fields.appendChild(imgInput);
+
+            var linkInput = document.createElement('input');
+            linkInput.type = 'text';
+            linkInput.placeholder = 'Click-through link URL (optional)';
+            linkInput.value = panel.link_url || '';
+            linkInput.oninput = function () { panel.link_url = linkInput.value; savePanelDebounced(panel); };
+            fields.appendChild(linkInput);
+
+            card.appendChild(fields);
+            return card;
+        }
+
+        var panelSaveTimers = {};
+        function savePanelDebounced(panel) {
+            clearTimeout(panelSaveTimers[panel.slot]);
+            panelSaveTimers[panel.slot] = setTimeout(function () { savePanel(panel); }, 500);
+        }
+
+        function savePanel(panel) {
+            fetch('/api/donations/panels', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(panel)
+            })
+            .then(function (r) {
+                panelStatusEl.style.color = r.ok ? '#4caf50' : '#ef5350';
+                panelStatusEl.textContent = r.ok ? 'Saved' : 'Save failed';
+                setTimeout(function () { panelStatusEl.textContent = ''; panelStatusEl.style.color = ''; }, 2000);
+            })
+            .catch(function () {
+                panelStatusEl.style.color = '#ef5350';
+                panelStatusEl.textContent = 'Network error';
+            });
+        }
+
+        function deletePanel(slot, index) {
+            fetch('/api/donations/panels?slot=' + slot, { method: 'DELETE' })
+                .then(function (r) {
+                    if (r.ok) {
+                        channelPanels.splice(index, 1);
+                        renderPanelEditors();
+                    }
+                })
+                .catch(function () {});
+        }
+
+        btnAddPanel.onclick = function () {
+            var nextSlot = 0;
+            channelPanels.forEach(function (p) {
+                if (p.slot >= nextSlot) nextSlot = p.slot + 1;
+            });
+            if (nextSlot > 9) {
+                panelStatusEl.style.color = '#ef5350';
+                panelStatusEl.textContent = 'Maximum 10 panels';
+                setTimeout(function () { panelStatusEl.textContent = ''; panelStatusEl.style.color = ''; }, 2000);
+                return;
+            }
+            var panel = { slot: nextSlot, title: '', body: '', image_url: '', link_url: '', enabled: true };
+            channelPanels.push(panel);
+            renderPanelEditors();
+            savePanel(panel);
+        };
+
+        loadChannelPanels();
 
         /* ── Donation History ─────────────────────────────────── */
 

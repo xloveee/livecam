@@ -47,8 +47,17 @@ type InitiateResponse struct {
 }
 
 type MethodsResponse struct {
-	Stripe  bool     `json:"stripe"`
-	PayPal  bool     `json:"paypal"`
-	Crypto  []string `json:"crypto,omitempty"`
-	Bank    bool     `json:"bank"`
+	Stripe bool     `json:"stripe"`
+	PayPal bool     `json:"paypal"`
+	Crypto []string `json:"crypto,omitempty"`
+	Bank   bool     `json:"bank"`
+}
+
+type ChannelPanel struct {
+	Slot     int    `json:"slot"`
+	Title    string `json:"title"`
+	Body     string `json:"body"`
+	ImageURL string `json:"image_url"`
+	LinkURL  string `json:"link_url"`
+	Enabled  bool   `json:"enabled"`
 }

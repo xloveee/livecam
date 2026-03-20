@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>livecam</title>
+    <meta name="description" content="Watch live broadcasts, chat, and support your favorite streamers with donations.">
+    <title>livecam — Live Stream</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html, body {
@@ -26,16 +27,22 @@
             min-width: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            padding: 1rem;
             overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+        .stream-area {
+            flex-shrink: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 1rem 1rem 0;
         }
         h1 {
             font-size: 1.2rem;
             font-weight: 600;
             margin-bottom: 0.5rem;
             color: #fff;
-            flex-shrink: 0;
         }
         h1 a {
             color: #1e88e5;
@@ -45,9 +52,6 @@
         video {
             width: 100%;
             max-width: 960px;
-            flex: 1 1 auto;
-            min-height: 0;
-            max-height: 100%;
             background: #000;
             aspect-ratio: 16/9;
             border-radius: 4px;
@@ -58,7 +62,6 @@
             display: flex;
             align-items: center;
             gap: 1rem;
-            flex-shrink: 0;
         }
         select {
             background: #1e1e1e;
@@ -91,7 +94,6 @@
             font-size: 0.8rem;
             color: #666;
             margin-top: 0.4rem;
-            flex-shrink: 0;
         }
         #offline-banner {
             display: none;
@@ -99,7 +101,6 @@
             text-align: center;
             color: #888;
             font-size: 0.9rem;
-            flex-shrink: 0;
         }
         #offline-banner .dot {
             display: inline-block;
@@ -115,14 +116,13 @@
             display: none;
             margin-top: 0.8rem;
             text-align: center;
-            flex-shrink: 0;
         }
         #password-prompt input {
             background: #1e1e1e;
             color: #e0e0e0;
             border: 1px solid #444;
             padding: 0.5rem 0.8rem;
-            font-size: 16px; /* Prevent iOS zoom on focus */
+            font-size: 16px;
             border-radius: 4px;
             width: 220px;
             margin-right: 0.5rem;
@@ -136,6 +136,66 @@
             font-size: 0.85rem;
             margin-top: 0.4rem;
         }
+
+        /* ── Below-stream panels ───────────────────────────── */
+        .below-stream {
+            width: 100%;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 0.8rem 1rem 2rem;
+        }
+        .channel-panels {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin-top: 0.6rem;
+        }
+        .channel-panel {
+            flex: 1 1 280px;
+            background: #111;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 0.8rem;
+            min-width: 0;
+        }
+        .channel-panel-title {
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #fff;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            margin-bottom: 0.4rem;
+        }
+        .channel-panel-body {
+            font-size: 0.82rem;
+            color: #bbb;
+            line-height: 1.5;
+            word-break: break-word;
+        }
+        .channel-panel-body a {
+            color: #1e88e5;
+            text-decoration: none;
+        }
+        .channel-panel-body a:hover { text-decoration: underline; }
+        .channel-panel-banner {
+            display: block;
+            width: 100%;
+            border-radius: 4px;
+            margin-bottom: 0.4rem;
+        }
+        .donate-panel-btn {
+            display: inline-block;
+            background: #ffb300;
+            color: #000;
+            font-weight: 700;
+            padding: 0.55rem 1.4rem;
+            font-size: 0.88rem;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .donate-panel-btn:hover { background: #ffa000; }
 
         /* ── Chat Panel ──────────────────────────────────── */
         .chat-panel {
@@ -313,18 +373,6 @@
             margin-top: 0.15rem;
             color: #fff;
         }
-        .btn-donate {
-            background: #ffb300;
-            color: #000;
-            font-weight: 700;
-            padding: 0.4rem 0.7rem;
-            font-size: 0.78rem;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            white-space: nowrap;
-        }
-        .btn-donate:hover { background: #ffa000; }
         .donate-modal-overlay {
             display: none;
             position: fixed;
@@ -410,9 +458,13 @@
 
         @media (max-width: 900px) {
             body { flex-direction: column; }
-            .main-content { padding: 0.8rem; }
+            .main-content { flex: 0 0 auto; overflow-y: visible; }
+            .stream-area { padding: 0.6rem 0.6rem 0; }
             h1 { font-size: 1rem; margin-bottom: 0.4rem; }
             video { max-height: 45vh; }
+            .below-stream { padding: 0.5rem 0.6rem 1rem; }
+            .channel-panels { flex-direction: column; }
+            .channel-panel { flex-basis: auto; }
             .chat-panel {
                 width: 100%;
                 min-width: 0;
@@ -427,32 +479,38 @@
 <body>
 
     <div class="main-content">
-        <h1>Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a></h1>
+        <section class="stream-area">
+            <h1>Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a></h1>
 
-        <video id="player" autoplay controls playsinline></video>
+            <video id="player" autoplay controls playsinline></video>
 
-        <div id="controls">
-            <select id="quality-select" disabled>
-                <option value="">Auto</option>
-                <option value="h">High (1080p)</option>
-                <option value="m">Medium (720p)</option>
-                <option value="l">Low (360p)</option>
-            </select>
-            <span id="status">Checking stream...</span>
-        </div>
-        <div class="viewer-count" id="viewer-count"></div>
+            <div id="controls">
+                <select id="quality-select" disabled>
+                    <option value="">Auto</option>
+                    <option value="h">High (1080p)</option>
+                    <option value="m">Medium (720p)</option>
+                    <option value="l">Low (360p)</option>
+                </select>
+                <span id="status">Checking stream...</span>
+            </div>
+            <div class="viewer-count" id="viewer-count"></div>
 
-        <div id="offline-banner">
-            <span class="dot"></span>
-            <span id="offline-text">No broadcast right now</span>
-        </div>
+            <div id="offline-banner">
+                <span class="dot"></span>
+                <span id="offline-text">No broadcast right now</span>
+            </div>
 
-        <div id="password-prompt">
-            <label>This broadcast requires a password</label><br><br>
-            <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
-            <button id="btn-password-submit">Join</button>
-            <div id="password-error"></div>
-        </div>
+            <div id="password-prompt">
+                <label>This broadcast requires a password</label><br><br>
+                <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
+                <button id="btn-password-submit">Join</button>
+                <div id="password-error"></div>
+            </div>
+        </section>
+
+        <section class="below-stream" id="below-stream" style="display:none">
+            <div class="channel-panels" id="channel-panels"></div>
+        </section>
     </div>
 
     <div class="chat-panel">
@@ -480,7 +538,6 @@
                 <div class="chat-send">
                     <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
                     <button id="btn-chat-send">Send</button>
-                    <button class="btn-donate" id="btn-donate" style="display:none" onclick="openDonateModal()">Donate</button>
                 </div>
             </div>
         </div>
@@ -1076,7 +1133,7 @@
 
         function enableChat() {
             if (!roomId) return;
-            fetchDonateMethods();
+            fetchDonateMethods().then(fetchChannelPanels);
             if (chatNick) {
                 chatGuestBar.style.display = 'none';
                 chatSendEl.style.display = '';
@@ -1189,22 +1246,107 @@
         var donateCurrency = document.getElementById('donate-currency');
         var donateMessage = document.getElementById('donate-message');
         var donateError = document.getElementById('donate-error');
-        var btnDonate = document.getElementById('btn-donate');
+        var belowStreamEl = document.getElementById('below-stream');
+        var channelPanelsEl = document.getElementById('channel-panels');
         var availableMethods = null;
         var selectedProvider = '';
 
         function fetchDonateMethods() {
-            if (!roomId) return;
-            fetch('/api/donations/methods/' + roomId)
+            if (!roomId) return Promise.resolve();
+            return fetch('/api/donations/methods/' + roomId)
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (data) {
-                    if (!data) { btnDonate.style.display = 'none'; return; }
-                    availableMethods = data;
-                    var hasAny = data.stripe || data.paypal || data.bank ||
-                                 (data.crypto && data.crypto.length > 0);
-                    btnDonate.style.display = hasAny ? '' : 'none';
+                    availableMethods = data || null;
                 })
-                .catch(function () { btnDonate.style.display = 'none'; });
+                .catch(function () { availableMethods = null; });
+        }
+
+        function fetchChannelPanels() {
+            if (!roomId) return;
+            fetch('/api/donations/panels/' + roomId)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (panels) {
+                    renderBelowStream(panels);
+                })
+                .catch(function () { renderBelowStream(null); });
+        }
+
+        function renderBelowStream(panels) {
+            channelPanelsEl.innerHTML = '';
+            var hasContent = false;
+
+            if (panels && panels.length) {
+                panels.forEach(function (p) {
+                    if (!p.enabled) return;
+                    var card = document.createElement('div');
+                    card.className = 'channel-panel';
+                    if (p.title) {
+                        var title = document.createElement('div');
+                        title.className = 'channel-panel-title';
+                        title.textContent = p.title;
+                        card.appendChild(title);
+                    }
+                    if (p.image_url) {
+                        var img = document.createElement('img');
+                        img.className = 'channel-panel-banner';
+                        img.src = p.image_url;
+                        img.alt = p.title || 'Banner';
+                        img.loading = 'lazy';
+                        if (p.link_url) {
+                            var a = document.createElement('a');
+                            a.href = p.link_url;
+                            a.target = '_blank';
+                            a.rel = 'noopener sponsored';
+                            a.appendChild(img);
+                            card.appendChild(a);
+                        } else {
+                            card.appendChild(img);
+                        }
+                    }
+                    if (p.body) {
+                        var body = document.createElement('div');
+                        body.className = 'channel-panel-body';
+                        body.innerHTML = escapeHTMLWithLinks(p.body);
+                        card.appendChild(body);
+                    }
+                    channelPanelsEl.appendChild(card);
+                    hasContent = true;
+                });
+            }
+
+            var hasDonate = availableMethods && (
+                availableMethods.stripe || availableMethods.paypal || availableMethods.bank ||
+                (availableMethods.crypto && availableMethods.crypto.length > 0)
+            );
+            if (hasDonate) {
+                var donateCard = document.createElement('div');
+                donateCard.className = 'channel-panel';
+                var dt = document.createElement('div');
+                dt.className = 'channel-panel-title';
+                dt.textContent = 'Support this stream';
+                donateCard.appendChild(dt);
+                var db = document.createElement('div');
+                db.className = 'channel-panel-body';
+                db.textContent = 'Send a donation to the broadcaster. Donations appear highlighted in the live chat.';
+                donateCard.appendChild(db);
+                var btn = document.createElement('button');
+                btn.className = 'donate-panel-btn';
+                btn.textContent = 'Donate';
+                btn.style.marginTop = '0.5rem';
+                btn.onclick = openDonateModal;
+                donateCard.appendChild(btn);
+                channelPanelsEl.appendChild(donateCard);
+                hasContent = true;
+            }
+
+            belowStreamEl.style.display = hasContent ? '' : 'none';
+        }
+
+        function escapeHTMLWithLinks(text) {
+            var escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            escaped = escaped.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+            escaped = escaped.replace(/\n/g, '<br>');
+            return escaped;
         }
 
         function openDonateModal() {

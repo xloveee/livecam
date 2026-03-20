@@ -293,6 +293,49 @@
         .chat-msg .nick.broadcaster { color: #d32f2f; }
         .chat-msg .nick.mod { color: #5e35b1; }
         .chat-msg .nick.viewer { color: #1e88e5; }
+        .chat-msg.donation {
+            background: linear-gradient(135deg, rgba(255,179,0,0.12), rgba(255,152,0,0.06));
+            border-left: 3px solid #ffb300;
+            padding: 0.25rem 0.4rem;
+            margin: 0.1rem 0;
+            border-radius: 4px;
+        }
+        .chat-msg.donation.tier-2 {
+            background: linear-gradient(135deg, rgba(66,165,245,0.15), rgba(33,150,243,0.08));
+            border-left-color: #42a5f5;
+        }
+        .chat-msg.donation.tier-3 {
+            background: linear-gradient(135deg, rgba(255,179,0,0.2), rgba(255,152,0,0.12));
+            border-left-color: #ffb300;
+        }
+        .chat-msg.donation.tier-4 {
+            background: linear-gradient(135deg, rgba(255,87,34,0.2), rgba(244,67,54,0.12));
+            border-left-color: #ff5722;
+        }
+        .chat-msg.donation.tier-5 {
+            background: linear-gradient(135deg, rgba(233,30,99,0.2), rgba(156,39,176,0.12));
+            border-left-color: #e91e63;
+            font-size: 0.85rem;
+        }
+        .chat-msg.donation .donation-amount {
+            display: inline-block;
+            background: #ffb300;
+            color: #000;
+            font-size: 0.65rem;
+            font-weight: 700;
+            padding: 1px 4px;
+            border-radius: 3px;
+            margin-right: 0.25rem;
+        }
+        .chat-msg.donation.tier-2 .donation-amount { background: #42a5f5; color: #fff; }
+        .chat-msg.donation.tier-3 .donation-amount { background: #ffb300; }
+        .chat-msg.donation.tier-4 .donation-amount { background: #ff5722; color: #fff; }
+        .chat-msg.donation.tier-5 .donation-amount { background: #e91e63; color: #fff; font-size: 0.72rem; padding: 2px 6px; }
+        .chat-msg.donation .donation-text {
+            display: block;
+            margin-top: 0.1rem;
+            color: #fff;
+        }
         .chat-msg.system {
             color: #555;
             font-style: italic;
@@ -455,6 +498,46 @@
                     <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
                 </div>
             </div>
+            <div style="margin-top:0.6rem;padding-top:0.6rem;border-top:1px solid #1a1a1a;">
+                <label style="font-size:0.78rem;color:#ffb300;font-weight:600;margin-bottom:0.3rem;display:block;">Donation Settings</label>
+                <div class="row">
+                    <div>
+                        <label for="stripe-toggle">Stripe (Card payments)</label>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
+                            <input type="text" id="stripe-key" placeholder="Stripe secret key" autocomplete="off" style="flex:1;">
+                        </div>
+                    </div>
+                    <div>
+                        <label for="paypal-toggle">PayPal</label>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
+                            <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off" style="flex:1;">
+                        </div>
+                    </div>
+                </div>
+                <div class="row" style="margin-top:0.4rem;">
+                    <div>
+                        <label for="crypto-toggle">Crypto (BTC / ETH)</label>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
+                            <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off" style="flex:1;">
+                        </div>
+                        <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off" style="margin-top:0.2rem;">
+                    </div>
+                    <div>
+                        <label for="bank-toggle">Bank / YowPay</label>
+                        <div style="display:flex;gap:0.4rem;align-items:center;">
+                            <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
+                            <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off" style="flex:1;">
+                        </div>
+                        <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off" style="margin-top:0.2rem;">
+                        <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off" style="margin-top:0.2rem;">
+                        <div style="font-size:0.62rem;color:#555;margin-top:0.15rem;">Visit <a href="https://yowpay.com" target="_blank" rel="noopener" style="color:#ffb300;">yowpay.com</a> to create a merchant account for bank-to-bank donations.</div>
+                    </div>
+                </div>
+                <div class="row-info" id="donation-status"></div>
+            </div>
             </div>
         </div>
     </div>
@@ -470,6 +553,10 @@
             <button onclick="chatModCmd('/slow 5')">Slow 5s</button>
             <button onclick="chatModCmd('/slow 0')">Slow Off</button>
             <button onclick="chatModCmd('/subscribers')">Sub Mode</button>
+            <button onclick="toggleDonationHistory()" style="background:#2a2000;color:#ffb300;">Donations</button>
+        </div>
+        <div id="donation-history" style="display:none;max-height:120px;overflow-y:auto;padding:0.3rem 0.4rem;border-top:1px solid #1a1a1a;font-size:0.7rem;color:#888;scrollbar-width:thin;scrollbar-color:#333 transparent;">
+            <div id="donation-history-list"></div>
         </div>
         <div class="chat-input-area">
             <div class="chat-send" id="chat-send">
@@ -879,6 +966,9 @@
                 case 'msg':
                     appendChatMessage(msg.nick, msg.text, msg.role);
                     break;
+                case 'donation':
+                    appendDonationMessage(msg.nick, msg.text, msg.amount, msg.currency);
+                    break;
                 case 'system':
                     appendChatSystem(msg.text);
                     break;
@@ -896,6 +986,47 @@
                 default:
                     break;
             }
+        }
+
+        function formatDonationAmount(amount, currency) {
+            var val = (amount / 100).toFixed(2);
+            var symbols = { USD: '$', EUR: '€', GBP: '£' };
+            var sym = symbols[currency] || '';
+            if (sym) return sym + val;
+            if (currency === 'BTC' || currency === 'ETH') {
+                return (amount / 100000000).toFixed(8) + ' ' + currency;
+            }
+            return val + ' ' + currency;
+        }
+
+        function getDonationTier(amount) {
+            if (amount >= 10000) return 'tier-5';
+            if (amount >= 5000)  return 'tier-4';
+            if (amount >= 2000)  return 'tier-3';
+            if (amount >= 500)   return 'tier-2';
+            return '';
+        }
+
+        function appendDonationMessage(nick, text, amount, currency) {
+            var el = document.createElement('div');
+            var tier = getDonationTier(amount);
+            el.className = 'chat-msg donation' + (tier ? ' ' + tier : '');
+            var badge = document.createElement('span');
+            badge.className = 'donation-amount';
+            badge.textContent = formatDonationAmount(amount, currency);
+            el.appendChild(badge);
+            var nickSpan = document.createElement('span');
+            nickSpan.className = 'nick viewer';
+            nickSpan.textContent = (nick || 'Anonymous') + ':';
+            el.appendChild(nickSpan);
+            if (text) {
+                var msgSpan = document.createElement('span');
+                msgSpan.className = 'donation-text';
+                msgSpan.textContent = text;
+                el.appendChild(msgSpan);
+            }
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
         }
 
         function appendChatMessage(nick, text, role) {
@@ -945,6 +1076,144 @@
         chatInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') chatSendMessage();
         });
+
+        /* ── Donation Config ──────────────────────────────────── */
+
+        var donationStatusEl = document.getElementById('donation-status');
+
+        function loadDonationConfig() {
+            fetch('/api/donations/setup', { method: 'GET' })
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (configs) {
+                    configs.forEach(function (c) {
+                        var data = {};
+                        try { data = JSON.parse(c.config_data); } catch (e) {}
+                        switch (c.provider) {
+                            case 'stripe':
+                                document.getElementById('stripe-toggle').checked = c.enabled;
+                                document.getElementById('stripe-key').value = data.secret_key || '';
+                                break;
+                            case 'paypal':
+                                document.getElementById('paypal-toggle').checked = c.enabled;
+                                document.getElementById('paypal-email').value = data.email || '';
+                                break;
+                            case 'crypto':
+                                document.getElementById('crypto-toggle').checked = c.enabled;
+                                document.getElementById('crypto-btc').value = data.btc_address || '';
+                                document.getElementById('crypto-eth').value = data.eth_address || '';
+                                break;
+                            case 'bank':
+                                document.getElementById('bank-toggle').checked = c.enabled;
+                                document.getElementById('bank-merchant').value = data.merchant_id || '';
+                                document.getElementById('bank-url').value = data.yowpay_url || '';
+                                document.getElementById('bank-apikey').value = data.api_key || '';
+                                break;
+                        }
+                    });
+                })
+                .catch(function () {});
+        }
+
+        var donationSaveDebounce = {};
+        function saveDonationConfig(provider) {
+            clearTimeout(donationSaveDebounce[provider]);
+            donationSaveDebounce[provider] = setTimeout(function () { doSaveDonationConfig(provider); }, 400);
+        }
+
+        function doSaveDonationConfig(provider) {
+            var enabled = false;
+            var configData = {};
+            switch (provider) {
+                case 'stripe':
+                    enabled = document.getElementById('stripe-toggle').checked;
+                    configData = { secret_key: document.getElementById('stripe-key').value.trim() };
+                    break;
+                case 'paypal':
+                    enabled = document.getElementById('paypal-toggle').checked;
+                    configData = { email: document.getElementById('paypal-email').value.trim() };
+                    break;
+                case 'crypto':
+                    enabled = document.getElementById('crypto-toggle').checked;
+                    var btc = document.getElementById('crypto-btc').value.trim();
+                    var eth = document.getElementById('crypto-eth').value.trim();
+                    var currencies = [];
+                    if (btc) currencies.push('BTC');
+                    if (eth) currencies.push('ETH');
+                    configData = { btc_address: btc, eth_address: eth, currencies: currencies };
+                    break;
+                case 'bank':
+                    enabled = document.getElementById('bank-toggle').checked;
+                    configData = {
+                        merchant_id: document.getElementById('bank-merchant').value.trim(),
+                        yowpay_url: document.getElementById('bank-url').value.trim(),
+                        api_key: document.getElementById('bank-apikey').value.trim()
+                    };
+                    break;
+            }
+            fetch('/api/donations/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ provider: provider, config_data: JSON.stringify(configData), enabled: enabled })
+            })
+            .then(function (r) {
+                donationStatusEl.textContent = r.ok ? 'Saved' : 'Save failed';
+                setTimeout(function () { donationStatusEl.textContent = ''; }, 2000);
+            })
+            .catch(function () { donationStatusEl.textContent = 'Save failed'; });
+        }
+
+        ['stripe-key', 'paypal-email', 'crypto-btc', 'crypto-eth', 'bank-merchant', 'bank-url', 'bank-apikey'].forEach(function (id) {
+            document.getElementById(id).addEventListener('input', function () {
+                var provider = id.split('-')[0];
+                if (provider === 'crypto') provider = 'crypto';
+                saveDonationConfig(provider);
+            });
+        });
+
+        loadDonationConfig();
+
+        /* ── Donation History ─────────────────────────────────── */
+
+        var donationHistoryEl = document.getElementById('donation-history');
+        var donationHistoryList = document.getElementById('donation-history-list');
+        var donationHistoryVisible = false;
+
+        function toggleDonationHistory() {
+            donationHistoryVisible = !donationHistoryVisible;
+            donationHistoryEl.style.display = donationHistoryVisible ? '' : 'none';
+            if (donationHistoryVisible) loadDonationHistory();
+        }
+
+        function loadDonationHistory() {
+            fetch('/api/donations/history', { method: 'GET' })
+                .then(function (r) { return r.ok ? r.json() : []; })
+                .then(function (records) {
+                    donationHistoryList.innerHTML = '';
+                    if (records.length === 0) {
+                        donationHistoryList.textContent = 'No donations yet.';
+                        return;
+                    }
+                    records.forEach(function (rec) {
+                        var el = document.createElement('div');
+                        el.style.cssText = 'padding:0.15rem 0;border-bottom:1px solid #111;';
+                        var amount = formatDonationAmount(rec.amount, rec.currency);
+                        var date = new Date(rec.created_at * 1000).toLocaleString();
+                        var status = rec.status === 'confirmed' ? '\u2713' : rec.status;
+                        el.textContent = amount + ' from ' + (rec.viewer_nick || 'Anonymous') +
+                            ' \u2014 ' + status + ' \u2014 ' + date;
+                        if (rec.message) {
+                            var msg = document.createElement('div');
+                            msg.style.cssText = 'color:#aaa;font-style:italic;padding-left:0.5rem;';
+                            msg.textContent = '"' + rec.message + '"';
+                            el.appendChild(msg);
+                        }
+                        donationHistoryList.appendChild(el);
+                    });
+                })
+                .catch(function () {
+                    donationHistoryList.textContent = 'Failed to load history.';
+                });
+        }
 
     </script>
 </body>

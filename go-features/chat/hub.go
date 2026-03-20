@@ -298,6 +298,19 @@ func sendToClient(c *Client, msg OutboundMsg) {
 	}
 }
 
+func (h *Hub) BroadcastDonation(roomID string, msg OutboundMsg) {
+	h.mu.Lock()
+	room, ok := h.rooms[roomID]
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	room.mu.Lock()
+	broadcastToRoom(room, msg, nil)
+	room.mu.Unlock()
+}
+
 func itoa(n int) string {
 	if n == 0 {
 		return "0"

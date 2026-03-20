@@ -18,6 +18,7 @@ import (
 	"unsafe"
 
 	"livecam/chat"
+	"livecam/donations"
 )
 
 var (
@@ -44,9 +45,33 @@ func main() {
 		return C.GoString(&outKey[0]), true
 	})
 
+	donationDBPath := os.Getenv("DONATION_DB_PATH")
+	if donationDBPath == "" {
+		donationDBPath = "./donations.db"
+	}
+	donationDB, err := donations.OpenDB(donationDBPath)
+	if err != nil {
+		log.Fatalf("Failed to open donations database: %v", err)
+	}
+	defer donationDB.Close()
+	log.Printf("Donations database: %s", donationDBPath)
+
+	stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+	if stripeWebhookSecret != "" {
+		donations.SetStripeWebhookSecret(stripeWebhookSecret)
+		log.Printf("Stripe webhook signature verification: enabled")
+	}
+
+	donationHandler := donations.NewHandler(
+		donationDB,
+		chatHub,
+		donations.AuthFunc(requireBroadcasterAuth),
+	)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth))
+	mux.Handle("/api/donations/", donationHandler)
 	mux.HandleFunc("/api/whip/", whipProxyHandler)
 	mux.HandleFunc("/api/whep/", whepProxyHandler)
 	mux.HandleFunc("/api/quality/", qualityProxyHandler)

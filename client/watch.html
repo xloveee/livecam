@@ -270,6 +270,137 @@
             display: flex;
             gap: 0.4rem;
         }
+        .chat-msg.donation {
+            background: linear-gradient(135deg, rgba(255,179,0,0.12), rgba(255,152,0,0.06));
+            border-left: 3px solid #ffb300;
+            padding: 0.35rem 0.5rem;
+            margin: 0.15rem 0;
+            border-radius: 4px;
+        }
+        .chat-msg.donation.tier-2 {
+            background: linear-gradient(135deg, rgba(66,165,245,0.15), rgba(33,150,243,0.08));
+            border-left-color: #42a5f5;
+        }
+        .chat-msg.donation.tier-3 {
+            background: linear-gradient(135deg, rgba(255,179,0,0.2), rgba(255,152,0,0.12));
+            border-left-color: #ffb300;
+        }
+        .chat-msg.donation.tier-4 {
+            background: linear-gradient(135deg, rgba(255,87,34,0.2), rgba(244,67,54,0.12));
+            border-left-color: #ff5722;
+        }
+        .chat-msg.donation.tier-5 {
+            background: linear-gradient(135deg, rgba(233,30,99,0.2), rgba(156,39,176,0.12));
+            border-left-color: #e91e63;
+            font-size: 0.9rem;
+        }
+        .chat-msg.donation .donation-amount {
+            display: inline-block;
+            background: #ffb300;
+            color: #000;
+            font-size: 0.7rem;
+            font-weight: 700;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-right: 0.3rem;
+        }
+        .chat-msg.donation.tier-2 .donation-amount { background: #42a5f5; color: #fff; }
+        .chat-msg.donation.tier-3 .donation-amount { background: #ffb300; }
+        .chat-msg.donation.tier-4 .donation-amount { background: #ff5722; color: #fff; }
+        .chat-msg.donation.tier-5 .donation-amount { background: #e91e63; color: #fff; font-size: 0.8rem; padding: 2px 7px; }
+        .chat-msg.donation .donation-text {
+            display: block;
+            margin-top: 0.15rem;
+            color: #fff;
+        }
+        .btn-donate {
+            background: #ffb300;
+            color: #000;
+            font-weight: 700;
+            padding: 0.4rem 0.7rem;
+            font-size: 0.78rem;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .btn-donate:hover { background: #ffa000; }
+        .donate-modal-overlay {
+            display: none;
+            position: fixed;
+            inset: 0;
+            z-index: 200;
+            background: rgba(0,0,0,0.75);
+            align-items: center;
+            justify-content: center;
+        }
+        .donate-modal-overlay.visible { display: flex; }
+        .donate-modal {
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 1.2rem;
+            max-width: 360px;
+            width: 90%;
+        }
+        .donate-modal h3 {
+            font-size: 0.95rem;
+            color: #fff;
+            margin-bottom: 0.8rem;
+        }
+        .donate-modal label {
+            font-size: 0.75rem;
+            color: #888;
+            display: block;
+            margin-bottom: 0.2rem;
+        }
+        .donate-modal select,
+        .donate-modal input {
+            width: 100%;
+            margin-bottom: 0.6rem;
+        }
+        .donate-modal .donate-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 0.4rem;
+        }
+        .donate-modal .donate-actions button {
+            flex: 1;
+            padding: 0.5rem;
+            font-size: 0.85rem;
+        }
+        .donate-modal .donate-cancel {
+            background: #333;
+        }
+        .donate-modal .donate-cancel:hover { background: #444; }
+        .donate-modal .donate-submit {
+            background: #ffb300;
+            color: #000;
+            font-weight: 700;
+        }
+        .donate-modal .donate-submit:hover { background: #ffa000; }
+        .donate-modal .donate-error {
+            font-size: 0.75rem;
+            color: #ef5350;
+            min-height: 1rem;
+        }
+        .donate-methods {
+            display: flex;
+            gap: 0.3rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.6rem;
+        }
+        .donate-methods button {
+            padding: 0.3rem 0.6rem;
+            font-size: 0.72rem;
+            background: #282828;
+            border-radius: 4px;
+        }
+        .donate-methods button:hover { background: #333; }
+        .donate-methods button.active {
+            background: #ffb300;
+            color: #000;
+        }
         .chat-nick-badge {
             font-size: 0.72rem;
             color: #555;
@@ -349,7 +480,29 @@
                 <div class="chat-send">
                     <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
                     <button id="btn-chat-send">Send</button>
+                    <button class="btn-donate" id="btn-donate" style="display:none" onclick="openDonateModal()">Donate</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="donate-modal-overlay" id="donate-overlay">
+        <div class="donate-modal">
+            <h3>Send a Donation</h3>
+            <div class="donate-methods" id="donate-methods"></div>
+            <label for="donate-amount">Amount</label>
+            <input type="number" id="donate-amount" placeholder="5.00" min="0.01" step="0.01">
+            <label for="donate-currency">Currency</label>
+            <select id="donate-currency">
+                <option value="USD">USD</option>
+                <option value="EUR">EUR</option>
+            </select>
+            <label for="donate-message">Message (optional)</label>
+            <input type="text" id="donate-message" placeholder="Your message..." maxlength="200" autocomplete="off">
+            <div class="donate-error" id="donate-error"></div>
+            <div class="donate-actions">
+                <button class="donate-cancel" onclick="closeDonateModal()">Cancel</button>
+                <button class="donate-submit" onclick="submitDonation()">Donate</button>
             </div>
         </div>
     </div>
@@ -859,6 +1012,9 @@
                 case 'msg':
                     appendChatMessage(msg.nick, msg.text, msg.role);
                     break;
+                case 'donation':
+                    appendDonationMessage(msg.nick, msg.text, msg.amount, msg.currency);
+                    break;
                 case 'system':
                     appendChatSystem(msg.text);
                     break;
@@ -919,6 +1075,7 @@
 
         function enableChat() {
             if (!roomId) return;
+            fetchDonateMethods();
             if (chatNick) {
                 chatGuestBar.style.display = 'none';
                 chatSendEl.style.display = '';
@@ -978,6 +1135,161 @@
 
         chatInput.addEventListener('keydown', function (e) {
             if (e.key === 'Enter') chatSendMessage();
+        });
+
+        /* ── Donation rendering ─────────────────────────────────── */
+
+        function formatDonationAmount(amount, currency) {
+            var val = (amount / 100).toFixed(2);
+            var symbols = { USD: '$', EUR: '€', GBP: '£' };
+            var sym = symbols[currency] || '';
+            if (sym) return sym + val;
+            if (currency === 'BTC' || currency === 'ETH') {
+                return (amount / 100000000).toFixed(8) + ' ' + currency;
+            }
+            return val + ' ' + currency;
+        }
+
+        function getDonationTier(amount) {
+            if (amount >= 10000) return 'tier-5';
+            if (amount >= 5000)  return 'tier-4';
+            if (amount >= 2000)  return 'tier-3';
+            if (amount >= 500)   return 'tier-2';
+            return '';
+        }
+
+        function appendDonationMessage(nick, text, amount, currency) {
+            var el = document.createElement('div');
+            var tier = getDonationTier(amount);
+            el.className = 'chat-msg donation' + (tier ? ' ' + tier : '');
+            var badge = document.createElement('span');
+            badge.className = 'donation-amount';
+            badge.textContent = formatDonationAmount(amount, currency);
+            el.appendChild(badge);
+            var nickSpan = document.createElement('span');
+            nickSpan.className = 'nick viewer';
+            nickSpan.textContent = (nick || 'Anonymous') + ':';
+            el.appendChild(nickSpan);
+            if (text) {
+                var msgSpan = document.createElement('span');
+                msgSpan.className = 'donation-text';
+                msgSpan.textContent = text;
+                el.appendChild(msgSpan);
+            }
+            chatMessagesEl.appendChild(el);
+            autoScrollChat();
+        }
+
+        /* ── Donation modal ────────────────────────────────────── */
+
+        var donateOverlay = document.getElementById('donate-overlay');
+        var donateMethods = document.getElementById('donate-methods');
+        var donateAmount = document.getElementById('donate-amount');
+        var donateCurrency = document.getElementById('donate-currency');
+        var donateMessage = document.getElementById('donate-message');
+        var donateError = document.getElementById('donate-error');
+        var btnDonate = document.getElementById('btn-donate');
+        var availableMethods = null;
+        var selectedProvider = '';
+
+        function fetchDonateMethods() {
+            if (!roomId) return;
+            fetch('/api/donations/methods/' + roomId)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (data) {
+                    if (!data) { btnDonate.style.display = 'none'; return; }
+                    availableMethods = data;
+                    var hasAny = data.stripe || data.paypal || data.bank ||
+                                 (data.crypto && data.crypto.length > 0);
+                    btnDonate.style.display = hasAny ? '' : 'none';
+                })
+                .catch(function () { btnDonate.style.display = 'none'; });
+        }
+
+        function openDonateModal() {
+            if (!availableMethods) return;
+            donateError.textContent = '';
+            donateAmount.value = '';
+            donateMessage.value = '';
+            selectedProvider = '';
+            donateMethods.innerHTML = '';
+
+            if (availableMethods.stripe) addMethodBtn('stripe', 'Card');
+            if (availableMethods.paypal) addMethodBtn('paypal', 'PayPal');
+            if (availableMethods.crypto && availableMethods.crypto.length > 0) {
+                addMethodBtn('crypto', 'Crypto');
+            }
+            if (availableMethods.bank) addMethodBtn('bank', 'Bank Transfer');
+
+            donateOverlay.classList.add('visible');
+        }
+
+        function addMethodBtn(provider, label) {
+            var btn = document.createElement('button');
+            btn.textContent = label;
+            btn.onclick = function () {
+                donateMethods.querySelectorAll('button').forEach(function (b) {
+                    b.classList.remove('active');
+                });
+                btn.classList.add('active');
+                selectedProvider = provider;
+
+                if (provider === 'crypto') {
+                    donateCurrency.innerHTML = '';
+                    (availableMethods.crypto || []).forEach(function (c) {
+                        var opt = document.createElement('option');
+                        opt.value = c; opt.textContent = c;
+                        donateCurrency.appendChild(opt);
+                    });
+                } else {
+                    donateCurrency.innerHTML = '<option value="USD">USD</option><option value="EUR">EUR</option>';
+                }
+            };
+            donateMethods.appendChild(btn);
+        }
+
+        function closeDonateModal() {
+            donateOverlay.classList.remove('visible');
+        }
+
+        function submitDonation() {
+            donateError.textContent = '';
+            if (!selectedProvider) { donateError.textContent = 'Select a payment method'; return; }
+            var amount = Math.round(parseFloat(donateAmount.value) * 100);
+            if (!amount || amount <= 0) { donateError.textContent = 'Enter a valid amount'; return; }
+
+            var body = {
+                room_id: roomId,
+                provider: selectedProvider,
+                amount: amount,
+                currency: donateCurrency.value || 'USD',
+                message: donateMessage.value.trim(),
+                viewer_nick: chatNick || 'Anonymous',
+                return_url: window.location.href
+            };
+
+            fetch('/api/donations/initiate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+            .then(function (r) {
+                if (!r.ok) return r.text().then(function (t) { throw new Error(t); });
+                return r.json();
+            })
+            .then(function (data) {
+                closeDonateModal();
+                if (data.redirect_url) {
+                    window.open(data.redirect_url, '_blank', 'noopener');
+                }
+            })
+            .catch(function (err) {
+                donateError.textContent = err.message || 'Failed to start donation';
+            });
+        }
+
+        donateOverlay.addEventListener('click', function (e) {
+            if (e.target === donateOverlay) closeDonateModal();
         });
 
         /* ── Init ───────────────────────────────────────────────── */

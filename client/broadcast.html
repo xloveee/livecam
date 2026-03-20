@@ -186,10 +186,9 @@
             inset: 0;
             z-index: 100;
             background: rgba(0,0,0,0.92);
-            align-items: flex-start;
+            align-items: center;
             justify-content: center;
-            overflow-y: auto;
-            padding: 1rem;
+            padding: 0;
         }
         .settings-overlay.visible { display: flex; }
         .settings-overlay-backdrop {
@@ -203,10 +202,9 @@
             background: #111;
             border: 1px solid #222;
             border-radius: 8px;
-            max-width: 600px;
             width: 95%;
-            max-height: 85vh;
-            margin: auto;
+            max-width: 480px;
+            height: 70vh;
             display: flex;
             flex-direction: column;
             overflow: hidden;
@@ -215,7 +213,7 @@
             display: flex;
             align-items: center;
             justify-content: space-between;
-            padding: 0.7rem 1rem;
+            padding: 0.6rem 0.8rem;
             border-bottom: 1px solid #222;
             flex-shrink: 0;
         }
@@ -239,8 +237,8 @@
         }
         .settings-tab {
             flex: 1;
-            padding: 0.55rem 0.5rem;
-            font-size: 0.72rem;
+            padding: 0.6rem 0.3rem;
+            font-size: 0.68rem;
             font-weight: 600;
             color: #666;
             background: transparent;
@@ -251,6 +249,7 @@
             letter-spacing: 0.04em;
             transition: color 0.15s, border-color 0.15s;
             text-align: center;
+            white-space: nowrap;
         }
         .settings-tab:hover { color: #aaa; }
         .settings-tab.active {
@@ -265,8 +264,9 @@
         }
         .settings-body {
             flex: 1;
+            min-height: 0;
             overflow-y: auto;
-            padding: 0.8rem 1rem;
+            padding: 0.8rem;
             scrollbar-width: thin;
             scrollbar-color: #333 transparent;
         }
@@ -277,9 +277,51 @@
             color: #555;
             text-transform: uppercase;
             letter-spacing: 0.06em;
-            margin-bottom: 0.5rem;
+            margin-bottom: 0.6rem;
             font-weight: 600;
         }
+
+        /* ── Provider Card ──────────────────────────────────── */
+        .provider-card {
+            background: #141414;
+            border: 1px solid #1e1e1e;
+            border-radius: 6px;
+            padding: 0.6rem;
+            margin-bottom: 0.5rem;
+        }
+        .provider-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            margin-bottom: 0.35rem;
+        }
+        .provider-card-header input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            flex-shrink: 0;
+            accent-color: #d32f2f;
+        }
+        .provider-card-header label {
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #ccc;
+            cursor: pointer;
+        }
+        .provider-card-fields {
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+        }
+        .provider-card-fields input {
+            font-size: 14px;
+            padding: 0.35rem 0.45rem;
+        }
+        .provider-card-hint {
+            font-size: 0.6rem;
+            color: #555;
+            margin-top: 0.15rem;
+        }
+        .provider-card-hint a { color: #ffb300; }
 
         /* ── Chat Panel ──────────────────────────────────── */
         .chat-panel {
@@ -449,11 +491,12 @@
             .settings-toggle { display: none; }
             .settings-overlay { display: flex !important; position: static; background: transparent; padding: 0; align-items: stretch; }
             .settings-overlay-backdrop { display: none; }
-            .settings-overlay-panel { max-width: 720px; background: transparent; padding: 0; box-shadow: none; margin: 0; border: none; max-height: none; }
+            .settings-overlay-panel { max-width: 720px; width: 100%; height: auto; background: transparent; padding: 0; box-shadow: none; margin: 0; border: none; }
             .settings-overlay-header { display: none; }
             .settings-tabs { background: transparent; border-bottom-color: #1a1a1a; }
-            .settings-body { padding: 0.5rem 0; }
+            .settings-body { padding: 0.5rem 0; overflow-y: visible; }
             .settings-page.active { display: block; }
+            .provider-card { background: #0f0f0f; }
             .chat-panel {
                 width: 340px;
                 min-width: 340px;
@@ -472,6 +515,8 @@
         @media (max-width: 380px) {
             .row { grid-template-columns: 1fr; }
             .controls-bar button { padding: 0.4rem 0.7rem; font-size: 0.78rem; }
+            .settings-overlay-panel { width: 100%; border-radius: 0; height: 80vh; }
+            .settings-tab { font-size: 0.62rem; padding: 0.5rem 0.2rem; }
         }
     </style>
 </head>
@@ -564,35 +609,51 @@
                     </div>
 
                     <div class="settings-page" id="settings-donations">
-                        <div class="settings-page-title">Donation Providers</div>
+                        <div class="settings-page-title">Payment Providers</div>
 
-                        <label for="stripe-toggle">Stripe (Card payments)</label>
-                        <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;">
-                            <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
-                            <input type="text" id="stripe-key" placeholder="Stripe secret key" autocomplete="off" style="flex:1;">
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
+                                <label for="stripe-toggle">Stripe (Card payments)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="stripe-key" placeholder="Secret key (sk_live_...)" autocomplete="off">
+                            </div>
                         </div>
 
-                        <label for="paypal-toggle">PayPal</label>
-                        <div style="display:flex;gap:0.4rem;align-items:center;margin-bottom:0.5rem;">
-                            <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
-                            <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off" style="flex:1;">
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
+                                <label for="paypal-toggle">PayPal</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off">
+                            </div>
                         </div>
 
-                        <label for="crypto-toggle">Crypto (BTC / ETH)</label>
-                        <div style="display:flex;gap:0.4rem;align-items:center;">
-                            <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
-                            <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off" style="flex:1;">
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
+                                <label for="crypto-toggle">Crypto (BTC / ETH)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off">
+                                <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off">
+                            </div>
                         </div>
-                        <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off" style="margin-top:0.2rem;margin-bottom:0.5rem;">
 
-                        <label for="bank-toggle">Bank / YowPay</label>
-                        <div style="display:flex;gap:0.4rem;align-items:center;">
-                            <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
-                            <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off" style="flex:1;">
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
+                                <label for="bank-toggle">Bank / YowPay</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off">
+                                <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off">
+                                <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off">
+                            </div>
+                            <div class="provider-card-hint">Visit <a href="https://yowpay.com" target="_blank" rel="noopener">yowpay.com</a> to create a merchant account.</div>
                         </div>
-                        <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off" style="margin-top:0.2rem;">
-                        <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off" style="margin-top:0.2rem;">
-                        <div style="font-size:0.62rem;color:#555;margin-top:0.15rem;">Visit <a href="https://yowpay.com" target="_blank" rel="noopener" style="color:#ffb300;">yowpay.com</a> to create a merchant account.</div>
 
                         <div class="row-info" id="donation-status"></div>
                     </div>

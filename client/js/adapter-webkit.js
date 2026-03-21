@@ -10,6 +10,7 @@
 
 function WebKitAdapter(videoEl) {
     WatchAdapter.call(this, videoEl);
+    this._playPending = null;
 }
 
 WebKitAdapter.prototype = Object.create(WatchAdapter.prototype);
@@ -25,14 +26,27 @@ WebKitAdapter.prototype.createPC = function (iceServers) {
 
 WebKitAdapter.prototype.play = function () {
     var v = this.video;
-    if (v.srcObject && v.readyState === 0) {
-        v.load();
+    if (v.readyState >= 1) {
+        return v.play().then(function () {
+            return { ok: true, error: '' };
+        }).catch(function (e) {
+            return { ok: false, error: e.name || 'blocked' };
+        });
     }
-    return v.play().then(function () {
-        return { ok: true, error: '' };
-    }).catch(function (e) {
-        return { ok: false, error: e.name || 'blocked' };
+    if (this._playPending) return this._playPending;
+    var self = this;
+    this._playPending = new Promise(function (resolve) {
+        setTimeout(function () {
+            self._playPending = null;
+            if (v.srcObject && v.readyState === 0) v.load();
+            v.play().then(function () {
+                resolve({ ok: true, error: '' });
+            }).catch(function (e) {
+                resolve({ ok: false, error: e.name || 'blocked' });
+            });
+        }, 80);
     });
+    return this._playPending;
 };
 
 WebKitAdapter.prototype.supportsNativeHLS = function () {

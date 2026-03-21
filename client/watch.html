@@ -11,21 +11,22 @@
 
     <main class="stream-column">
         <header class="stream-header">
-            <h1>Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a></h1>
+            <div class="header-left">
+                <h1>Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a></h1>
+                <div class="viewer-count" id="viewer-count"></div>
+            </div>
+            <div class="stream-controls" id="controls">
+                <span id="status">Checking stream...</span>
+                <select id="quality-select" disabled>
+                    <option value="">Auto</option>
+                    <option value="h">High (1080p)</option>
+                    <option value="m">Medium (720p)</option>
+                    <option value="l">Low (360p)</option>
+                </select>
+            </div>
         </header>
 
         <video id="player" autoplay controls playsinline></video>
-
-        <div class="stream-controls" id="controls">
-            <select id="quality-select" disabled>
-                <option value="">Auto</option>
-                <option value="h">High (1080p)</option>
-                <option value="m">Medium (720p)</option>
-                <option value="l">Low (360p)</option>
-            </select>
-            <span id="status">Checking stream...</span>
-        </div>
-        <div class="viewer-count" id="viewer-count"></div>
 
         <div id="offline-banner">
             <span class="dot"></span>

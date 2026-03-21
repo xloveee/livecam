@@ -31,6 +31,15 @@ main.stream-column {
     max-width: 960px;
     flex-shrink: 0;
     margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 0.5rem;
+}
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
 }
 .stream-header h1 {
     font-size: 1.2rem;
@@ -48,8 +57,9 @@ main.stream-column {
 video {
     width: 100%;
     max-width: 960px;
-    flex-shrink: 0;
-    max-height: 65vh;
+    flex: 1;
+    min-height: 0;
+    max-height: 75vh;
     background: #000;
     aspect-ratio: 16/9;
     border-radius: 4px;
@@ -59,20 +69,17 @@ video {
 /* ── Stream Controls ────────────────────────── */
 
 .stream-controls {
-    width: 100%;
-    max-width: 960px;
-    margin-top: 0.6rem;
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.8rem;
     flex-shrink: 0;
 }
 select {
     background: #1e1e1e;
     color: #e0e0e0;
     border: 1px solid #444;
-    padding: 0.5rem 0.8rem;
-    font-size: 0.9rem;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
     border-radius: 4px;
     cursor: pointer;
 }
@@ -90,17 +97,14 @@ button {
 button:hover { background: #b71c1c; }
 button:disabled { background: #555; cursor: default; }
 #status {
-    font-size: 0.85rem;
+    font-size: 0.8rem;
     color: #aaa;
 }
 .error { color: #ef5350; }
 .viewer-count {
     font-size: 0.8rem;
-    color: #666;
-    margin-top: 0.4rem;
+    color: #888;
     flex-shrink: 0;
-    width: 100%;
-    max-width: 960px;
 }
 
 /* ── Offline Banner ─────────────────────────── */
@@ -478,8 +482,10 @@ button:disabled { background: #555; cursor: default; }
 @media (max-width: 900px) {
     body { flex-direction: column; overflow: hidden; }
     main.stream-column { padding: 0.6rem; flex: 1; overflow-y: auto; }
-    .stream-header h1 { font-size: 1rem; margin-bottom: 0.4rem; }
-    video { max-height: 35vh; }
+    .stream-header { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
+    .stream-header h1 { font-size: 1rem; margin-bottom: 0; }
+    .stream-controls { width: 100%; justify-content: space-between; }
+    video { max-height: 45vh; min-height: 30vh; }
     .panels-section { padding: 0.5rem 0 0; }
     .chat-panel {
         width: 100%;

@@ -916,6 +916,7 @@ function renderDebug(d) {
     html += '<div class="debug-section"><div class="debug-section-label">TOOLS</div>';
     html += row('HLS', hlsStatus, watchAdapter.hlsActive ? 'good' : '');
     html += '<button class="debug-btn" onclick="' + hlsBtnAction + '">' + hlsBtnLabel + '</button>';
+    html += '<button class="debug-btn" onclick="debugCopyAll()">Copy to clipboard</button>';
     html += '</div>';
 
     debugContent.innerHTML = html;
@@ -956,6 +957,56 @@ function debugFlash(msg) {
     }
     el.textContent = msg;
     setTimeout(function () { if (el) el.textContent = ''; }, 4000);
+}
+
+function debugCopyAll() {
+    if (!debugContent) return;
+    var rows = debugContent.querySelectorAll('.debug-row');
+    var sections = debugContent.querySelectorAll('.debug-section-label');
+    var lines = [];
+    lines.push('=== DEBUG SNAPSHOT ===');
+    lines.push('Time: ' + new Date().toISOString());
+    lines.push('UA: ' + navigator.userAgent);
+    lines.push('Adapter: ' + watchAdapter.name);
+    lines.push('');
+    var els = debugContent.querySelectorAll('.debug-section-label, .debug-row');
+    for (var i = 0; i < els.length; i++) {
+        var el = els[i];
+        if (el.classList.contains('debug-section-label')) {
+            lines.push('--- ' + el.textContent + ' ---');
+        } else {
+            var key = el.querySelector('.debug-key');
+            var val = el.querySelector('.debug-val');
+            if (key && val) {
+                lines.push('  ' + key.textContent + ': ' + val.textContent);
+            }
+        }
+    }
+    var text = lines.join('\n');
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+            debugFlash('Copied to clipboard');
+        }).catch(function () {
+            debugCopyFallback(text);
+        });
+    } else {
+        debugCopyFallback(text);
+    }
+}
+
+function debugCopyFallback(text) {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;left:-9999px;';
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+        document.execCommand('copy');
+        debugFlash('Copied to clipboard');
+    } catch (e) {
+        debugFlash('Copy failed — long-press to select text');
+    }
+    document.body.removeChild(ta);
 }
 
 function colorIce(state) {

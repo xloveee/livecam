@@ -118,6 +118,7 @@ Both options use the same WHIP endpoint and produce the same stream format. The 
 | `SFU_PUBLIC_IP` | `127.0.0.1` | **Your server's public IP** — advertised in ICE candidates |
 | `SFU_UDP_PORT` | `50000` | Public UDP port for WebRTC media |
 | `SFU_ARCHIVE_DIR` | `archive` | Directory for VOD recordings |
+| `HLS_DIR` | `hls` | Directory for live HLS segments (relative to working dir or absolute) |
 
 **Go Proxy** (`go-features/api`):
 

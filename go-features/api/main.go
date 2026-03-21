@@ -91,7 +91,7 @@ func main() {
 
 	hlsDir := os.Getenv("HLS_DIR")
 	if hlsDir == "" {
-		hlsDir = "/var/hls"
+		hlsDir = "hls"
 	}
 	hlsFS := http.StripPrefix("/hls/", http.FileServer(http.Dir(hlsDir)))
 	mux.Handle("/hls/", setCORSAndCache(hlsFS))

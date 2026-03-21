@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 
 mod api;
 mod config;
+mod hls;
 mod sfu;
 
 use api::AppState;
@@ -30,8 +31,12 @@ async fn main() {
     let room_state = sfu::new_room_state();
 
     let udp_candidate_addr = cfg.udp_candidate_addr();
+    if let Some(ref dir) = cfg.hls_dir {
+        tracing::info!("HLS output enabled -> {:?}", dir);
+    }
     tokio::spawn(sfu::run_sfu_loop(
         udp_socket, udp_candidate_addr, new_peer_rx, quality_rx, disconnect_rx, room_state.clone(),
+        cfg.hls_dir.clone(),
     ));
 
     let state = Arc::new(AppState {

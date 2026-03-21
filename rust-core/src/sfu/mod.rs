@@ -1,5 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -9,6 +10,8 @@ use str0m::{Event, IceConnectionState, Input, Output, Rtc};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+
+use crate::hls::HlsSink;
 
 /// Unique identifier for a peer session (broadcaster or viewer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -165,6 +168,7 @@ pub async fn run_sfu_loop(
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
     mut disconnect_rx: mpsc::UnboundedReceiver<PeerDisconnect>,
     room_state: RoomStateMap,
+    hls_dir: Option<PathBuf>,
 ) {
     let mut peers: Vec<Peer> = Vec::new();
     let mut propagation_queue: VecDeque<Propagated> = VecDeque::new();
@@ -172,6 +176,7 @@ pub async fn run_sfu_loop(
     let mut last_housekeeping = Instant::now();
     let mut media_fwd_count: u64 = 0;
     let mut last_media_log = Instant::now();
+    let mut hls_sinks: HashMap<String, HlsSink> = HashMap::new();
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
@@ -192,6 +197,11 @@ pub async fn run_sfu_loop(
                     if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
                         tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
                         peer.rtc.disconnect();
+                    }
+                }
+                for room in &dead_rooms {
+                    if let Some(sink) = hls_sinks.remove(room) {
+                        sink.stop();
                     }
                 }
             }
@@ -263,6 +273,15 @@ pub async fn run_sfu_loop(
                 }) {
                     tracing::info!("{}: evicting stale broadcaster from room '{}'", old.id, room_id);
                     old.rtc.disconnect();
+                }
+                if let Some(old_sink) = hls_sinks.remove(&room_id) {
+                    old_sink.stop();
+                }
+                if let Some(ref dir) = hls_dir {
+                    match HlsSink::start(&room_id, dir) {
+                        Ok(sink) => { hls_sinks.insert(room_id.clone(), sink); }
+                        Err(e) => tracing::warn!("HLS sink failed for '{}': {}", room_id, e),
+                    }
                 }
             }
 
@@ -402,7 +421,7 @@ pub async fn run_sfu_loop(
                 if matches!(&prop, Propagated::Media { .. }) {
                     media_fwd_count += 1;
                 }
-                propagate(prop, &mut peers);
+                propagate(prop, &mut peers, &mut hls_sinks);
             }
         }
 
@@ -517,7 +536,7 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
 /// Forward a propagated event to all relevant peers.
 /// Takes ownership so frame data can be moved (zero-copy) to the last viewer.
-fn propagate(prop: Propagated, peers: &mut [Peer]) {
+fn propagate(prop: Propagated, peers: &mut [Peer], hls_sinks: &mut HashMap<String, HlsSink>) {
     match prop {
         Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
             for peer in peers.iter_mut() {
@@ -539,6 +558,16 @@ fn propagate(prop: Propagated, peers: &mut [Peer]) {
         }
 
         Propagated::Media { source_peer, room_id, mut data } => {
+            if data.params.spec().codec.is_video() {
+                if let Some(sink) = hls_sinks.get_mut(&room_id) {
+                    let pts = data.time.numer();
+                    let is_kf = data.is_keyframe();
+                    if !sink.write_video(pts, is_kf, &data.data) {
+                        hls_sinks.remove(&room_id);
+                    }
+                }
+            }
+
             let viewer_count = peers.iter().filter(|p| {
                 p.role == PeerRole::Viewer && p.room_id == room_id && p.id != source_peer
             }).count();

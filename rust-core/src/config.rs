@@ -1,4 +1,5 @@
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 
 /// Central configuration for the Rust Core SFU.
 /// Loaded from environment variables with sensible defaults.
@@ -11,6 +12,8 @@ pub struct Config {
     pub public_ip: IpAddr,
     /// UDP port the SFU media socket binds to for all WebRTC traffic.
     pub udp_port: u16,
+    /// Directory for HLS segment output. None disables HLS.
+    pub hls_dir: Option<PathBuf>,
 }
 
 impl Config {
@@ -40,11 +43,16 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(50000);
 
+        let hls_dir = std::env::var("HLS_DIR").ok()
+            .or_else(|| Some("hls".to_owned()))
+            .map(PathBuf::from);
+
         Self {
             http_bind: SocketAddr::new(http_host, http_port),
             bind_ip,
             public_ip,
             udp_port,
+            hls_dir,
         }
     }
 

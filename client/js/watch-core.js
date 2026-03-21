@@ -274,10 +274,7 @@ function teardownConnection() {
         dying.onconnectionstatechange = null;
         dying.close();
     }
-    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
-    hlsActive = false;
-    video.srcObject = null;
-    video.removeAttribute('src');
+    watchAdapter.teardownVideo();
     video.style.aspectRatio = '';
     hideUnmuteUI();
     sessionId = null;
@@ -304,39 +301,33 @@ function onPeerStateChange() {
 async function connectWHEP() {
     if (!roomId) return;
     if (viewerState === 'connecting') return;
+    if (!watchAdapter.canWebRTC()) {
+        debugEvent('no-webrtc:' + watchAdapter.name);
+        switchToHLS();
+        return;
+    }
 
     teardownConnection();
     setState('connecting');
 
     var config = await fetchICEConfig();
 
-    pc = new RTCPeerConnection({
-        iceServers: config.iceServers || []
-    });
+    pc = watchAdapter.createPC(config.iceServers || []);
 
     var receivers = [];
     pc.ontrack = function (event) {
-        var track = event.track;
         var recv = event.receiver;
         if (typeof recv.jitterBufferTarget !== 'undefined') {
             receivers.push(recv);
             recv.jitterBufferTarget = 0.15;
         }
-        var stream = video.srcObject;
-        if (!(stream instanceof MediaStream)) {
-            stream = new MediaStream();
-            video.srcObject = stream;
-        }
-        stream.addTrack(track);
-        debugEvent('track:' + track.kind + ' ' + track.readyState);
-        video.play().then(function () {
-            debugPlayResult = 'ok';
-            debugEvent('play:ok');
-        }).catch(function (e) {
-            debugPlayResult = e.name || 'blocked';
-            debugEvent('play:' + (e.name || 'blocked'));
+        var kind = watchAdapter.onTrack(event);
+        debugEvent('track:' + kind + ' ' + event.track.readyState);
+        watchAdapter.play().then(function (result) {
+            debugPlayResult = result.ok ? 'ok' : result.error;
+            debugEvent('play:' + debugPlayResult);
         });
-        if (track.kind === 'audio' && video.muted) {
+        if (kind === 'audio' && video.muted) {
             showUnmuteUI();
         }
     };
@@ -345,8 +336,7 @@ async function connectWHEP() {
     pc.oniceconnectionstatechange = onPeerStateChange;
     pc.onconnectionstatechange = onPeerStateChange;
 
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
+    watchAdapter.setupTransceivers(pc);
 
     try {
         var offer = await pc.createOffer();
@@ -794,9 +784,6 @@ function applyJitterBuffer(target) {
 
 /* ── HLS Fallback ───────────────────────────────────────── */
 
-var hlsPlayer = null;
-var hlsActive = false;
-
 function checkHLSAvailable() {
     if (!roomId || !hlsBanner) return;
     fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
@@ -810,29 +797,16 @@ function switchToHLS() {
     if (!roomId) return;
     var hlsUrl = '/hls/' + roomId + '/master.m3u8';
     teardownConnection();
-    hlsActive = true;
     qualitySelect.disabled = true;
 
-    if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = hlsUrl;
-        video.play().catch(function () {});
-        onHLSPlaying();
-    } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-        hlsPlayer.loadSource(hlsUrl);
-        hlsPlayer.attachMedia(video);
-        hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
-            video.play().catch(function () {});
-        });
-        hlsPlayer.on(Hls.Events.ERROR, function (event, data) {
-            if (data.fatal) {
-                teardownConnection();
-                setState('offline');
-            }
+    var started = watchAdapter.startHLS(hlsUrl);
+    if (started) {
+        watchAdapter.onHLSError(function () {
+            teardownConnection();
+            setState('offline');
         });
         onHLSPlaying();
     } else {
-        hlsActive = false;
         statusEl.textContent = 'HLS not supported in this browser';
         statusEl.classList.add('error');
     }
@@ -863,6 +837,7 @@ function renderDebug(d) {
     html += section('STATE', [
         row('Viewer', d.state || '—'),
         row('ICE', d.iceState || '—', colorIce(d.iceState)),
+        row('Adapter', watchAdapter.name, 'good'),
         row('Stall count', d.stallCount != null ? d.stallCount : '—'),
         row('Quality', aqStatus + (currentQualityIdx >= 0 ? ' (' + qualityLevels[currentQualityIdx] + ')' : ' (auto)')),
         row('Room', roomId || '—'),
@@ -935,11 +910,11 @@ function renderDebug(d) {
         html += section('TIMELINE (' + debugTimeline.length + ')', tlRows);
     }
 
-    var hlsStatus = hlsActive ? 'active' : 'off';
-    var hlsBtnLabel = hlsActive ? 'Switch to WebRTC' : 'Switch to HLS';
-    var hlsBtnAction = hlsActive ? 'switchToWebRTC()' : 'debugTryHLS()';
+    var hlsStatus = watchAdapter.hlsActive ? 'active' : 'off';
+    var hlsBtnLabel = watchAdapter.hlsActive ? 'Switch to WebRTC' : 'Switch to HLS';
+    var hlsBtnAction = watchAdapter.hlsActive ? 'switchToWebRTC()' : 'debugTryHLS()';
     html += '<div class="debug-section"><div class="debug-section-label">TOOLS</div>';
-    html += row('HLS', hlsStatus, hlsActive ? 'good' : '');
+    html += row('HLS', hlsStatus, watchAdapter.hlsActive ? 'good' : '');
     html += '<button class="debug-btn" onclick="' + hlsBtnAction + '">' + hlsBtnLabel + '</button>';
     html += '</div>';
 

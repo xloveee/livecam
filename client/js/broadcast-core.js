@@ -138,6 +138,8 @@ preview.addEventListener('resize', function () {
 
 /* ── Bitrate Cap ─────────────────────────────────────────── */
 
+var SIMULCAST_DEFAULTS = [2500, 1000, 400];
+
 async function applyBitrateCap() {
     if (!pc) return;
     var maxKbps = parseInt(bitrateSelect.value, 10);
@@ -149,9 +151,11 @@ async function applyBitrateCap() {
         if (!params.encodings || params.encodings.length === 0) continue;
         for (var j = 0; j < params.encodings.length; j++) {
             if (maxKbps > 0) {
-                params.encodings[j].maxBitrate = maxKbps * 1000;
+                var layerDefault = SIMULCAST_DEFAULTS[j] || SIMULCAST_DEFAULTS[SIMULCAST_DEFAULTS.length - 1];
+                params.encodings[j].maxBitrate = Math.min(maxKbps, layerDefault) * 1000;
             } else {
-                delete params.encodings[j].maxBitrate;
+                var restore = SIMULCAST_DEFAULTS[j];
+                params.encodings[j].maxBitrate = restore ? restore * 1000 : undefined;
             }
         }
         try { await sender.setParameters(params); } catch (e) { /* ignore */ }
@@ -239,7 +243,18 @@ btnStart.onclick = async function () {
     });
 
     localStream.getTracks().forEach(function (track) {
-        pc.addTrack(track, localStream);
+        if (track.kind === 'video') {
+            pc.addTransceiver(track, {
+                direction: 'sendonly',
+                sendEncodings: [
+                    { rid: 'h', maxBitrate: 2500000 },
+                    { rid: 'm', maxBitrate: 1000000, scaleResolutionDownBy: 2.0 },
+                    { rid: 'l', maxBitrate: 400000, scaleResolutionDownBy: 4.0 }
+                ]
+            });
+        } else {
+            pc.addTrack(track, localStream);
+        }
     });
 
     pc.oniceconnectionstatechange = function () {

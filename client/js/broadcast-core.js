@@ -243,28 +243,7 @@ btnStart.onclick = async function () {
     });
 
     localStream.getTracks().forEach(function (track) {
-        var sender = pc.addTrack(track, localStream);
-        if (track.kind === 'video' && sender.getParameters) {
-            var tx = pc.getTransceivers().find(function (t) {
-                return t.sender === sender;
-            });
-            if (tx && tx.setCodecPreferences && RTCRtpSender.getCapabilities) {
-                try {
-                    var caps = RTCRtpSender.getCapabilities('video');
-                    if (caps && caps.codecs) {
-                        var h264 = caps.codecs.filter(function (c) {
-                            return c.mimeType === 'video/H264';
-                        });
-                        var rest = caps.codecs.filter(function (c) {
-                            return c.mimeType !== 'video/H264';
-                        });
-                        if (h264.length > 0) {
-                            tx.setCodecPreferences(h264.concat(rest));
-                        }
-                    }
-                } catch (e) { /* browser doesn't support — use default order */ }
-            }
-        }
+        pc.addTrack(track, localStream);
     });
 
     pc.oniceconnectionstatechange = function () {

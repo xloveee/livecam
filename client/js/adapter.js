@@ -1,80 +1,104 @@
-/* adapter.js — Base WatchAdapter (Chromium default)
+/* adapter.js — Thin media adapter between watch-core.js and the browser.
  *
- * To add a new browser:
- *   1. Create adapter-<name>.js extending WatchAdapter
- *   2. Add <script> in watch.html before adapter-detect.js
- *   3. Add UA condition in adapter-detect.js
+ * The Rust SFU enforces the codec whitelist (H.264 + VP8 + Opus) via
+ * RtcConfig::clear_codecs(). All SDP answers only contain those codecs,
+ * so no client-side codec preference is needed.
+ *
+ * The only real browser difference is HLS delivery:
+ *   - WebKit/iOS: native <video src="…m3u8"> (no library)
+ *   - Chromium:   hls.js
  */
 
-function WatchAdapter(videoEl) {
-    this.video = videoEl;
-    this.hlsPlayer = null;
-    this.hlsActive = false;
-}
+(function () {
+    var video = document.getElementById('player');
+    var nativeHLS = !!video.canPlayType('application/vnd.apple.mpegurl');
 
-WatchAdapter.prototype.name = 'chromium';
+    var adapter = {
+        name: nativeHLS ? 'native-hls' : 'chromium',
+        video: video,
+        hlsPlayer: null,
+        hlsActive: false,
 
-WatchAdapter.prototype.canWebRTC = function () {
-    return typeof RTCPeerConnection !== 'undefined';
-};
+        canWebRTC: function () {
+            return typeof RTCPeerConnection !== 'undefined';
+        },
 
-WatchAdapter.prototype.createPC = function (iceServers) {
-    return new RTCPeerConnection({ iceServers: iceServers });
-};
+        createPC: function (iceServers) {
+            return new RTCPeerConnection({ iceServers: iceServers });
+        },
 
-WatchAdapter.prototype.setupTransceivers = function (pc) {
-    pc.addTransceiver('video', { direction: 'recvonly' });
-    pc.addTransceiver('audio', { direction: 'recvonly' });
-};
+        setupTransceivers: function (pc) {
+            pc.addTransceiver('video', { direction: 'recvonly' });
+            pc.addTransceiver('audio', { direction: 'recvonly' });
+        },
 
-WatchAdapter.prototype.onTrack = function (event) {
-    var stream = this.video.srcObject;
-    if (!(stream instanceof MediaStream)) {
-        stream = new MediaStream();
-        this.video.srcObject = stream;
-    }
-    stream.addTrack(event.track);
-    return event.track.kind;
-};
+        onTrack: function (event) {
+            var stream = video.srcObject;
+            if (!(stream instanceof MediaStream)) {
+                stream = new MediaStream();
+                video.srcObject = stream;
+            }
+            stream.addTrack(event.track);
+            return event.track.kind;
+        },
 
-WatchAdapter.prototype.play = function () {
-    return this.video.play().then(function () {
-        return { ok: true, error: '' };
-    }).catch(function (e) {
-        return { ok: false, error: e.name || 'blocked' };
-    });
-};
+        play: function () {
+            return video.play().then(function () {
+                return { ok: true, error: '' };
+            }).catch(function (e) {
+                return { ok: false, error: e.name || 'blocked' };
+            });
+        },
 
-WatchAdapter.prototype.teardownVideo = function () {
-    this.stopHLS();
-    this.video.srcObject = null;
-    this.video.removeAttribute('src');
-};
+        teardownVideo: function () {
+            adapter.stopHLS();
+            video.srcObject = null;
+            video.removeAttribute('src');
+        },
 
-WatchAdapter.prototype.startHLS = function (url) {
-    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-        this.hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
-        this.hlsPlayer.loadSource(url);
-        this.hlsPlayer.attachMedia(this.video);
-        var self = this;
-        this.hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
-            self.video.play().catch(function () {});
-        });
-        this.hlsActive = true;
-        return true;
-    }
-    return false;
-};
+        startHLS: function (url) {
+            if (nativeHLS) {
+                video.src = url;
+                video.play().catch(function () {});
+                adapter.hlsActive = true;
+                return true;
+            }
+            if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                adapter.hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
+                adapter.hlsPlayer.loadSource(url);
+                adapter.hlsPlayer.attachMedia(video);
+                adapter.hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
+                    video.play().catch(function () {});
+                });
+                adapter.hlsActive = true;
+                return true;
+            }
+            return false;
+        },
 
-WatchAdapter.prototype.stopHLS = function () {
-    if (this.hlsPlayer) { this.hlsPlayer.destroy(); this.hlsPlayer = null; }
-    this.hlsActive = false;
-};
+        stopHLS: function () {
+            if (adapter.hlsPlayer) { adapter.hlsPlayer.destroy(); adapter.hlsPlayer = null; }
+            if (nativeHLS && adapter.hlsActive) {
+                video.removeAttribute('src');
+                video.load();
+            }
+            adapter.hlsActive = false;
+        },
 
-WatchAdapter.prototype.onHLSError = function (callback) {
-    if (this.hlsPlayer) {
-        this.hlsPlayer.on(Hls.Events.ERROR, function (ev, data) {
-            if (data.fatal) callback();
-        });
-    }
-};
+        onHLSError: function (callback) {
+            if (adapter.hlsPlayer) {
+                adapter.hlsPlayer.on(Hls.Events.ERROR, function (ev, data) {
+                    if (data.fatal) callback();
+                });
+            }
+            if (nativeHLS && adapter.hlsActive) {
+                video.addEventListener('error', function onErr() {
+                    video.removeEventListener('error', onErr);
+                    callback();
+                });
+            }
+        }
+    };
+
+    window.watchAdapter = adapter;
+})();

@@ -1,6 +1,9 @@
 package donations
 
-import "net/http"
+import (
+	"encoding/json"
+	"net/http"
+)
 
 type AuthFunc func(w http.ResponseWriter, r *http.Request) (streamKey string, ok bool)
 
@@ -47,8 +50,9 @@ type InitiateResponse struct {
 }
 
 type MethodsResponse struct {
-	Stripe  bool     `json:"stripe"`
-	PayPal  bool     `json:"paypal"`
-	Crypto  []string `json:"crypto,omitempty"`
-	Bank    bool     `json:"bank"`
+	Stripe  bool            `json:"stripe"`
+	PayPal  bool            `json:"paypal"`
+	Crypto  []string        `json:"crypto,omitempty"`
+	Bank    bool            `json:"bank"`
+	Panels  json.RawMessage `json:"panels,omitempty"`
 }

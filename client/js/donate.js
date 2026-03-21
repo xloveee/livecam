@@ -65,6 +65,28 @@ function fetchDonateMethods() {
             var hasAny = data.stripe || data.paypal || data.bank ||
                          (data.crypto && data.crypto.length > 0);
             panelDonate.style.display = hasAny ? '' : 'none';
+
+            if (data.panels && data.panels.panels && data.panels.panels.length > 0) {
+                var section = document.getElementById('panels-section');
+                data.panels.panels.forEach(function(p) {
+                    if (!p.image_url) return;
+                    var a = document.createElement('a');
+                    if (p.link_url) {
+                        a.href = p.link_url;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                    }
+                    a.style.display = 'block';
+                    a.style.marginBottom = '0.5rem';
+                    var img = document.createElement('img');
+                    img.src = p.image_url;
+                    img.style.width = '100%';
+                    img.style.borderRadius = '6px';
+                    img.style.border = '1px solid #1a1a1a';
+                    a.appendChild(img);
+                    section.appendChild(a);
+                });
+            }
         })
         .catch(function () { panelDonate.style.display = 'none'; });
 }

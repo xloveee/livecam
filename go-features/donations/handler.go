@@ -107,7 +107,7 @@ func (h *Handler) handleSetupPost(w http.ResponseWriter, r *http.Request, stream
 	}
 
 	validProviders := map[string]bool{
-		"stripe": true, "paypal": true, "crypto": true, "bank": true,
+		"stripe": true, "paypal": true, "crypto": true, "bank": true, "panels": true,
 	}
 	if !validProviders[req.Provider] {
 		http.Error(w, "Invalid provider", http.StatusBadRequest)
@@ -155,6 +155,8 @@ func (h *Handler) handleMethods(w http.ResponseWriter, r *http.Request, roomID s
 			resp.Crypto = parseCryptoCurrencies(c.ConfigData)
 		case "bank":
 			resp.Bank = true
+		case "panels":
+			resp.Panels = json.RawMessage(c.ConfigData)
 		default:
 			break
 		}

@@ -42,6 +42,9 @@ function loadDonationConfig() {
                         document.getElementById('bank-url').value = data.yowpay_url || '';
                         document.getElementById('bank-apikey').value = data.api_key || '';
                         break;
+                    case 'panels':
+                        renderPanelsFromConfig(data.panels || []);
+                        break;
                     default:
                         break;
                 }
@@ -87,6 +90,17 @@ function doSaveDonationConfig(provider) {
                 yowpay_url: document.getElementById('bank-url').value.trim(),
                 api_key: document.getElementById('bank-apikey').value.trim()
             };
+            break;
+        case 'panels':
+            enabled = true;
+            var panels = [];
+            var panelNodes = document.querySelectorAll('.panel-item');
+            panelNodes.forEach(function (n) {
+                var img = n.querySelector('.panel-img').value.trim();
+                var link = n.querySelector('.panel-link').value.trim();
+                if (img) panels.push({ image_url: img, link_url: link });
+            });
+            configData = { panels: panels };
             break;
         default:
             break;
@@ -166,4 +180,37 @@ function loadDonationHistory() {
         .catch(function () {
             donationHistoryList.textContent = 'Failed to load history.';
         });
+}
+
+/* ── Panels Editor ───────────────────────────────────────── */
+
+var panelsListEl = document.getElementById('panels-list');
+var panelsStatusEl = document.getElementById('panels-status');
+
+function renderPanelsFromConfig(panels) {
+    panelsListEl.innerHTML = '';
+    if (panels.length === 0) {
+        addPanelField();
+    } else {
+        panels.forEach(function(p) { addPanelField(p.image_url, p.link_url); });
+    }
+}
+
+function addPanelField(imgUrl, linkUrl) {
+    var div = document.createElement('div');
+    div.className = 'panel-item provider-card';
+    div.style.position = 'relative';
+    div.innerHTML = `
+        <button type="button" onclick="this.parentElement.remove(); saveDonationConfig('panels')" style="position:absolute;top:4px;right:4px;background:transparent;color:#ef5350;padding:0;font-size:1.2rem;line-height:1;">&times;</button>
+        <div class="provider-card-fields">
+            <label style="font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;">Image URL</label>
+            <input type="text" class="panel-img" placeholder="https://example.com/banner.png" value="` + (imgUrl || '') + `">
+            <label style="font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;margin-top:0.3rem;">Link (Optional)</label>
+            <input type="text" class="panel-link" placeholder="https://mywebsite.com" value="` + (linkUrl || '') + `">
+        </div>
+    `;
+    panelsListEl.appendChild(div);
+    div.querySelectorAll('input').forEach(function(inp) {
+        inp.addEventListener('input', function() { saveDonationConfig('panels'); });
+    });
 }

@@ -54,6 +54,9 @@
                     <button class="settings-tab" onclick="switchSettingsTab('donations', this)">
                         <span class="settings-tab-icon">&#9733;</span>Donations
                     </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('panels', this)">
+                        <span class="settings-tab-icon">&#128240;</span>Panels
+                    </button>
                 </div>
                 <div class="settings-body">
 
@@ -161,6 +164,14 @@
                         </div>
 
                         <div class="row-info" id="donation-status"></div>
+                    </div>
+
+                    <div class="settings-page" id="settings-panels">
+                        <div class="settings-page-title">Below-Stream Panels</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Add image banners and links to display below your stream.</div>
+                        <div id="panels-list" style="display:flex;flex-direction:column;gap:0.5rem;margin-bottom:0.6rem;"></div>
+                        <button type="button" onclick="addPanelField()" style="background:#1e88e5;margin-bottom:0.5rem;font-size:0.75rem;padding:0.4rem 0.8rem;">+ Add Panel</button>
+                        <div class="row-info" id="panels-status"></div>
                     </div>
 
                 </div>

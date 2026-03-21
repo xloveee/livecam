@@ -25,6 +25,21 @@ async fn main() {
         .await
         .expect("failed to bind UDP socket");
 
+    let sndbuf: i32 = 2 * 1024 * 1024;
+    let rcvbuf: i32 = 2 * 1024 * 1024;
+    let sock_ref = socket2::SockRef::from(&udp_socket);
+    if let Err(e) = sock_ref.set_send_buffer_size(sndbuf as usize) {
+        tracing::warn!("SO_SNDBUF set failed: {}", e);
+    }
+    if let Err(e) = sock_ref.set_recv_buffer_size(rcvbuf as usize) {
+        tracing::warn!("SO_RCVBUF set failed: {}", e);
+    }
+    tracing::info!(
+        "UDP buffers: send={}KB recv={}KB",
+        sock_ref.send_buffer_size().unwrap_or(0) / 1024,
+        sock_ref.recv_buffer_size().unwrap_or(0) / 1024,
+    );
+
     let (new_peer_tx, new_peer_rx) = mpsc::unbounded_channel();
     let (quality_tx, quality_rx) = mpsc::unbounded_channel();
     let (disconnect_tx, disconnect_rx) = mpsc::unbounded_channel();

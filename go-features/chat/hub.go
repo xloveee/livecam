@@ -102,10 +102,12 @@ func (h *Hub) Join(c *Client) error {
 		c.role = RoleMod
 	}
 
-	broadcastToRoom(room, OutboundMsg{
-		Type: "system",
-		Text: c.nick + " joined the chat",
-	}, nil)
+	if len(room.clients) <= 20 {
+		broadcastToRoom(room, OutboundMsg{
+			Type: "system",
+			Text: c.nick + " joined the chat",
+		}, nil)
+	}
 
 	return nil
 }
@@ -129,7 +131,7 @@ func (h *Hub) Leave(c *Client) {
 		room.broadcaster = nil
 	}
 	empty := len(room.clients) == 0
-	if wasRegistered {
+	if wasRegistered && len(room.clients) <= 20 {
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: c.nick + " left the chat",

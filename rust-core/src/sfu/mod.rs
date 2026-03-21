@@ -131,7 +131,10 @@ struct Peer {
     aq_good_count: u8,
     aq_last_change: Option<Instant>,
     aq_manual: bool,
+    write_error_count: u32,
 }
+
+const WRITE_ERROR_DISCONNECT_THRESHOLD: u32 = 50;
 
 impl Peer {
     fn new(id: PeerId, rtc: Rtc, role: PeerRole, room_id: String) -> Self {
@@ -149,6 +152,7 @@ impl Peer {
             aq_good_count: 0,
             aq_last_change: None,
             aq_manual: false,
+            write_error_count: 0,
         }
     }
 }
@@ -198,6 +202,9 @@ pub async fn run_sfu_loop(
     let mut media_fwd_count: u64 = 0;
     let mut last_media_log = Instant::now();
     let mut hls_sinks: HashMap<String, HlsSink> = HashMap::new();
+    let mut addr_cache: HashMap<SocketAddr, usize> = HashMap::new();
+    let mut last_keyframe_per_peer: HashMap<PeerId, Instant> = HashMap::new();
+    let mut room_viewer_cache: HashMap<String, usize> = HashMap::new();
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
@@ -243,6 +250,7 @@ pub async fn run_sfu_loop(
             }
 
             peers.retain(|p| p.rtc.is_alive());
+            addr_cache.clear();
 
             // Recompute viewer counts and broadcaster liveness.
             let now = Instant::now();
@@ -262,6 +270,12 @@ pub async fn run_sfu_loop(
                     }
                 }
             }
+
+            room_viewer_cache.clear();
+            for (&room_id, &count) in &viewer_counts {
+                room_viewer_cache.insert(room_id.to_owned(), count as usize);
+            }
+
             if let Ok(mut state) = room_state.lock() {
                 for info in state.values_mut() {
                     info.viewer_count = 0;
@@ -383,9 +397,25 @@ pub async fn run_sfu_loop(
                     let now = Instant::now();
                     if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
                         let input = Input::Receive(now, receive);
-                        if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
-                            if let Err(e) = peer.rtc.handle_input(input) {
-                                tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+
+                        // Fast path: check address cache
+                        if let Some(&idx) = addr_cache.get(&source) {
+                            if idx < peers.len() && peers[idx].rtc.accepts(&input) {
+                                if let Err(e) = peers[idx].rtc.handle_input(input) {
+                                    tracing::warn!("{}: handle_input error: {:?}", peers[idx].id, e);
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Slow path: linear scan, then update cache
+                        for (i, peer) in peers.iter_mut().enumerate() {
+                            if peer.rtc.accepts(&input) {
+                                addr_cache.insert(source, i);
+                                if let Err(e) = peer.rtc.handle_input(input) {
+                                    tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                                }
+                                break;
                             }
                         }
                     }
@@ -445,7 +475,16 @@ pub async fn run_sfu_loop(
                 if matches!(&prop, Propagated::Media { .. }) {
                     media_fwd_count += 1;
                 }
-                propagate(prop, &mut peers, &mut hls_sinks);
+                if let Propagated::Keyframe { target_peer, .. } = &prop {
+                    let now = Instant::now();
+                    if let Some(last) = last_keyframe_per_peer.get(target_peer) {
+                        if now.duration_since(*last) < Duration::from_millis(500) {
+                            continue;
+                        }
+                    }
+                    last_keyframe_per_peer.insert(*target_peer, now);
+                }
+                propagate(prop, &mut peers, &mut hls_sinks, &room_viewer_cache);
             }
         }
 
@@ -634,7 +673,12 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
 /// Forward a propagated event to all relevant peers.
 /// Takes ownership so frame data can be moved (zero-copy) to the last viewer.
-fn propagate(prop: Propagated, peers: &mut [Peer], hls_sinks: &mut HashMap<String, HlsSink>) {
+fn propagate(
+    prop: Propagated,
+    peers: &mut [Peer],
+    hls_sinks: &mut HashMap<String, HlsSink>,
+    room_viewer_cache: &HashMap<String, usize>,
+) {
     match prop {
         Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
             for peer in peers.iter_mut() {
@@ -666,9 +710,7 @@ fn propagate(prop: Propagated, peers: &mut [Peer], hls_sinks: &mut HashMap<Strin
                 }
             }
 
-            let viewer_count = peers.iter().filter(|p| {
-                p.role == PeerRole::Viewer && p.room_id == room_id && p.id != source_peer
-            }).count();
+            let viewer_count = room_viewer_cache.get(&room_id).copied().unwrap_or(0);
 
             let mut written = 0u32;
             for peer in peers.iter_mut() {
@@ -714,9 +756,15 @@ fn propagate(prop: Propagated, peers: &mut [Peer], hls_sinks: &mut HashMap<Strin
                     data.data.clone()
                 };
 
-                if let Err(e) = writer.write(pt, data.network_time, data.time, frame) {
-                    tracing::warn!("{}: write error: {:?}", peer.id, e);
-                    peer.rtc.disconnect();
+                match writer.write(pt, data.network_time, data.time, frame) {
+                    Ok(()) => { peer.write_error_count = 0; }
+                    Err(e) => {
+                        peer.write_error_count += 1;
+                        if peer.write_error_count >= WRITE_ERROR_DISCONNECT_THRESHOLD {
+                            tracing::warn!("{}: {} consecutive write errors, disconnecting: {:?}", peer.id, peer.write_error_count, e);
+                            peer.rtc.disconnect();
+                        }
+                    }
                 }
             }
         }

@@ -403,7 +403,15 @@ async function connectWHEP() {
         }
         if (response.status === 503) {
             teardownConnection();
-            setState('room_full');
+            fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
+                .then(function (r) {
+                    if (r.ok) {
+                        switchToHLS();
+                    } else {
+                        setState('room_full');
+                    }
+                })
+                .catch(function () { setState('room_full'); });
             return;
         }
         if (response.status === 429) {

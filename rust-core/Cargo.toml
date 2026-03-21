@@ -11,6 +11,7 @@ serde_json = "1.0"
 str0m = "0.16"
 tracing = "0.1"
 tracing-subscriber = "0.3"
+socket2 = "0.6"
 
 [profile.release]
 lto = true

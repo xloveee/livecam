@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use str0m::format::Codec;
 use str0m::media::{KeyframeRequest, KeyframeRequestKind, MediaData, Mid, Rid};
 use str0m::net::{Protocol, Receive};
 use str0m::{Event, IceConnectionState, Input, Output, Rtc};
@@ -115,6 +116,7 @@ struct Peer {
     tracks_out: Vec<TrackOut>,
     chosen_rid: Option<Rid>,
     last_media_at: Option<Instant>,
+    codec_logged: bool,
 }
 
 impl Peer {
@@ -128,6 +130,7 @@ impl Peer {
             tracks_out: Vec::new(),
             chosen_rid: None,
             last_media_at: None,
+            codec_logged: false,
         }
     }
 }
@@ -487,6 +490,14 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
         Event::MediaData(data) => {
             if peer.role == PeerRole::Broadcaster {
+                if !peer.codec_logged {
+                    let codec = data.params.spec().codec;
+                    tracing::info!(
+                        "{} room='{}': first media mid={} codec={:?} keyframe={}",
+                        peer.id, peer.room_id, data.mid, codec, data.is_keyframe()
+                    );
+                    peer.codec_logged = true;
+                }
                 peer.last_media_at = Some(Instant::now());
                 return Propagated::Media {
                     source_peer: peer.id,
@@ -558,7 +569,7 @@ fn propagate(prop: Propagated, peers: &mut [Peer], hls_sinks: &mut HashMap<Strin
         }
 
         Propagated::Media { source_peer, room_id, mut data } => {
-            if data.params.spec().codec.is_video() {
+            if data.params.spec().codec == Codec::H264 {
                 if let Some(sink) = hls_sinks.get_mut(&room_id) {
                     let pts = data.time.numer();
                     let is_kf = data.is_keyframe();

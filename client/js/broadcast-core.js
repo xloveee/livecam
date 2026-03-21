@@ -18,6 +18,35 @@ var bitrateSelect = document.getElementById('bitrate');
 var pc = null;
 var localStream = null;
 var statsInterval = null;
+
+/** Reorder SDP so H.264 payload types come before VP8/VP9 in video m-lines. */
+function preferH264(sdp) {
+    var lines = sdp.split('\r\n');
+    var result = [];
+    for (var i = 0; i < lines.length; i++) {
+        if (lines[i].indexOf('m=video') !== 0) { result.push(lines[i]); continue; }
+        var parts = lines[i].split(' ');
+        var header = parts.slice(0, 3);
+        var pts = parts.slice(3);
+        var h264pts = [];
+        var otherpts = [];
+        for (var j = 0; j < pts.length; j++) {
+            var pt = pts[j];
+            var isH264 = false;
+            for (var k = i + 1; k < lines.length; k++) {
+                if (lines[k].indexOf('m=') === 0) break;
+                if (lines[k].indexOf('a=rtpmap:' + pt + ' H264/') === 0 ||
+                    lines[k].indexOf('a=rtpmap:' + pt + ' h264/') === 0) {
+                    isH264 = true; break;
+                }
+            }
+            if (isH264) { h264pts.push(pt); } else { otherpts.push(pt); }
+        }
+        result.push(header.concat(h264pts).concat(otherpts).join(' '));
+        continue;
+    }
+    return result.join('\r\n');
+}
 var viewerPollInterval = null;
 var activeStreamKey = null;
 var authenticatedKey = '';
@@ -268,6 +297,7 @@ btnStart.onclick = async function () {
 
     try {
         var offer = await pc.createOffer();
+        offer = { type: offer.type, sdp: preferH264(offer.sdp) };
         await pc.setLocalDescription(offer);
 
         var response = await fetch('/api/whip/' + streamKey, {

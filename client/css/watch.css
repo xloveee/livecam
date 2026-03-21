@@ -10,59 +10,76 @@ body {
     color: #e0e0e0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* ── Site header (above stream + chat, not in stream column) ─ */
+
+.site-header {
+    flex-shrink: 0;
+    width: 100%;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid #1a1a1a;
+    background: #0a0a0a;
+}
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.site-header h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #fff;
+}
+.site-header h1 a {
+    color: #1e88e5;
+    text-decoration: none;
+}
+.site-header h1 a:hover { text-decoration: underline; }
+
+/* ── Stream + chat row (50 / 50) ────────────── */
+
+.watch-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
     flex-direction: row;
+    min-width: 0;
 }
 
 /* ── Stream Column ──────────────────────────── */
 
 main.stream-column {
-    flex: 1;
+    flex: 1 1 50%;
     min-height: 0;
     min-width: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding: 1rem;
+    align-items: stretch;
+    padding: 0.5rem 0.75rem;
     overflow-y: auto;
     overscroll-behavior: none;
+    border-right: 1px solid #1a1a1a;
 }
 
-.stream-header {
-    width: 100%;
-    max-width: 960px;
+/* ── Stream toolbar (quality / status only) ─── */
+
+.stream-toolbar {
     flex-shrink: 0;
-    margin-bottom: 0.5rem;
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-end;
-    gap: 0.5rem;
+    width: 100%;
+    padding-bottom: 0.35rem;
 }
-.header-left {
-    display: flex;
-    flex-direction: column;
-    gap: 0.2rem;
-}
-.stream-header h1 {
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: #fff;
-}
-.stream-header h1 a {
-    color: #1e88e5;
-    text-decoration: none;
-}
-.stream-header h1 a:hover { text-decoration: underline; }
 
 /* ── Video Player ───────────────────────────── */
 
 video {
     width: 100%;
-    max-width: 960px;
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
-    max-height: calc(100vh - 4rem);
+    max-width: none;
     background: #000;
-    aspect-ratio: 16/9;
     border-radius: 4px;
     object-fit: contain;
 }
@@ -74,6 +91,7 @@ video {
     align-items: center;
     gap: 0.8rem;
     flex-shrink: 0;
+    flex-wrap: wrap;
 }
 select {
     background: #1e1e1e;
@@ -112,11 +130,11 @@ button:disabled { background: #555; cursor: default; }
 
 .stream-viewport {
     width: 100%;
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    flex-shrink: 0;
-    min-height: 100%;
+    align-items: stretch;
 }
 
 .scroll-hint {
@@ -207,7 +225,7 @@ button:disabled { background: #555; cursor: default; }
 #degrade-banner {
     display: none;
     width: 100%;
-    max-width: 960px;
+    max-width: none;
     align-items: center;
     gap: 0.5rem;
     padding: 0.45rem 0.7rem;
@@ -253,7 +271,7 @@ button:disabled { background: #555; cursor: default; }
 
 .panels-section {
     width: 100%;
-    max-width: 960px;
+    max-width: none;
     padding: 0.8rem 0 0;
     flex-shrink: 0;
 }
@@ -311,12 +329,11 @@ button:disabled { background: #555; cursor: default; }
 /* ── Chat Panel ─────────────────────────────── */
 
 .chat-panel {
-    width: 340px;
-    min-width: 340px;
+    flex: 1 1 50%;
+    min-width: 0;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    border-left: 1px solid #1a1a1a;
     background: #0d0d0d;
 }
 .chat-header {
@@ -527,19 +544,30 @@ button:disabled { background: #555; cursor: default; }
 /* ── Mobile: stack vertically ───────────────── */
 
 @media (max-width: 900px) {
-    body { flex-direction: column; overflow: hidden; }
-    main.stream-column { padding: 0.6rem; flex: 1; overflow-y: auto; }
-    .stream-header { flex-direction: column; align-items: flex-start; gap: 0.4rem; }
-    .stream-header h1 { font-size: 1rem; margin-bottom: 0; }
+    body { overflow: hidden; }
+    .watch-row {
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+    }
+    main.stream-column {
+        padding: 0.5rem 0.6rem;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        border-right: none;
+        border-bottom: 1px solid #1a1a1a;
+    }
+    .site-header h1 { font-size: 0.95rem; }
     .stream-controls { width: 100%; justify-content: space-between; }
-    video { max-height: 45vh; min-height: 30vh; }
+    video {
+        flex: 1 1 auto;
+        min-height: 28vh;
+        max-height: 48vh;
+    }
     .panels-section { padding: 0.5rem 0 0; }
     .chat-panel {
-        width: 100%;
-        min-width: 0;
-        flex: 1;
+        flex: 1 1 auto;
         min-height: 200px;
-        border-left: none;
         border-top: 1px solid #1a1a1a;
     }
 }

@@ -9,17 +9,21 @@
 </head>
 <body>
 
+    <header class="site-header">
+        <div class="header-left">
+            <h1>
+                Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
+            </h1>
+            <div class="viewer-count" id="viewer-count"></div>
+            <span id="offline-text" style="display:none;"></span>
+        </div>
+    </header>
+
+    <div class="watch-row">
     <main class="stream-column">
         <div class="stream-viewport">
-            <header class="stream-header">
-                <div class="header-left">
-                    <h1>
-                        Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
-                    </h1>
-                    <div class="viewer-count" id="viewer-count"></div>
-                    <span id="offline-text" style="display:none;"></span>
-                </div>
-                <div class="stream-controls" id="controls">
+            <div class="stream-toolbar" id="controls">
+                <div class="stream-controls">
                     <span id="offline-banner" title="Stream status">
                         <span class="dot"></span>
                     </span>
@@ -31,7 +35,7 @@
                         <option value="l">Low (360p)</option>
                     </select>
                 </div>
-            </header>
+            </div>
 
             <video id="player" autoplay controls playsinline></video>
 
@@ -69,7 +73,7 @@
         </section>
     </main>
 
-    <aside class="chat-panel">
+    <aside class="chat-panel" aria-label="Chat">
         <div class="chat-header">
             <span>Chat</span>
             <span class="chat-status" id="chat-status"></span>
@@ -98,6 +102,7 @@
             </div>
         </div>
     </aside>
+    </div>
 
     <div class="donate-modal-overlay" id="donate-overlay">
         <div class="donate-modal">

@@ -553,3 +553,17 @@ button:disabled { background: #555; cursor: default; }
 .debug-overlay .debug-val.warn { color: #ffb300; }
 .debug-overlay .debug-val.bad { color: #ff5722; }
 .debug-overlay .debug-val.good { color: #4caf50; }
+.debug-overlay .debug-btn {
+    display: block;
+    width: 100%;
+    margin-top: 0.3rem;
+    padding: 0.25rem 0;
+    background: #1a1a2e;
+    color: #7eb8da;
+    border: 1px solid #333;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    cursor: pointer;
+}
+.debug-overlay .debug-btn:hover { background: #252545; }

@@ -815,6 +815,14 @@ function renderDebug(d) {
         row('Remote', d.remoteCandidate || '—')
     ]);
 
+    var hlsStatus = hlsActive ? 'active' : 'off';
+    var hlsBtnLabel = hlsActive ? 'Switch to WebRTC' : 'Switch to HLS';
+    var hlsBtnAction = hlsActive ? 'switchToWebRTC()' : 'debugTryHLS()';
+    html += '<div class="debug-section"><div class="debug-section-label">TOOLS</div>';
+    html += row('HLS', hlsStatus, hlsActive ? 'good' : '');
+    html += '<button class="debug-btn" onclick="' + hlsBtnAction + '">' + hlsBtnLabel + '</button>';
+    html += '</div>';
+
     debugContent.innerHTML = html;
 }
 
@@ -824,6 +832,35 @@ function section(label, rows) {
 
 function row(key, val, cls) {
     return '<div class="debug-row"><span class="debug-key">' + key + '</span><span class="debug-val' + (cls ? ' ' + cls : '') + '">' + val + '</span></div>';
+}
+
+function debugTryHLS() {
+    if (!roomId) return;
+    var url = '/hls/' + roomId + '/master.m3u8';
+    fetch(url, { method: 'HEAD' }).then(function (r) {
+        if (r.ok) {
+            switchToHLS();
+        } else {
+            debugFlash('HLS not available (HTTP ' + r.status + ')');
+        }
+    }).catch(function () {
+        debugFlash('HLS not available (fetch failed)');
+    });
+}
+
+function debugFlash(msg) {
+    if (!debugContent) return;
+    var el = document.getElementById('debug-flash');
+    if (!el) {
+        var div = document.createElement('div');
+        div.id = 'debug-flash';
+        div.className = 'debug-val bad';
+        div.style.cssText = 'text-align:left;padding:0.2rem 0;font-size:0.6rem;';
+        debugContent.appendChild(div);
+        el = div;
+    }
+    el.textContent = msg;
+    setTimeout(function () { if (el) el.textContent = ''; }, 4000);
 }
 
 function colorIce(state) {

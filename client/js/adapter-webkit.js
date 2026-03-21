@@ -23,6 +23,18 @@ WebKitAdapter.prototype.createPC = function (iceServers) {
     });
 };
 
+WebKitAdapter.prototype.play = function () {
+    var v = this.video;
+    if (v.srcObject && v.readyState === 0) {
+        v.load();
+    }
+    return v.play().then(function () {
+        return { ok: true, error: '' };
+    }).catch(function (e) {
+        return { ok: false, error: e.name || 'blocked' };
+    });
+};
+
 WebKitAdapter.prototype.supportsNativeHLS = function () {
     return true;
 };

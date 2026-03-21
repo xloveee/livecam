@@ -13,6 +13,7 @@ var micSelect = document.getElementById('mic-select');
 var maxViewersInput = document.getElementById('max-viewers');
 var viewerCountEl = document.getElementById('viewer-count');
 var roomPasswordInput = document.getElementById('room-password');
+var bitrateSelect = document.getElementById('bitrate');
 
 var pc = null;
 var localStream = null;
@@ -135,6 +136,30 @@ preview.addEventListener('resize', function () {
     }
 });
 
+/* ── Bitrate Cap ─────────────────────────────────────────── */
+
+async function applyBitrateCap() {
+    if (!pc) return;
+    var maxKbps = parseInt(bitrateSelect.value, 10);
+    var senders = pc.getSenders();
+    for (var i = 0; i < senders.length; i++) {
+        var sender = senders[i];
+        if (!sender.track || sender.track.kind !== 'video') continue;
+        var params = sender.getParameters();
+        if (!params.encodings || params.encodings.length === 0) continue;
+        for (var j = 0; j < params.encodings.length; j++) {
+            if (maxKbps > 0) {
+                params.encodings[j].maxBitrate = maxKbps * 1000;
+            } else {
+                delete params.encodings[j].maxBitrate;
+            }
+        }
+        try { await sender.setParameters(params); } catch (e) { /* ignore */ }
+    }
+}
+
+bitrateSelect.onchange = applyBitrateCap;
+
 /* ── Room Settings API ───────────────────────────────────── */
 
 async function setViewerLimit(streamKey, max) {
@@ -228,6 +253,7 @@ btnStart.onclick = async function () {
             statusEl.classList.remove('error');
             liveBadge.classList.add('visible');
             startStats();
+            applyBitrateCap();
             activeStreamKey = streamKey;
             setViewerLimit(streamKey, maxViewersInput.value);
             setRoomPassword(streamKey, roomPasswordInput.value.trim());

@@ -26,6 +26,7 @@ var pollInterval = null;
 var unmuteOverlay = document.getElementById('unmute-overlay');
 var lastBytesReceived = 0;
 var stallCount = 0;
+var webrtcFailCount = 0;
 var connectTimeout = null;
 var viewerState = 'init';
 
@@ -589,11 +590,17 @@ function startStatsLoop() {
         if (totalBytes > lastBytesReceived) {
             lastBytesReceived = totalBytes;
             stallCount = 0;
+            if (statsTick > 15) { webrtcFailCount = 0; }
         } else {
             stallCount++;
             if (stallCount >= 3) {
+                webrtcFailCount++;
                 teardownConnection();
-                setState('offline');
+                if (webrtcFailCount >= 2) {
+                    tryHLSFallback();
+                } else {
+                    setState('offline');
+                }
                 return;
             }
         }
@@ -693,6 +700,17 @@ function checkHLSAvailable() {
         .catch(function () {});
 }
 
+function tryHLSFallback() {
+    if (!roomId) { setState('offline'); return; }
+    debugEvent('hls-fallback:webrtcFails=' + webrtcFailCount);
+    fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
+        .then(function (r) {
+            if (r.ok) { switchToHLS(); }
+            else { setState('offline'); }
+        })
+        .catch(function () { setState('offline'); });
+}
+
 function switchToHLS() {
     if (!roomId) return;
     var hlsUrl = '/hls/' + roomId + '/master.m3u8';
@@ -723,6 +741,7 @@ function onHLSPlaying() {
 }
 
 function switchToWebRTC() {
+    webrtcFailCount = 0;
     if (degradeBanner) degradeBanner.style.display = 'none';
     if (hlsBanner) hlsBanner.style.display = 'none';
     connectWHEP();

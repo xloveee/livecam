@@ -23,15 +23,6 @@ WebKitAdapter.prototype.createPC = function (iceServers) {
     });
 };
 
-WebKitAdapter.prototype.onTrack = function (event) {
-    if (event.streams && event.streams[0]) {
-        this.video.srcObject = event.streams[0];
-    } else {
-        WatchAdapter.prototype.onTrack.call(this, event);
-    }
-    return event.track.kind;
-};
-
 WebKitAdapter.prototype.supportsNativeHLS = function () {
     return true;
 };

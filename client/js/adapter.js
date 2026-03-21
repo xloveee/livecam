@@ -32,12 +32,16 @@ WatchAdapter.prototype.setupTransceivers = function (pc) {
 };
 
 WatchAdapter.prototype.onTrack = function (event) {
-    var stream = this.video.srcObject;
-    if (!(stream instanceof MediaStream)) {
-        stream = new MediaStream();
-        this.video.srcObject = stream;
+    if (event.streams && event.streams[0]) {
+        this.video.srcObject = event.streams[0];
+    } else {
+        var stream = this.video.srcObject;
+        if (!(stream instanceof MediaStream)) {
+            stream = new MediaStream();
+            this.video.srcObject = stream;
+        }
+        stream.addTrack(event.track);
     }
-    stream.addTrack(event.track);
     return event.track.kind;
 };
 

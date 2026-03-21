@@ -82,6 +82,7 @@ WebKitAdapter.prototype.supportsNativeHLS = function () {
 };
 
 WebKitAdapter.prototype.startHLS = function (url) {
+    this.video.muted = true;
     this.video.src = url;
     this.video.play().catch(function () {});
     this.hlsActive = true;

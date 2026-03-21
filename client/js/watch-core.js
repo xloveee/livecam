@@ -463,7 +463,15 @@ var statsTick = 0;
 var debugEnabled = /[?&]debug=1/.test(window.location.search);
 var debugOverlay = document.getElementById('debug-overlay');
 var debugContent = document.getElementById('debug-content');
-if (debugEnabled && debugOverlay) debugOverlay.classList.add('visible');
+if (debugEnabled && debugOverlay) {
+    debugOverlay.classList.add('visible');
+    var debugTitle = debugOverlay.querySelector('.debug-title');
+    if (debugTitle) {
+        debugTitle.addEventListener('click', function () {
+            debugOverlay.classList.toggle('collapsed');
+        });
+    }
+}
 
 var debugTimeline = [];
 var debugPlayResult = '';

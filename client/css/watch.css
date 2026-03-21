@@ -872,7 +872,32 @@ button:disabled { background: #555; cursor: default; }
     margin-bottom: 0.25rem;
     letter-spacing: 0.04em;
     text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    -webkit-tap-highlight-color: transparent;
 }
+.debug-overlay .debug-title::after {
+    content: '▼';
+    font-size: 0.45rem;
+    opacity: 0.5;
+    margin-left: 0.4rem;
+}
+.debug-overlay.collapsed .debug-title { margin-bottom: 0; }
+.debug-overlay.collapsed .debug-title::after { content: '▶'; }
+.debug-overlay #debug-content {
+    overflow-y: auto;
+    max-height: calc(100vh - 56px);
+    max-height: calc(100dvh - 56px);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #444 transparent;
+}
+.debug-overlay.collapsed #debug-content { display: none; }
 .debug-overlay .debug-section {
     border-top: 1px solid #2a2a2a;
     padding-top: 0.25rem;

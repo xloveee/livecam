@@ -116,7 +116,7 @@ struct Peer {
     tracks_out: Vec<TrackOut>,
     chosen_rid: Option<Rid>,
     last_media_at: Option<Instant>,
-    codec_logged: bool,
+    logged_mids: Vec<Mid>,
 }
 
 impl Peer {
@@ -130,7 +130,7 @@ impl Peer {
             tracks_out: Vec::new(),
             chosen_rid: None,
             last_media_at: None,
-            codec_logged: false,
+            logged_mids: Vec::new(),
         }
     }
 }
@@ -490,13 +490,13 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
         Event::MediaData(data) => {
             if peer.role == PeerRole::Broadcaster {
-                if !peer.codec_logged {
+                if !peer.logged_mids.contains(&data.mid) {
                     let codec = data.params.spec().codec;
                     tracing::info!(
                         "{} room='{}': first media mid={} codec={:?} keyframe={}",
                         peer.id, peer.room_id, data.mid, codec, data.is_keyframe()
                     );
-                    peer.codec_logged = true;
+                    peer.logged_mids.push(data.mid);
                 }
                 peer.last_media_at = Some(Instant::now());
                 return Propagated::Media {

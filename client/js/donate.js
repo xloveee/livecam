@@ -66,29 +66,37 @@ function fetchDonateMethods() {
                          (data.crypto && data.crypto.length > 0);
             panelDonate.style.display = hasAny ? '' : 'none';
 
-            if (data.panels && data.panels.panels && data.panels.panels.length > 0) {
-                var section = document.getElementById('panels-section');
+            var panelsGrid = document.getElementById('panels-grid');
+            if (panelsGrid) {
+                while (panelsGrid.firstChild) {
+                    panelsGrid.removeChild(panelsGrid.firstChild);
+                }
+                panelsGrid.setAttribute('hidden', '');
+            }
+            if (data.panels && data.panels.panels && data.panels.panels.length > 0 && panelsGrid) {
                 var hasValidPanels = false;
-                data.panels.panels.forEach(function(p) {
+                data.panels.panels.forEach(function (p) {
                     if (!p.image_url) return;
                     hasValidPanels = true;
+                    var cell = document.createElement('div');
+                    cell.className = 'panel-banner-cell';
                     var a = document.createElement('a');
                     if (p.link_url) {
                         a.href = p.link_url;
                         a.target = '_blank';
                         a.rel = 'noopener noreferrer';
                     }
-                    a.style.display = 'block';
-                    a.style.marginBottom = '0.5rem';
                     var img = document.createElement('img');
                     img.src = p.image_url;
-                    img.style.width = '100%';
-                    img.style.borderRadius = '6px';
-                    img.style.border = '1px solid #1a1a1a';
+                    img.alt = '';
+                    img.loading = 'lazy';
                     a.appendChild(img);
-                    section.appendChild(a);
+                    cell.appendChild(a);
+                    panelsGrid.appendChild(cell);
                 });
-                
+                if (hasValidPanels) {
+                    panelsGrid.removeAttribute('hidden');
+                }
                 var scrollHint = document.getElementById('scroll-hint');
                 if (hasValidPanels && scrollHint) {
                     scrollHint.style.display = 'block';

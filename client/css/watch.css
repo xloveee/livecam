@@ -46,7 +46,10 @@ body {
     min-height: 0;
     display: flex;
     flex-direction: row;
+    align-items: stretch;
+    align-content: stretch;
     min-width: 0;
+    overflow: hidden;
 }
 
 /* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
@@ -55,9 +58,12 @@ body {
  * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
 
 main.stream-column {
-    flex: 1 1 50%;
+    flex: 1 1 0;
     min-height: 0;
     min-width: 0;
+    width: 0;
+    height: 100%;
+    align-self: stretch;
     padding: 0.5rem 0.75rem;
     overflow-y: auto;
     overflow-x: hidden;
@@ -298,6 +304,37 @@ button:disabled { background: #555; cursor: default; }
     padding: 0.8rem 0 1rem;
     flex-shrink: 0;
     box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Procedural grid: column count follows min banner width; more panels → more tiles per row when space allows */
+.panels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+}
+.panels-grid[hidden] {
+    display: none !important;
+}
+.panel-banner-cell {
+    min-width: 0;
+}
+.panel-banner-cell a {
+    display: block;
+    text-decoration: none;
+}
+.panel-banner-cell img {
+    width: 100%;
+    height: auto;
+    vertical-align: middle;
+    border-radius: 6px;
+    border: 1px solid #1a1a1a;
+    display: block;
+    object-fit: cover;
 }
 .panel-card {
     background: #111;
@@ -353,9 +390,12 @@ button:disabled { background: #555; cursor: default; }
 /* ── Chat Panel ─────────────────────────────── */
 
 .chat-panel {
-    flex: 1 1 50%;
+    flex: 1 1 0;
     min-width: 0;
+    width: 0;
     min-height: 0;
+    height: 100%;
+    align-self: stretch;
     display: flex;
     flex-direction: column;
     background: #0d0d0d;
@@ -577,6 +617,9 @@ button:disabled { background: #555; cursor: default; }
     main.stream-column {
         padding: 0.5rem 0.6rem;
         flex: 1 1 auto;
+        max-width: none;
+        height: auto;
+        min-height: 0;
         overflow-y: auto;
         overflow-x: hidden;
         scroll-snap-type: y proximity;
@@ -594,8 +637,13 @@ button:disabled { background: #555; cursor: default; }
     .panels-section { padding: 0.5rem 0 0; }
     .chat-panel {
         flex: 1 1 auto;
+        max-width: none;
+        height: auto;
         min-height: 200px;
         border-top: 1px solid #1a1a1a;
+    }
+    .panels-grid {
+        grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
     }
 }
 

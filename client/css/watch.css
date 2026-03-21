@@ -52,29 +52,19 @@ body {
     overflow: hidden;
 }
 
-/* Draggable gutter between stream and chat (desktop only; see watch-split.js) */
+/* Draggable gutter between stream and chat (watch-split.js: vertical bar desktop, horizontal bar phone) */
 .watch-splitter {
     display: none;
     flex: 0 0 6px;
-    width: 6px;
-    min-width: 6px;
-    align-self: stretch;
     margin: 0;
     padding: 0;
     border: none;
     box-sizing: border-box;
-    cursor: col-resize;
     touch-action: none;
     user-select: none;
     -webkit-user-select: none;
     background: #121212;
-    box-shadow: inset 1px 0 0 #1f1f1f, inset -1px 0 0 #1f1f1f;
     z-index: 2;
-}
-.watch-splitter:hover,
-.watch-splitter:focus-visible {
-    background: #1a1a1a;
-    box-shadow: inset 1px 0 0 #2a2a2a, inset -1px 0 0 #2a2a2a;
 }
 .watch-splitter:focus {
     outline: none;
@@ -84,21 +74,64 @@ body {
     outline-offset: -1px;
 }
 
-.watch-row.watch-row--resize main.stream-column {
+/* Desktop: vertical grip between columns */
+@media (min-width: 901px) {
+    .watch-row.watch-row--resize .watch-splitter {
+        display: block;
+        width: 6px;
+        min-width: 6px;
+        align-self: stretch;
+        cursor: col-resize;
+        box-shadow: inset 1px 0 0 #1f1f1f, inset -1px 0 0 #1f1f1f;
+    }
+    .watch-row.watch-row--resize .watch-splitter:hover,
+    .watch-row.watch-row--resize .watch-splitter:focus-visible {
+        background: #1a1a1a;
+        box-shadow: inset 1px 0 0 #2a2a2a, inset -1px 0 0 #2a2a2a;
+    }
+}
+
+/* Phone: horizontal grip between stacked stream and chat */
+@media (max-width: 900px) {
+    .watch-row.watch-row--resize .watch-splitter {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        height: 6px;
+        min-height: 6px;
+        flex: 0 0 6px;
+        cursor: row-resize;
+        box-shadow: inset 0 1px 0 #1f1f1f, inset 0 -1px 0 #1f1f1f;
+    }
+    .watch-row.watch-row--resize .watch-splitter:hover,
+    .watch-row.watch-row--resize .watch-splitter:focus-visible {
+        background: #1a1a1a;
+        box-shadow: inset 0 1px 0 #2a2a2a, inset 0 -1px 0 #2a2a2a;
+    }
+    .watch-row.watch-row--resize-mobile main.stream-column {
+        border-bottom: none;
+        min-height: 120px;
+    }
+    .watch-row.watch-row--resize-mobile .chat-panel {
+        border-top: none;
+    }
+}
+
+.watch-row.watch-row--resize-desktop main.stream-column {
     border-right: none;
     min-width: 160px;
 }
 
-body.watch-split-dragging,
 body.watch-split-dragging * {
-    cursor: col-resize !important;
     user-select: none !important;
 }
-
-@media (min-width: 901px) {
-    .watch-row.watch-row--resize .watch-splitter {
-        display: block;
-    }
+body.watch-split-dragging.watch-split-dragging--col,
+body.watch-split-dragging.watch-split-dragging--col * {
+    cursor: col-resize !important;
+}
+body.watch-split-dragging.watch-split-dragging--row,
+body.watch-split-dragging.watch-split-dragging--row * {
+    cursor: row-resize !important;
 }
 
 /* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
@@ -545,11 +578,22 @@ button:disabled { background: #555; cursor: default; }
 }
 .chat-guest-bar {
     display: flex;
+    flex-wrap: wrap;
     gap: 0.4rem;
+    align-items: center;
     cursor: pointer;
 }
-.chat-guest-bar input { pointer-events: none; opacity: 0.4; }
-.chat-guest-bar button { opacity: 0.4; pointer-events: none; }
+.chat-guest-bar input {
+    pointer-events: none;
+    opacity: 0.4;
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+.chat-guest-bar button {
+    opacity: 0.4;
+    pointer-events: none;
+    flex: 0 0 auto;
+}
 .chat-nick-prompt {
     position: absolute;
     bottom: 100%;
@@ -567,12 +611,26 @@ button:disabled { background: #555; cursor: default; }
 }
 .chat-nick-prompt.visible { display: flex; }
 .chat-nick-prompt label { font-size: 0.78rem; color: #aaa; font-weight: 600; }
-.chat-nick-prompt .nick-row { display: flex; gap: 0.4rem; }
+.chat-nick-prompt .nick-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.chat-nick-prompt .nick-row input { flex: 1 1 10rem; min-width: 0; }
+.chat-nick-prompt .nick-row button { flex: 0 0 auto; }
 .chat-nick-prompt button { background: #1e88e5; font-weight: 600; }
 .chat-nick-prompt button:hover { background: #1565c0; }
 .chat-nick-prompt .nick-error { font-size: 0.72rem; color: #ef5350; min-height: 0; }
 .chat-nick-prompt .nick-hint { font-size: 0.68rem; color: #555; }
-.chat-send { display: flex; gap: 0.4rem; }
+.chat-send {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+.chat-send input {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+.chat-send button {
+    flex: 0 0 auto;
+}
 .chat-nick-badge { font-size: 0.72rem; color: #555; padding: 0 0.2rem 0.2rem; }
 .chat-nick-badge span { color: #1e88e5; font-weight: 600; }
 

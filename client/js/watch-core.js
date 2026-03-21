@@ -17,7 +17,6 @@ var sessionId = null;
 var roomPassword = '';
 var pc = null;
 var audioElement = null;
-var mediaWatchdogInterval = null;
 var pollInterval = null;
 var lastBytesReceived = 0;
 var stallCount = 0;
@@ -236,7 +235,7 @@ qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); 
 function teardownConnection() {
     clearPollTimer();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
-    if (mediaWatchdogInterval) { clearInterval(mediaWatchdogInterval); mediaWatchdogInterval = null; }
+    stopStatsLoop();
     if (pc) {
         if (sessionId && roomId) {
             fetch('/api/whep/' + roomId, {
@@ -263,33 +262,6 @@ function teardownConnection() {
     qualitySelect.value = '';
 }
 
-function startMediaWatchdog() {
-    lastBytesReceived = 0;
-    stallCount = 0;
-    mediaWatchdogInterval = setInterval(async function () {
-        if (!pc) return;
-        try {
-            var stats = await pc.getStats();
-            var totalBytes = 0;
-            stats.forEach(function (report) {
-                if (report.type === 'inbound-rtp') {
-                    totalBytes += report.bytesReceived || 0;
-                }
-            });
-            if (totalBytes > lastBytesReceived) {
-                lastBytesReceived = totalBytes;
-                stallCount = 0;
-            } else {
-                stallCount++;
-                if (stallCount >= 5) {
-                    teardownConnection();
-                    setState('offline');
-                }
-            }
-        } catch (e) { /* pc may have closed mid-check */ }
-    }, 1000);
-}
-
 function onPeerStateChange() {
     if (!pc) return;
     var s = pc.iceConnectionState;
@@ -297,7 +269,7 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         checkRoomAlive();
-        startMediaWatchdog();
+        startStatsLoop();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -426,21 +398,47 @@ passwordInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') btnPasswordSubmit.click();
 });
 
-/* ── Auto Quality Adaptation ────────────────────────────── */
+/* ── Unified Stats Loop ─────────────────────────────────── */
+/*
+ * Single interval collects stats once per second. Feeds:
+ *   - Media watchdog (stall detection)
+ *   - Auto-quality adaptation (every other tick)
+ *   - Debug overlay (when ?debug=1)
+ * This avoids 3 competing getStats() calls.
+ */
 
-var qualityLevels = ['h', 'm', 'l'];
-var currentQualityIdx = -1; // -1 = auto (server decides)
-var aqInterval = null;
-var aqPrevBytes = 0;
-var aqPrevTs = 0;
-var aqPrevPackets = 0;
-var aqPrevLost = 0;
-var aqBadStreak = 0;
-var aqGoodStreak = 0;
-var aqManualOverride = false;
+var statsInterval = null;
+var statsTick = 0;
+
+var debugEnabled = /[?&]debug=1/.test(window.location.search);
+var debugOverlay = document.getElementById('debug-overlay');
+var debugContent = document.getElementById('debug-content');
+if (debugEnabled && debugOverlay) debugOverlay.classList.add('visible');
+
 var degradeBanner = document.getElementById('degrade-banner');
 var degradeText = document.getElementById('degrade-text');
 var hlsBanner = document.getElementById('hls-banner');
+
+var qualityLevels = ['h', 'm', 'l'];
+var currentQualityIdx = -1;
+var aqManualOverride = false;
+var aqBadStreak = 0;
+var aqGoodStreak = 0;
+var lastQualityChangeTs = 0;
+var QUALITY_COOLDOWN_MS = 15000;
+var simulcastDisabled = false;
+var resBeforeSwitch = '';
+var resCheckPending = false;
+
+var prevVideoBytes = 0;
+var prevAudioBytes = 0;
+var prevTs = 0;
+var prevPackets = 0;
+var prevLost = 0;
+
+var currentJBTarget = 0.15;
+var JB_MIN = 0.15;
+var JB_MAX = 1.0;
 
 qualitySelect.addEventListener('change', function () {
     aqManualOverride = true;
@@ -448,105 +446,218 @@ qualitySelect.addEventListener('change', function () {
     aqGoodStreak = 0;
 });
 
-function startAutoQuality() {
-    stopAutoQuality();
-    aqPrevBytes = 0;
-    aqPrevTs = 0;
-    aqPrevPackets = 0;
-    aqPrevLost = 0;
+function startStatsLoop() {
+    stopStatsLoop();
+    lastBytesReceived = 0;
+    stallCount = 0;
+    prevVideoBytes = 0;
+    prevAudioBytes = 0;
+    prevTs = 0;
+    prevPackets = 0;
+    prevLost = 0;
+    statsTick = 0;
     aqBadStreak = 0;
     aqGoodStreak = 0;
     aqManualOverride = false;
     currentQualityIdx = -1;
+    simulcastDisabled = false;
+    resCheckPending = false;
+    currentJBTarget = JB_MIN;
     hideDegradeBanner();
 
-    aqInterval = setInterval(async function () {
-        if (!pc || viewerState !== 'live' || aqManualOverride) return;
+    statsInterval = setInterval(async function () {
+        if (!pc) {
+            if (debugEnabled) renderDebug({ state: viewerState, note: 'No peer connection' });
+            return;
+        }
 
         var stats;
         try { stats = await pc.getStats(); } catch (e) { return; }
+        statsTick++;
 
-        var fps = 0;
-        var lossPct = 0;
-        var bitrateKbps = 0;
-
+        /* ── Watchdog: detect stalled media ── */
+        var totalBytes = 0;
         stats.forEach(function (r) {
-            if (r.type === 'inbound-rtp' && r.kind === 'video') {
-                fps = r.framesPerSecond || 0;
-                if (aqPrevTs > 0) {
-                    var dt = (r.timestamp - aqPrevTs) / 1000;
-                    if (dt > 0) {
-                        bitrateKbps = ((r.bytesReceived - aqPrevBytes) * 8) / dt / 1000;
-                    }
-                    var pktDelta = (r.packetsReceived || 0) - aqPrevPackets;
-                    var lostDelta = (r.packetsLost || 0) - aqPrevLost;
-                    if (pktDelta + lostDelta > 0) {
-                        lossPct = (lostDelta / (pktDelta + lostDelta)) * 100;
-                    }
-                }
-                aqPrevBytes = r.bytesReceived || 0;
-                aqPrevTs = r.timestamp;
-                aqPrevPackets = r.packetsReceived || 0;
-                aqPrevLost = r.packetsLost || 0;
+            if (r.type === 'inbound-rtp') totalBytes += r.bytesReceived || 0;
+        });
+        if (totalBytes > lastBytesReceived) {
+            lastBytesReceived = totalBytes;
+            stallCount = 0;
+        } else {
+            stallCount++;
+            if (stallCount >= 5) {
+                teardownConnection();
+                setState('offline');
+                return;
+            }
+        }
+
+        /* ── Parse all stats once ── */
+        var d = {
+            state: viewerState,
+            iceState: pc.iceConnectionState,
+            videoBitrateKbps: 0, audioBitrateKbps: 0,
+            videoRes: '', videoFps: 0, videoCodec: '',
+            framesDecoded: 0, framesDropped: 0,
+            videoJitterMs: 0, videoLossPct: 0,
+            videoNack: 0, videoPli: 0, videoFir: 0,
+            audioJitterMs: 0, rttMs: 0,
+            localCandidate: '', remoteCandidate: '',
+            jitterBufferMs: 0, stallCount: stallCount
+        };
+
+        var candidateMap = {};
+        stats.forEach(function (r) {
+            if (r.type === 'local-candidate' || r.type === 'remote-candidate') {
+                candidateMap[r.id] = (r.candidateType || '') + ' ' + (r.protocol || '') + ' ' + (r.address || '') + ':' + (r.port || '');
             }
         });
 
-        if (aqPrevTs === 0) return;
+        stats.forEach(function (r) {
+            if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                if (prevTs > 0) {
+                    var dt = (r.timestamp - prevTs) / 1000;
+                    if (dt > 0) {
+                        d.videoBitrateKbps = ((r.bytesReceived - prevVideoBytes) * 8) / dt / 1000;
+                    }
+                    var pktDelta = (r.packetsReceived || 0) - prevPackets;
+                    var lostDelta = (r.packetsLost || 0) - prevLost;
+                    if (pktDelta + lostDelta > 0) {
+                        d.videoLossPct = (lostDelta / (pktDelta + lostDelta)) * 100;
+                    }
+                }
+                prevVideoBytes = r.bytesReceived || 0;
+                prevTs = r.timestamp;
+                prevPackets = r.packetsReceived || 0;
+                prevLost = r.packetsLost || 0;
 
-        var isBurst = fps > 60;
-        var isBad = lossPct > 5 || fps < 10 || isBurst;
-        var isGood = lossPct < 1 && fps > 20 && fps <= 60 && bitrateKbps > 200;
+                if (r.frameWidth) d.videoRes = r.frameWidth + 'x' + r.frameHeight;
+                d.videoFps = r.framesPerSecond || 0;
+                d.framesDecoded = r.framesDecoded || 0;
+                d.framesDropped = r.framesDropped || 0;
+                d.videoJitterMs = (r.jitter || 0) * 1000;
+                d.videoNack = r.nackCount || 0;
+                d.videoPli = r.pliCount || 0;
+                d.videoFir = r.firCount || 0;
+                if (r.jitterBufferDelay && r.jitterBufferEmittedCount) {
+                    d.jitterBufferMs = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
+                }
+            }
+            if (r.type === 'inbound-rtp' && r.kind === 'audio') {
+                if (prevTs > 0 && r.bytesReceived) {
+                    var dt = (r.timestamp - prevTs) / 1000;
+                    if (dt > 0) {
+                        d.audioBitrateKbps = ((r.bytesReceived - prevAudioBytes) * 8) / dt / 1000;
+                    }
+                }
+                prevAudioBytes = r.bytesReceived || 0;
+                d.audioJitterMs = (r.jitter || 0) * 1000;
+            }
+            if (r.type === 'candidate-pair' && r.state === 'succeeded') {
+                if (r.currentRoundTripTime) d.rttMs = r.currentRoundTripTime * 1000;
+                d.localCandidate = candidateMap[r.localCandidateId] || '';
+                d.remoteCandidate = candidateMap[r.remoteCandidateId] || '';
+            }
+        });
 
-        if (isBad) {
-            aqGoodStreak = 0;
-            aqBadStreak++;
-            tuneJitterBuffer(lossPct, isBurst);
-            if (aqBadStreak >= 3) {
-                downgradeQuality();
-                aqBadStreak = 0;
+        stats.forEach(function (r) {
+            if (r.type === 'codec' && r.mimeType && r.mimeType.indexOf('video') === 0) {
+                d.videoCodec = r.mimeType.replace('video/', '');
             }
-        } else if (isGood) {
-            aqBadStreak = 0;
-            aqGoodStreak++;
-            if (aqGoodStreak >= 8) {
-                upgradeQuality();
-                aqGoodStreak = 0;
-                tightenJitterBuffer();
+        });
+
+        /* ── Simulcast detection ── */
+        if (resCheckPending && d.videoRes) {
+            if (d.videoRes === resBeforeSwitch) {
+                simulcastDisabled = true;
             }
-        } else {
-            aqBadStreak = Math.max(0, aqBadStreak - 1);
-            aqGoodStreak = 0;
+            resCheckPending = false;
         }
-    }, 2000);
+
+        /* ── Auto quality (every 2s) ── */
+        if (statsTick % 2 === 0 && viewerState === 'live' && !aqManualOverride && !simulcastDisabled) {
+            autoQualityTick(d);
+        }
+
+        /* ── Jitter buffer tuning (every tick when bad) ── */
+        var isBurst = d.videoFps > 60;
+        if (isBurst || d.videoLossPct > 5) {
+            tuneJitterBuffer(d.videoLossPct, isBurst);
+        }
+
+        /* ── Debug overlay ── */
+        if (debugEnabled) renderDebug(d);
+    }, 1000);
 }
 
-function stopAutoQuality() {
-    if (aqInterval) { clearInterval(aqInterval); aqInterval = null; }
+function stopStatsLoop() {
+    if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
     hideDegradeBanner();
 }
 
-function downgradeQuality() {
+/* ── Auto Quality ───────────────────────────────────────── */
+
+function autoQualityTick(d) {
+    if (prevTs === 0) return;
+
+    var isBurst = d.videoFps > 60;
+    var isBad = d.videoLossPct > 5 || d.videoFps < 10 || isBurst;
+    var isGood = d.videoLossPct < 1 && d.videoFps > 20 && d.videoFps <= 60 && d.videoBitrateKbps > 200;
+
+    if (isBad) {
+        aqGoodStreak = 0;
+        aqBadStreak++;
+        if (aqBadStreak >= 3 && canChangeQuality()) {
+            downgradeQuality(d.videoRes);
+            aqBadStreak = 0;
+        }
+    } else if (isGood) {
+        aqBadStreak = 0;
+        aqGoodStreak++;
+        if (aqGoodStreak >= 10 && canChangeQuality()) {
+            upgradeQuality(d.videoRes);
+            aqGoodStreak = 0;
+            tightenJitterBuffer();
+        }
+    } else {
+        aqBadStreak = Math.max(0, aqBadStreak - 1);
+        aqGoodStreak = 0;
+    }
+}
+
+function canChangeQuality() {
+    return Date.now() - lastQualityChangeTs >= QUALITY_COOLDOWN_MS;
+}
+
+function downgradeQuality(currentRes) {
     var nextIdx = currentQualityIdx + 1;
     if (nextIdx >= qualityLevels.length) {
         showDegradeBanner();
         return;
     }
     currentQualityIdx = nextIdx;
+    resBeforeSwitch = currentRes || '';
+    resCheckPending = true;
+    lastQualityChangeTs = Date.now();
     var rid = qualityLevels[currentQualityIdx];
     qualitySelect.value = rid;
     setQuality(rid);
     showDegradeBanner();
 }
 
-function upgradeQuality() {
+function upgradeQuality(currentRes) {
     if (currentQualityIdx <= 0) {
         currentQualityIdx = -1;
+        lastQualityChangeTs = Date.now();
         qualitySelect.value = '';
         setQuality(null);
         hideDegradeBanner();
         return;
     }
     currentQualityIdx--;
+    resBeforeSwitch = currentRes || '';
+    resCheckPending = true;
+    lastQualityChangeTs = Date.now();
     var rid = qualityLevels[currentQualityIdx];
     qualitySelect.value = rid;
     setQuality(rid);
@@ -556,8 +667,8 @@ function showDegradeBanner() {
     if (!degradeBanner) return;
     var atLowest = currentQualityIdx >= qualityLevels.length - 1;
     degradeBanner.style.display = 'flex';
-    if (atLowest) {
-        degradeText.textContent = 'Your connection is unstable — quality reduced to minimum.';
+    if (atLowest || simulcastDisabled) {
+        degradeText.textContent = 'Your connection is unstable — playback may be choppy.';
         checkHLSAvailable();
     } else {
         degradeText.textContent = 'Connection unstable — quality lowered automatically.';
@@ -570,9 +681,7 @@ function hideDegradeBanner() {
     if (hlsBanner) hlsBanner.style.display = 'none';
 }
 
-var currentJBTarget = 0.15;
-var JB_MIN = 0.15;
-var JB_MAX = 1.0;
+/* ── Jitter Buffer Tuning ───────────────────────────────── */
 
 function tuneJitterBuffer(lossPct, isBurst) {
     var target = currentJBTarget;
@@ -611,9 +720,7 @@ function checkHLSAvailable() {
     if (!roomId || !hlsBanner) return;
     fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
         .then(function (r) {
-            if (r.ok) {
-                hlsBanner.style.display = 'block';
-            }
+            if (r.ok) hlsBanner.style.display = 'block';
         })
         .catch(function () {});
 }
@@ -621,9 +728,7 @@ function checkHLSAvailable() {
 function switchToHLS() {
     if (!roomId) return;
     var hlsUrl = '/hls/' + roomId + '/master.m3u8';
-
     teardownConnection();
-    stopAutoQuality();
     hlsActive = true;
     qualitySelect.disabled = true;
 
@@ -656,10 +761,7 @@ function onHLSPlaying() {
 }
 
 function switchToWebRTC() {
-    if (hlsPlayer) {
-        hlsPlayer.destroy();
-        hlsPlayer = null;
-    }
+    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
     video.removeAttribute('src');
     video.srcObject = null;
     hlsActive = false;
@@ -669,144 +771,16 @@ function switchToWebRTC() {
 
 /* ── Debug Overlay (?debug=1) ───────────────────────────── */
 
-var debugEnabled = /[?&]debug=1/.test(window.location.search);
-var debugOverlay = document.getElementById('debug-overlay');
-var debugContent = document.getElementById('debug-content');
-var debugInterval = null;
-var debugPrevVideoBytes = 0;
-var debugPrevAudioBytes = 0;
-var debugPrevTs = 0;
-var debugPrevVideoPackets = 0;
-var debugPrevVideoLost = 0;
-
-if (debugEnabled && debugOverlay) {
-    debugOverlay.classList.add('visible');
-}
-
-function startDebugStats() {
-    if (!debugEnabled) return;
-    stopDebugStats();
-    debugPrevVideoBytes = 0;
-    debugPrevAudioBytes = 0;
-    debugPrevTs = 0;
-    debugPrevVideoPackets = 0;
-    debugPrevVideoLost = 0;
-
-    debugInterval = setInterval(async function () {
-        if (!pc) {
-            renderDebug({ state: viewerState, note: 'No peer connection' });
-            return;
-        }
-
-        var stats;
-        try { stats = await pc.getStats(); } catch (e) { return; }
-
-        var d = {
-            state: viewerState,
-            iceState: pc.iceConnectionState,
-            videoBitrateKbps: 0,
-            audioBitrateKbps: 0,
-            videoRes: '',
-            videoFps: 0,
-            videoCodec: '',
-            framesDecoded: 0,
-            framesDropped: 0,
-            videoJitterMs: 0,
-            videoLossPct: 0,
-            videoNack: 0,
-            videoPli: 0,
-            videoFir: 0,
-            audioJitterMs: 0,
-            audioLossPct: 0,
-            rttMs: 0,
-            localCandidate: '',
-            remoteCandidate: '',
-            transportProtocol: '',
-            jitterBufferMs: 0,
-            stallCount: stallCount
-        };
-
-        var activePairId = '';
-        var candidateMap = {};
-
-        stats.forEach(function (r) {
-            if (r.type === 'local-candidate' || r.type === 'remote-candidate') {
-                candidateMap[r.id] = (r.candidateType || '') + ' ' + (r.protocol || '') + ' ' + (r.address || '') + ':' + (r.port || '');
-            }
-        });
-
-        stats.forEach(function (r) {
-            if (r.type === 'inbound-rtp' && r.kind === 'video') {
-                if (debugPrevTs > 0) {
-                    var dt = (r.timestamp - debugPrevTs) / 1000;
-                    if (dt > 0) {
-                        d.videoBitrateKbps = ((r.bytesReceived - debugPrevVideoBytes) * 8) / dt / 1000;
-                    }
-                    var pktDelta = (r.packetsReceived || 0) - debugPrevVideoPackets;
-                    var lostDelta = (r.packetsLost || 0) - debugPrevVideoLost;
-                    if (pktDelta + lostDelta > 0) {
-                        d.videoLossPct = (lostDelta / (pktDelta + lostDelta)) * 100;
-                    }
-                }
-                debugPrevVideoBytes = r.bytesReceived || 0;
-                debugPrevTs = r.timestamp;
-                debugPrevVideoPackets = r.packetsReceived || 0;
-                debugPrevVideoLost = r.packetsLost || 0;
-
-                if (r.frameWidth) d.videoRes = r.frameWidth + 'x' + r.frameHeight;
-                d.videoFps = r.framesPerSecond || 0;
-                d.framesDecoded = r.framesDecoded || 0;
-                d.framesDropped = r.framesDropped || 0;
-                d.videoJitterMs = (r.jitter || 0) * 1000;
-                d.videoNack = r.nackCount || 0;
-                d.videoPli = r.pliCount || 0;
-                d.videoFir = r.firCount || 0;
-                if (r.jitterBufferDelay && r.jitterBufferEmittedCount) {
-                    d.jitterBufferMs = (r.jitterBufferDelay / r.jitterBufferEmittedCount) * 1000;
-                }
-            }
-
-            if (r.type === 'inbound-rtp' && r.kind === 'audio') {
-                if (debugPrevTs > 0 && r.bytesReceived) {
-                    var dt = (r.timestamp - debugPrevTs) / 1000;
-                    if (dt > 0) {
-                        d.audioBitrateKbps = ((r.bytesReceived - debugPrevAudioBytes) * 8) / dt / 1000;
-                    }
-                }
-                debugPrevAudioBytes = r.bytesReceived || 0;
-                d.audioJitterMs = (r.jitter || 0) * 1000;
-            }
-
-            if (r.type === 'candidate-pair' && r.state === 'succeeded') {
-                if (r.currentRoundTripTime) d.rttMs = r.currentRoundTripTime * 1000;
-                d.localCandidate = candidateMap[r.localCandidateId] || '';
-                d.remoteCandidate = candidateMap[r.remoteCandidateId] || '';
-                d.transportProtocol = r.protocol || '';
-            }
-        });
-
-        stats.forEach(function (r) {
-            if (r.type === 'codec' && r.mimeType && r.mimeType.indexOf('video') === 0) {
-                d.videoCodec = r.mimeType.replace('video/', '');
-            }
-        });
-
-        renderDebug(d);
-    }, 1000);
-}
-
-function stopDebugStats() {
-    if (debugInterval) { clearInterval(debugInterval); debugInterval = null; }
-}
-
 function renderDebug(d) {
     if (!debugContent) return;
     var html = '';
 
+    var aqStatus = simulcastDisabled ? 'no simulcast' : aqManualOverride ? 'manual' : 'auto';
     html += section('STATE', [
         row('Viewer', d.state || '—'),
         row('ICE', d.iceState || '—', colorIce(d.iceState)),
         row('Stall count', d.stallCount != null ? d.stallCount : '—'),
+        row('Quality', aqStatus + (currentQualityIdx >= 0 ? ' (' + qualityLevels[currentQualityIdx] + ')' : ' (auto)')),
         row('Room', roomId || '—'),
         row('Session', sessionId ? sessionId.substring(0, 12) + '…' : '—')
     ]);
@@ -815,7 +789,7 @@ function renderDebug(d) {
         var dropRate = d.framesDecoded > 0 ? ((d.framesDropped / (d.framesDecoded + d.framesDropped)) * 100) : 0;
         html += section('VIDEO (inbound)', [
             row('Resolution', d.videoRes || '—'),
-            row('FPS', d.videoFps ? d.videoFps.toFixed(0) : '—', d.videoFps < 15 ? 'bad' : d.videoFps < 24 ? 'warn' : 'good'),
+            row('FPS', d.videoFps ? d.videoFps.toFixed(0) : '—', d.videoFps > 60 ? 'bad' : d.videoFps < 15 ? 'bad' : d.videoFps < 24 ? 'warn' : 'good'),
             row('Bitrate', d.videoBitrateKbps ? d.videoBitrateKbps.toFixed(0) + ' kbps' : '—', d.videoBitrateKbps < 300 ? 'bad' : d.videoBitrateKbps < 800 ? 'warn' : ''),
             row('Codec', d.videoCodec || '—'),
             row('Jitter', d.videoJitterMs ? d.videoJitterMs.toFixed(1) + ' ms' : '0 ms', d.videoJitterMs > 30 ? 'bad' : d.videoJitterMs > 15 ? 'warn' : ''),
@@ -858,20 +832,3 @@ function colorIce(state) {
     if (state === 'disconnected' || state === 'failed' || state === 'closed') return 'bad';
     return '';
 }
-
-/* Hook auto-quality + debug into the lifecycle */
-var _origOnPeerStateChange = onPeerStateChange;
-onPeerStateChange = function () {
-    _origOnPeerStateChange();
-    if (pc && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) {
-        startAutoQuality();
-        if (debugEnabled) startDebugStats();
-    }
-};
-
-var _origTeardown = teardownConnection;
-teardownConnection = function () {
-    stopAutoQuality();
-    stopDebugStats();
-    _origTeardown();
-};

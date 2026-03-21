@@ -271,7 +271,10 @@ function teardownConnection() {
         dying.onconnectionstatechange = null;
         dying.close();
     }
+    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
+    hlsActive = false;
     video.srcObject = null;
+    video.removeAttribute('src');
     video.style.aspectRatio = '';
     hideUnmuteUI();
     sessionId = null;
@@ -315,16 +318,13 @@ async function connectWHEP() {
             receivers.push(recv);
             recv.jitterBufferTarget = 0.15;
         }
-
         var stream = video.srcObject;
         if (!(stream instanceof MediaStream)) {
             stream = new MediaStream();
             video.srcObject = stream;
         }
         stream.addTrack(track);
-
         video.play().catch(function () {});
-
         if (track.kind === 'audio' && video.muted) {
             showUnmuteUI();
         }
@@ -424,6 +424,10 @@ function hideUnmuteUI() {
 function userUnmute() {
     video.muted = false;
     hideUnmuteUI();
+}
+
+if (unmuteOverlay) {
+    unmuteOverlay.addEventListener('click', userUnmute);
 }
 
 video.addEventListener('volumechange', function () {
@@ -775,28 +779,31 @@ function switchToHLS() {
         hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
             video.play().catch(function () {});
         });
+        hlsPlayer.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal) {
+                teardownConnection();
+                setState('offline');
+            }
+        });
         onHLSPlaying();
     } else {
+        hlsActive = false;
         statusEl.textContent = 'HLS not supported in this browser';
         statusEl.classList.add('error');
     }
 }
 
 function onHLSPlaying() {
-    viewerState = 'live';
+    setState('live');
     statusEl.textContent = 'Live (HLS)';
-    statusEl.classList.remove('error');
     if (degradeBanner) {
         degradeText.textContent = 'Switched to stable playback (HLS). Latency is higher (~5s).';
         if (hlsBanner) hlsBanner.style.display = 'none';
     }
+    if (video.muted) showUnmuteUI();
 }
 
 function switchToWebRTC() {
-    if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
-    video.removeAttribute('src');
-    video.srcObject = null;
-    hlsActive = false;
     hideDegradeBanner();
     connectWHEP();
 }

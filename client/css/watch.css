@@ -49,19 +49,37 @@ body {
     min-width: 0;
 }
 
-/* ── Stream Column ──────────────────────────── */
+/* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
+ * scroll-snap-type y proximity — gentle snap toward each section when scrolling ends.
+ * scroll-snap-align start on each .stream-snap-page — panels sit below full playback view.
+ * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
 
 main.stream-column {
     flex: 1 1 50%;
     min-height: 0;
     min-width: 0;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
     padding: 0.5rem 0.75rem;
     overflow-y: auto;
-    overscroll-behavior: none;
+    overflow-x: hidden;
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    overscroll-behavior-x: none;
+    -webkit-overflow-scrolling: touch;
     border-right: 1px solid #1a1a1a;
+}
+
+.stream-snap-page {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+}
+
+/* First snap region: at least one full column viewport tall so panels stay off-screen until scroll */
+.stream-snap-page--playback {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
 }
 
 /* ── Stream toolbar (quality / status only) ─── */
@@ -277,8 +295,9 @@ button:disabled { background: #555; cursor: default; }
 .panels-section {
     width: 100%;
     max-width: none;
-    padding: 0.8rem 0 0;
+    padding: 0.8rem 0 1rem;
     flex-shrink: 0;
+    box-sizing: border-box;
 }
 .panel-card {
     background: #111;
@@ -559,6 +578,9 @@ button:disabled { background: #555; cursor: default; }
         padding: 0.5rem 0.6rem;
         flex: 1 1 auto;
         overflow-y: auto;
+        overflow-x: hidden;
+        scroll-snap-type: y proximity;
+        overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }

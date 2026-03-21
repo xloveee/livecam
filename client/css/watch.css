@@ -450,3 +450,56 @@ button:disabled { background: #555; cursor: default; }
     .panel-donate { flex-direction: column; align-items: stretch; text-align: center; }
     .btn-donate { width: 100%; }
 }
+
+/* ── Debug Overlay (?debug=1) ───────────────── */
+
+.debug-overlay {
+    display: none;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 300;
+    background: rgba(0, 0, 0, 0.82);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.62rem;
+    line-height: 1.55;
+    color: #aaa;
+    pointer-events: none;
+    min-width: 220px;
+    max-width: 300px;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+.debug-overlay.visible { display: block; }
+.debug-overlay .debug-title {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.65rem;
+    margin-bottom: 0.25rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.debug-overlay .debug-section {
+    border-top: 1px solid #2a2a2a;
+    padding-top: 0.25rem;
+    margin-top: 0.25rem;
+}
+.debug-overlay .debug-section-label {
+    color: #666;
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.debug-overlay .debug-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+.debug-overlay .debug-key { color: #888; }
+.debug-overlay .debug-val { color: #ccc; text-align: right; }
+.debug-overlay .debug-val.warn { color: #ffb300; }
+.debug-overlay .debug-val.bad { color: #ff5722; }
+.debug-overlay .debug-val.good { color: #4caf50; }

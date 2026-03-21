@@ -514,9 +514,12 @@ button:disabled { background: #555; cursor: default; }
     font-size: 0.62rem;
     line-height: 1.55;
     color: #aaa;
-    pointer-events: none;
+    pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
     min-width: 220px;
     max-width: 300px;
+    cursor: text;
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
 }

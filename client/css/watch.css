@@ -24,6 +24,7 @@ main.stream-column {
     align-items: center;
     padding: 1rem;
     overflow-y: auto;
+    overscroll-behavior: none;
 }
 
 .stream-header {
@@ -59,7 +60,7 @@ video {
     max-width: 960px;
     flex: 1;
     min-height: 0;
-    max-height: 75vh;
+    max-height: calc(100vh - 4rem);
     background: #000;
     aspect-ratio: 16/9;
     border-radius: 4px;
@@ -122,17 +123,12 @@ button:disabled { background: #555; cursor: default; }
     margin-top: auto;
     padding-top: 1rem;
     padding-bottom: 0.5rem;
-    color: #555;
+    color: #444;
     cursor: pointer;
-    animation: bounce 2s infinite;
+    transition: color 0.2s;
 }
 .scroll-hint:hover {
     color: #888;
-}
-@keyframes bounce {
-    0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-    40% { transform: translateY(-8px); }
-    60% { transform: translateY(-4px); }
 }
 
 /* ── Offline Banner (Header Dot) ────────────── */
@@ -350,6 +346,7 @@ button:disabled { background: #555; cursor: default; }
     scrollbar-width: thin;
     scrollbar-color: #333 transparent;
     -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
 }
 .chat-msg {
     font-size: 0.82rem;

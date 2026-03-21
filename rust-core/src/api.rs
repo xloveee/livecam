@@ -10,6 +10,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use str0m::bwe::Bitrate;
 use str0m::change::SdpOffer;
 use str0m::{Candidate, RtcConfig};
 use tokio::sync::mpsc;
@@ -48,6 +49,7 @@ pub async fn whip_handler(
     };
 
     let mut rtc = RtcConfig::new()
+        .set_ice_lite(true)
         .set_reordering_size_audio(0)
         .build(Instant::now());
 
@@ -139,7 +141,11 @@ pub async fn whep_handler(
     };
 
     let mut rtc = RtcConfig::new()
+        .set_ice_lite(true)
         .set_reordering_size_audio(0)
+        .set_send_buffer_video(250)
+        .enable_bwe(Some(Bitrate::kbps(1500)))
+        .set_stats_interval(Some(std::time::Duration::from_secs(10)))
         .build(Instant::now());
 
     let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {

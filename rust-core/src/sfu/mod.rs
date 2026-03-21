@@ -449,14 +449,18 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 };
             }
             if peer.role == PeerRole::Viewer {
-                // The viewer's SDP offer contained recvonly m-lines. str0m fires MediaAdded
-                // for each one. Match it to an unmapped TrackOut of the same media kind so
-                // the SFU knows where to write incoming broadcaster media.
                 if let Some(track_out) = peer.tracks_out.iter_mut().find(|t| {
                     t.local_mid.is_none() && t.kind == ev.kind
                 }) {
                     tracing::info!("{}: mapped viewer mid={} -> broadcaster mid={}", peer.id, ev.mid, track_out.source_mid);
                     track_out.local_mid = Some(ev.mid);
+
+                    if ev.kind == str0m::media::MediaKind::Video {
+                        if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
+                            tx.set_rtx_cache(128, Duration::from_millis(500), Some(0.08));
+                            tracing::info!("{}: RTX cache tuned for video mid={}", peer.id, ev.mid);
+                        }
+                    }
                 }
             }
             Propagated::Noop
@@ -483,6 +487,26 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                         source_mid: track_out.source_mid,
                     };
                 }
+            }
+            Propagated::Noop
+        }
+
+        Event::MediaEgressStats(stats) => {
+            if peer.role == PeerRole::Viewer && stats.nacks > 0 {
+                tracing::info!(
+                    "{} room='{}': egress mid={} rid={:?} nacks={} plis={} loss={:?} rtt={:?} bytes={} pkts={}",
+                    peer.id, peer.room_id,
+                    stats.mid, stats.rid,
+                    stats.nacks, stats.plis, stats.loss, stats.rtt,
+                    stats.bytes, stats.packets,
+                );
+            }
+            Propagated::Noop
+        }
+
+        Event::EgressBitrateEstimate(bwe) => {
+            if peer.role == PeerRole::Viewer {
+                tracing::debug!("{}: BWE estimate {:?}", peer.id, bwe);
             }
             Propagated::Noop
         }

@@ -10,6 +10,7 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use str0m::bwe::Bitrate;
 use str0m::change::SdpOffer;
 use str0m::{Candidate, RtcConfig};
 use tokio::sync::mpsc;
@@ -146,8 +147,9 @@ pub async fn whep_handler(
     let mut rtc = RtcConfig::new()
         .set_ice_lite(true)
         .set_reordering_size_audio(0)
-        .set_send_buffer_video(250)
-        .set_stats_interval(Some(std::time::Duration::from_secs(5)))
+        .set_send_buffer_video(500)
+        .set_stats_interval(Some(std::time::Duration::from_secs(2)))
+        .enable_bwe(Some(Bitrate::kbps(1500)))
         .clear_codecs()
         .enable_h264(true)
         .enable_vp8(true)

@@ -374,6 +374,15 @@ input:focus, select:focus {
 }
 .provider-card-hint a { color: #ffb300; }
 
+/* Panels editor: same block flow as other settings pages (avoid flex sizing quirks in scroll body) */
+.panels-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 0.6rem;
+    min-height: 0;
+}
+
 /* ── Chat Panel ──────────────────────────────────── */
 .chat-panel {
     width: 100%;
@@ -542,10 +551,35 @@ input:focus, select:focus {
     .settings-toggle { display: none; }
     .settings-overlay { display: flex !important; position: static; background: transparent; padding: 0; align-items: stretch; }
     .settings-overlay-backdrop { display: none; }
-    .settings-overlay-panel { max-width: 720px; width: 100%; height: auto; background: transparent; padding: 0; box-shadow: none; margin: 0; border: none; }
+    /*
+     * Fixed-height settings shell: tab switches no longer grow/shrink the panel from content
+     * (Panels + Donations lists were resizing .settings-body vs Stream/Room). Body scrolls inside.
+     */
+    .settings-overlay-panel {
+        max-width: 720px;
+        width: 100%;
+        height: min(70vh, calc(100dvh - 9rem));
+        max-height: min(70vh, calc(100dvh - 9rem));
+        min-height: 260px;
+        background: transparent;
+        padding: 0;
+        box-shadow: none;
+        margin: 0;
+        border: none;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
     .settings-overlay-header { display: none; }
-    .settings-tabs { background: transparent; border-bottom-color: #1a1a1a; }
-    .settings-body { padding: 0.5rem 0; overflow-y: visible; }
+    .settings-tabs { background: transparent; border-bottom-color: #1a1a1a; flex-shrink: 0; }
+    .settings-body {
+        flex: 1 1 0;
+        min-height: 0;
+        padding: 0.5rem 0;
+        overflow-y: auto;
+        overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+    }
     .settings-page.active { display: block; }
     .provider-card { background: #0f0f0f; }
     .chat-panel {

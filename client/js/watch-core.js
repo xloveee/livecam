@@ -57,6 +57,7 @@ if (document.readyState === 'loading') {
 function setState(next) {
     if (next === viewerState) return;
     viewerState = next;
+    debugEvent('state:' + next);
     renderState();
     managePoll();
 }
@@ -255,6 +256,8 @@ qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); 
 /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
 function teardownConnection() {
+    debugEvent('teardown');
+    debugPlayResult = '';
     clearPollTimer();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
     stopStatsLoop();
@@ -286,6 +289,7 @@ function teardownConnection() {
 function onPeerStateChange() {
     if (!pc) return;
     var s = pc.iceConnectionState;
+    debugEvent('ice:' + s);
     if (s === 'connected' || s === 'completed') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
@@ -324,7 +328,14 @@ async function connectWHEP() {
             video.srcObject = stream;
         }
         stream.addTrack(track);
-        video.play().catch(function () {});
+        debugEvent('track:' + track.kind + ' ' + track.readyState);
+        video.play().then(function () {
+            debugPlayResult = 'ok';
+            debugEvent('play:ok');
+        }).catch(function (e) {
+            debugPlayResult = e.name || 'blocked';
+            debugEvent('play:' + (e.name || 'blocked'));
+        });
         if (track.kind === 'audio' && video.muted) {
             showUnmuteUI();
         }
@@ -346,11 +357,13 @@ async function connectWHEP() {
             headers['X-Room-Password'] = roomPassword;
         }
 
+        debugEvent('whep-fetch');
         var response = await fetch('/api/whep/' + roomId, {
             method: 'POST',
             headers: headers,
             body: pc.localDescription.sdp
         });
+        debugEvent('whep:' + response.status);
 
         if (response.status === 404) {
             teardownConnection();
@@ -380,6 +393,7 @@ async function connectWHEP() {
         sessionId = response.headers.get('X-Session-Id');
         var answerSdp = await response.text();
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
+        debugEvent('sdp-applied');
 
         connectTimeout = setTimeout(function () {
             if (viewerState === 'connecting') {
@@ -450,6 +464,29 @@ var debugEnabled = /[?&]debug=1/.test(window.location.search);
 var debugOverlay = document.getElementById('debug-overlay');
 var debugContent = document.getElementById('debug-content');
 if (debugEnabled && debugOverlay) debugOverlay.classList.add('visible');
+
+var debugTimeline = [];
+var debugPlayResult = '';
+
+function debugEvent(label) {
+    if (!debugEnabled) return;
+    var now = new Date();
+    var h = now.getHours(), m = now.getMinutes(), s = now.getSeconds(), ms = now.getMilliseconds();
+    var ts = (h < 10 ? '0' : '') + h + ':' +
+             (m < 10 ? '0' : '') + m + ':' +
+             (s < 10 ? '0' : '') + s + '.' +
+             (ms < 100 ? (ms < 10 ? '00' : '0') : '') + ms;
+    debugTimeline.push({ ts: ts, label: label });
+    if (debugTimeline.length > 30) debugTimeline.shift();
+}
+
+if (debugEnabled) {
+    setInterval(function () {
+        if (!statsInterval) {
+            renderDebug({ state: viewerState, iceState: pc ? pc.iceConnectionState : 'no pc' });
+        }
+    }, 1000);
+}
 
 var degradeBanner = document.getElementById('degrade-banner');
 var degradeText = document.getElementById('degrade-text');
@@ -853,6 +890,42 @@ function renderDebug(d) {
         row('Local', d.localCandidate || '—'),
         row('Remote', d.remoteCandidate || '—')
     ]);
+
+    var readyNames = ['NOTHING', 'METADATA', 'CURRENT', 'FUTURE', 'ENOUGH'];
+    var netNames = ['EMPTY', 'IDLE', 'LOADING', 'NO_SRC'];
+    var trackInfo = '—';
+    if (video.srcObject && video.srcObject.getTracks) {
+        var tracks = video.srcObject.getTracks();
+        if (tracks.length) {
+            trackInfo = tracks.map(function (t) {
+                return t.kind[0].toUpperCase() + ':' + t.readyState + (t.muted ? '(m)' : '');
+            }).join(' ');
+        } else {
+            trackInfo = 'stream, 0 tracks';
+        }
+    } else if (video.src) {
+        trackInfo = 'HLS src';
+    }
+    var playColor = debugPlayResult === 'ok' ? 'good' : debugPlayResult ? 'bad' : '';
+    html += section('PLAYBACK', [
+        row('Paused', video.paused ? 'yes' : 'no', video.paused ? 'bad' : 'good'),
+        row('Muted', video.muted ? 'yes' : 'no', video.muted ? 'warn' : ''),
+        row('ReadyState', (readyNames[video.readyState] || '?') + ' (' + video.readyState + ')', video.readyState < 2 ? 'bad' : 'good'),
+        row('Network', (netNames[video.networkState] || '?') + ' (' + video.networkState + ')'),
+        row('Play result', debugPlayResult || '—', playColor),
+        row('Tracks', trackInfo),
+        row('currentTime', video.currentTime ? video.currentTime.toFixed(1) + 's' : '0'),
+        row('videoSize', video.videoWidth ? video.videoWidth + '×' + video.videoHeight : 'none', video.videoWidth ? '' : 'warn')
+    ]);
+
+    if (debugTimeline.length > 0) {
+        var tlRows = [];
+        var start = Math.max(0, debugTimeline.length - 14);
+        for (var ti = debugTimeline.length - 1; ti >= start; ti--) {
+            tlRows.push(row(debugTimeline[ti].ts, debugTimeline[ti].label));
+        }
+        html += section('TIMELINE (' + debugTimeline.length + ')', tlRows);
+    }
 
     var hlsStatus = hlsActive ? 'active' : 'off';
     var hlsBtnLabel = hlsActive ? 'Switch to WebRTC' : 'Switch to HLS';

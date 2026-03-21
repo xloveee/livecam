@@ -313,11 +313,12 @@ button:disabled { background: #555; cursor: default; }
 
 /* ── Password Prompt ────────────────────────── */
 
+/* Full-viewport overlay: keep markup under <body> (not inside overflow:auto stream column) so z-index wins over chat on iOS */
 #password-prompt {
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 500;
+    z-index: 600;
     background: rgba(0,0,0,0.85);
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);

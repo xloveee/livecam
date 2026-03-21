@@ -42,15 +42,6 @@
 
             <video id="player" autoplay controls playsinline></video>
 
-            <div id="password-prompt">
-                <div class="password-box">
-                    <label>This broadcast requires a password</label><br><br>
-                    <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
-                    <button id="btn-password-submit">Join</button>
-                    <div id="password-error"></div>
-                </div>
-            </div>
-
             <div id="degrade-banner">
                 <span class="degrade-icon">&#9888;</span>
                 <span id="degrade-text"></span>
@@ -109,6 +100,16 @@
             </div>
         </div>
     </aside>
+    </div>
+
+    <!-- Body-level: fixed overlay must not sit inside main.stream-column (overflow scroll traps stacking on phone) -->
+    <div id="password-prompt">
+        <div class="password-box">
+            <label>This broadcast requires a password</label><br><br>
+            <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
+            <button id="btn-password-submit">Join</button>
+            <div id="password-error"></div>
+        </div>
     </div>
 
     <div class="donate-modal-overlay" id="donate-overlay">

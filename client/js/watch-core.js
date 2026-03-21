@@ -270,32 +270,6 @@ function getRoomIdFromURL() {
     return null;
 }
 
-async function checkRoomAlive() {
-    if (!roomId) return true;
-    try {
-        var resp = await fetch('/api/room_info/' + roomId);
-        if (!resp.ok) return true;
-        var info = await resp.json();
-        if (!info.is_live) {
-            teardownConnection();
-            setState('offline');
-            return false;
-        }
-        viewerCountEl.textContent = info.viewer_count + ' watching';
-
-        if (info.has_password && !roomPassword) {
-            teardownConnection();
-            setState('need_password');
-            return false;
-        } else if (!info.has_password && roomPassword) {
-            roomPassword = '';
-            passwordInput.value = '';
-        }
-
-        return true;
-    } catch (e) { return true; }
-}
-
 async function fetchICEConfig() {
     try {
         var resp = await fetch('/api/config');
@@ -359,7 +333,6 @@ function onPeerStateChange() {
     if (s === 'connected' || s === 'completed') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
-        checkRoomAlive();
         startStatsLoop();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
@@ -610,7 +583,7 @@ function startStatsLoop() {
             stallCount = 0;
         } else {
             stallCount++;
-            if (stallCount >= 5) {
+            if (stallCount >= 3) {
                 teardownConnection();
                 setState('offline');
                 return;
@@ -694,7 +667,7 @@ function startStatsLoop() {
         });
 
         renderDebug(d);
-    }, 1000);
+    }, 2000);
 }
 
 function stopStatsLoop() {

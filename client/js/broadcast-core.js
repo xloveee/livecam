@@ -19,7 +19,6 @@ var pc = null;
 var localStream = null;
 var statsInterval = null;
 
-var viewerPollInterval = null;
 var activeStreamKey = null;
 var authenticatedKey = '';
 
@@ -183,16 +182,13 @@ async function setRoomPassword(streamKey, password) {
     } catch (e) { /* ignore */ }
 }
 
-async function pollViewerCount() {
+window.onRoomState = function (state) {
     if (!activeStreamKey) return;
-    try {
-        var resp = await fetch('/api/room_info/' + activeStreamKey);
-        if (resp.ok) {
-            var info = await resp.json();
-            viewerCountEl.textContent = info.viewer_count + ' watching' + (info.max_viewers > 0 ? ' / ' + info.max_viewers + ' max' : '');
-        }
-    } catch (e) { /* ignore */ }
-}
+    if (state.viewer_count !== undefined && state.viewer_count !== null) {
+        var max = parseInt(maxViewersInput.value, 10) || 0;
+        viewerCountEl.textContent = state.viewer_count + ' watching' + (max > 0 ? ' / ' + max + ' max' : '');
+    }
+};
 
 maxViewersInput.onchange = function () {
     if (activeStreamKey) setViewerLimit(activeStreamKey, maxViewersInput.value);
@@ -258,8 +254,6 @@ btnStart.onclick = async function () {
             activeStreamKey = streamKey;
             setViewerLimit(streamKey, maxViewersInput.value);
             setRoomPassword(streamKey, roomPasswordInput.value.trim());
-            pollViewerCount();
-            viewerPollInterval = setInterval(pollViewerCount, 3000);
         } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
             stopBroadcast();
             statusEl.textContent = 'Disconnected';
@@ -303,7 +297,6 @@ btnStop.onclick = function () {
 
 function stopBroadcast() {
     if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
-    if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
     if (pc) { pc.close(); pc = null; }
     activeStreamKey = null;
     liveBadge.classList.remove('visible');
@@ -390,7 +383,7 @@ function startStats() {
 
         var overlayParts = [resolution, fps ? fps.toFixed(0) + ' fps' : '', bitrateKbps ? bitrateKbps.toFixed(0) + ' kbps' : ''].filter(Boolean);
         statsEl.textContent = overlayParts.length > 0 ? overlayParts.join(' · ') : '';
-    }, 2000);
+    }, 3000);
 }
 
 function computeHealthScore(bitrateKbps, fps, rttMs, lossPercent, nackRate, qualityLimit) {

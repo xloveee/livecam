@@ -1,13 +1,9 @@
-/* adapter.js — Base WatchAdapter constructor (Chromium default behavior)
- *
- * Encapsulates all browser-varying media behavior: RTCPeerConnection creation,
- * track attachment, playback initiation, HLS fallback. The state machine,
- * polling, WHEP signaling, stats, and debug overlay stay in watch-core.js.
+/* adapter.js — Base WatchAdapter (Chromium default)
  *
  * To add a new browser:
- *   1. Create adapter-<name>.js with a constructor extending WatchAdapter
- *   2. Add the <script> tag in watch.html before adapter-detect.js
- *   3. Add a UA condition in adapter-detect.js
+ *   1. Create adapter-<name>.js extending WatchAdapter
+ *   2. Add <script> in watch.html before adapter-detect.js
+ *   3. Add UA condition in adapter-detect.js
  */
 
 function WatchAdapter(videoEl) {
@@ -32,20 +28,12 @@ WatchAdapter.prototype.setupTransceivers = function (pc) {
 };
 
 WatchAdapter.prototype.onTrack = function (event) {
-    var current = this.video.srcObject;
-    var remote = (event.streams && event.streams[0]) || null;
-
-    if (!current) {
-        if (remote) {
-            this.video.srcObject = remote;
-        } else {
-            this.video.srcObject = new MediaStream([event.track]);
-        }
-    } else if (remote && remote === current) {
-        /* track already belongs to attached stream — browser handles it */
-    } else {
-        current.addTrack(event.track);
+    var stream = this.video.srcObject;
+    if (!(stream instanceof MediaStream)) {
+        stream = new MediaStream();
+        this.video.srcObject = stream;
     }
+    stream.addTrack(event.track);
     return event.track.kind;
 };
 
@@ -61,10 +49,6 @@ WatchAdapter.prototype.teardownVideo = function () {
     this.stopHLS();
     this.video.srcObject = null;
     this.video.removeAttribute('src');
-};
-
-WatchAdapter.prototype.supportsNativeHLS = function () {
-    return !!this.video.canPlayType('application/vnd.apple.mpegurl');
 };
 
 WatchAdapter.prototype.startHLS = function (url) {

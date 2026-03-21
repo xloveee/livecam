@@ -106,6 +106,16 @@ struct TrackOut {
     local_mid: Option<Mid>,
 }
 
+/// Simulcast quality levels in descending order.
+const QUALITY_LEVELS: &[&str] = &["h", "m", "l"];
+const AQ_BAD_THRESHOLD: u8 = 2;
+const AQ_GOOD_THRESHOLD: u8 = 4;
+const AQ_COOLDOWN: Duration = Duration::from_secs(15);
+const AQ_LOSS_BAD: f32 = 0.05;
+const AQ_LOSS_GOOD: f32 = 0.01;
+const AQ_NACK_BAD: u64 = 10;
+const AQ_NACK_GOOD: u64 = 2;
+
 /// Per-peer session state.
 struct Peer {
     id: PeerId,
@@ -117,6 +127,10 @@ struct Peer {
     chosen_rid: Option<Rid>,
     last_media_at: Option<Instant>,
     logged_mids: Vec<Mid>,
+    aq_bad_count: u8,
+    aq_good_count: u8,
+    aq_last_change: Option<Instant>,
+    aq_manual: bool,
 }
 
 impl Peer {
@@ -131,6 +145,10 @@ impl Peer {
             chosen_rid: None,
             last_media_at: None,
             logged_mids: Vec::new(),
+            aq_bad_count: 0,
+            aq_good_count: 0,
+            aq_last_change: None,
+            aq_manual: false,
         }
     }
 }
@@ -314,8 +332,11 @@ pub async fn run_sfu_loop(
             if let Some(peer) = peers.iter_mut().find(|p| {
                 p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
             }) {
-                tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
+                tracing::info!("{}: manual quality -> {:?}", peer.id, qc.rid);
                 peer.chosen_rid = qc.rid.clone();
+                peer.aq_manual = qc.rid.is_some();
+                peer.aq_bad_count = 0;
+                peer.aq_good_count = 0;
 
                 let target_rid: Rid = match qc.rid {
                     Some(rid) => rid,
@@ -522,15 +543,81 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
         }
 
         Event::MediaEgressStats(stats) => {
-            if peer.role == PeerRole::Viewer && stats.nacks > 0 {
-                tracing::info!(
-                    "{} room='{}': egress mid={} rid={:?} nacks={} plis={} loss={:?} rtt={:?} bytes={} pkts={}",
-                    peer.id, peer.room_id,
-                    stats.mid, stats.rid,
-                    stats.nacks, stats.plis, stats.loss, stats.rtt,
-                    stats.bytes, stats.packets,
-                );
+            if peer.role != PeerRole::Viewer {
+                return Propagated::Noop;
             }
+
+            let is_video = peer.tracks_out.iter().any(|t| {
+                t.local_mid == Some(stats.mid) && t.kind == str0m::media::MediaKind::Video
+            });
+            if !is_video || peer.aq_manual {
+                return Propagated::Noop;
+            }
+
+            let loss = stats.loss.unwrap_or(0.0);
+            let is_bad = loss > AQ_LOSS_BAD || stats.nacks > AQ_NACK_BAD;
+            let is_good = loss < AQ_LOSS_GOOD && stats.nacks <= AQ_NACK_GOOD;
+
+            if is_bad {
+                peer.aq_good_count = 0;
+                peer.aq_bad_count = peer.aq_bad_count.saturating_add(1);
+            } else if is_good {
+                peer.aq_bad_count = 0;
+                peer.aq_good_count = peer.aq_good_count.saturating_add(1);
+            } else {
+                peer.aq_bad_count = peer.aq_bad_count.saturating_sub(1);
+                peer.aq_good_count = 0;
+            }
+
+            let now = stats.timestamp;
+            let can_change = peer.aq_last_change
+                .map(|t| now.saturating_duration_since(t) >= AQ_COOLDOWN)
+                .unwrap_or(true);
+
+            if !can_change {
+                return Propagated::Noop;
+            }
+
+            let current_idx = peer.chosen_rid.as_ref()
+                .and_then(|r| QUALITY_LEVELS.iter().position(|&q| q == &**r))
+                .unwrap_or(0);
+
+            let new_idx = if peer.aq_bad_count >= AQ_BAD_THRESHOLD
+                && current_idx < QUALITY_LEVELS.len() - 1
+            {
+                peer.aq_bad_count = 0;
+                Some(current_idx + 1)
+            } else if peer.aq_good_count >= AQ_GOOD_THRESHOLD && current_idx > 0 {
+                peer.aq_good_count = 0;
+                Some(current_idx - 1)
+            } else {
+                None
+            };
+
+            if let Some(idx) = new_idx {
+                let new_rid: Rid = QUALITY_LEVELS[idx].into();
+                tracing::info!(
+                    "{}: auto-quality {:?} -> {} (loss={:.1}% nacks={})",
+                    peer.id, peer.chosen_rid, &*new_rid, loss * 100.0, stats.nacks
+                );
+                peer.chosen_rid = Some(new_rid.clone());
+                peer.aq_last_change = Some(now);
+
+                if let Some(track_out) = peer.tracks_out.iter().find(|t| {
+                    t.kind == str0m::media::MediaKind::Video
+                }) {
+                    return Propagated::Keyframe {
+                        request: KeyframeRequest {
+                            mid: track_out.local_mid.unwrap_or(track_out.source_mid),
+                            rid: Some(new_rid),
+                            kind: KeyframeRequestKind::Pli,
+                        },
+                        target_peer: track_out.source_peer,
+                        source_mid: track_out.source_mid,
+                    };
+                }
+            }
+
             Propagated::Noop
         }
 

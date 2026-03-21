@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 	"unsafe"
 
 	"livecam/chat"
@@ -104,6 +105,8 @@ func main() {
 	if port == "" {
 		port = "8443"
 	}
+
+	go startRoomStatePoller(chatHub)
 
 	fmt.Printf("Go proxy running on :%s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
@@ -691,6 +694,54 @@ func setCORSAndCache(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+type cachedRoomState struct {
+	isLive      bool
+	viewerCount int32
+	hasPassword bool
+}
+
+func startRoomStatePoller(hub *chat.Hub) {
+	cache := make(map[string]cachedRoomState)
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		roomIDs := hub.RoomIDs()
+		seen := make(map[string]bool, len(roomIDs))
+
+		for _, roomID := range roomIDs {
+			seen[roomID] = true
+			info := fetchRoomInfo(roomID)
+			prev, exists := cache[roomID]
+
+			changed := !exists ||
+				prev.isLive != info.IsLive ||
+				prev.viewerCount != info.ViewerCount ||
+				prev.hasPassword != info.HasPassword
+
+			if changed {
+				cache[roomID] = cachedRoomState{
+					isLive:      info.IsLive,
+					viewerCount: info.ViewerCount,
+					hasPassword: info.HasPassword,
+				}
+				hub.BroadcastRoomState(roomID, chat.OutboundMsg{
+					Type:        "room_state",
+					IsLive:      &info.IsLive,
+					ViewerCount: &info.ViewerCount,
+					HasPassword: &info.HasPassword,
+				})
+			}
+		}
+
+		for roomID := range cache {
+			if !seen[roomID] {
+				delete(cache, roomID)
+			}
+		}
+	}
 }
 
 func qualityProxyHandler(w http.ResponseWriter, r *http.Request) {

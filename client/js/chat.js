@@ -90,6 +90,11 @@ function handleChatMsg(msg) {
         case 'ban':
             appendChatSystem(msg.nick + ' has been banned.');
             break;
+        case 'room_state':
+            if (typeof window.onRoomState === 'function') {
+                window.onRoomState(msg);
+            }
+            break;
         case 'error':
             appendChatSystem(msg.text);
             chatDisconnect();

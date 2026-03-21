@@ -298,6 +298,28 @@ func sendToClient(c *Client, msg OutboundMsg) {
 	}
 }
 
+func (h *Hub) RoomIDs() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ids := make([]string, 0, len(h.rooms))
+	for id := range h.rooms {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (h *Hub) BroadcastRoomState(roomID string, msg OutboundMsg) {
+	h.mu.Lock()
+	room, ok := h.rooms[roomID]
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+	room.mu.Lock()
+	broadcastToRoom(room, msg, nil)
+	room.mu.Unlock()
+}
+
 func (h *Hub) BroadcastDonation(roomID string, msg OutboundMsg) {
 	h.mu.Lock()
 	room, ok := h.rooms[roomID]

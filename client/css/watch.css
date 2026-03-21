@@ -155,7 +155,7 @@ button:disabled { background: #555; cursor: default; }
     flex-shrink: 0;
 }
 
-/* ── Stream Viewport & Scroll Hint ──────────── */
+/* ── Stream Viewport & “more below” delimiter ─ */
 
 .stream-viewport {
     width: 100%;
@@ -166,16 +166,37 @@ button:disabled { background: #555; cursor: default; }
     align-items: stretch;
 }
 
-.scroll-hint {
+.panels-below-delimiter {
+    display: none;
+    width: 100%;
     margin-top: auto;
-    padding-top: 1rem;
-    padding-bottom: 0.5rem;
-    color: #444;
+    padding: 0.65rem 0 0.2rem;
+    border: none;
+    background: transparent;
     cursor: pointer;
-    transition: color 0.2s;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    color: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
 }
-.scroll-hint:hover {
-    color: #888;
+.panels-below-delimiter:focus-visible {
+    outline: 1px solid #555;
+    outline-offset: 3px;
+    border-radius: 2px;
+}
+.panels-below-delimiter-line {
+    display: block;
+    width: 100%;
+    max-width: 11rem;
+    height: 1px;
+    background: linear-gradient(90deg, transparent 0%, #3a3a3a 35%, #3a3a3a 65%, transparent 100%);
+}
+.panels-below-delimiter:active .panels-below-delimiter-line {
+    background: linear-gradient(90deg, transparent 0%, #555 35%, #555 65%, transparent 100%);
 }
 
 /* ── Offline Banner (Header Dot) ────────────── */
@@ -608,18 +629,26 @@ button:disabled { background: #555; cursor: default; }
 /* ── Mobile: stack vertically ───────────────── */
 
 @media (max-width: 900px) {
-    body { overflow: hidden; }
+    body {
+        overflow: hidden;
+        min-height: 100%;
+        min-height: 100dvh;
+    }
     .watch-row {
         flex: 1;
         min-height: 0;
         flex-direction: column;
+        align-items: stretch;
+        overflow: hidden;
     }
+    /* Undo desktop flex equal-width hack (width:0); fill screen width */
     main.stream-column {
-        padding: 0.5rem 0.6rem;
-        flex: 1 1 auto;
+        width: 100%;
+        flex: 1 1 0;
+        min-height: 0;
         max-width: none;
         height: auto;
-        min-height: 0;
+        padding: 0.45rem 0.55rem;
         overflow-y: auto;
         overflow-x: hidden;
         scroll-snap-type: y proximity;
@@ -627,23 +656,41 @@ button:disabled { background: #555; cursor: default; }
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
-    .site-header h1 { font-size: 0.95rem; }
-    .stream-controls { width: 100%; justify-content: space-between; }
-    video {
-        flex: 1 1 auto;
-        min-height: 28vh;
-        max-height: 48vh;
+    .stream-snap-page--playback {
+        min-height: 50vh;
+        min-height: min(100%, 52dvh);
     }
-    .panels-section { padding: 0.5rem 0 0; }
+    .site-header {
+        padding: 0.45rem 0.65rem;
+    }
+    .site-header h1 { font-size: 0.9rem; }
+    .stream-controls { width: 100%; justify-content: space-between; }
+    .stream-viewport {
+        min-height: 0;
+    }
+    video {
+        flex: 0 1 auto;
+        width: 100%;
+        min-height: 0;
+        max-height: 42dvh;
+        max-height: 42vh;
+        aspect-ratio: 16 / 9;
+        object-fit: contain;
+    }
+    .panels-section { padding: 0.5rem 0 0.75rem; }
     .chat-panel {
-        flex: 1 1 auto;
+        width: 100%;
+        flex: 1 1 0;
+        min-height: 0;
         max-width: none;
         height: auto;
-        min-height: 200px;
         border-top: 1px solid #1a1a1a;
     }
     .panels-grid {
-        grid-template-columns: repeat(auto-fill, minmax(8rem, 1fr));
+        grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    }
+    .panels-below-delimiter {
+        padding-top: 0.45rem;
     }
 }
 

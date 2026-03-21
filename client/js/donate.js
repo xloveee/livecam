@@ -67,6 +67,10 @@ function fetchDonateMethods() {
             panelDonate.style.display = hasAny ? '' : 'none';
 
             var panelsGrid = document.getElementById('panels-grid');
+            var scrollHint = document.getElementById('scroll-hint');
+            if (scrollHint) {
+                scrollHint.style.display = 'none';
+            }
             if (panelsGrid) {
                 while (panelsGrid.firstChild) {
                     panelsGrid.removeChild(panelsGrid.firstChild);
@@ -97,9 +101,8 @@ function fetchDonateMethods() {
                 if (hasValidPanels) {
                     panelsGrid.removeAttribute('hidden');
                 }
-                var scrollHint = document.getElementById('scroll-hint');
                 if (hasValidPanels && scrollHint) {
-                    scrollHint.style.display = 'block';
+                    scrollHint.style.display = 'flex';
                 }
             }
         })

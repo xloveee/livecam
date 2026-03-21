@@ -188,15 +188,21 @@ button:disabled { background: #555; cursor: default; }
     outline-offset: 3px;
     border-radius: 2px;
 }
+/* iOS-style home-indicator pill: short rounded bar, not a full-width hairline */
 .panels-below-delimiter-line {
     display: block;
-    width: 100%;
-    max-width: 11rem;
-    height: 1px;
-    background: linear-gradient(90deg, transparent 0%, #3a3a3a 35%, #3a3a3a 65%, transparent 100%);
+    flex-shrink: 0;
+    width: 8.375rem;
+    max-width: 42vw;
+    height: 0.3125rem;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.28);
+    box-shadow:
+        0 0 0 0.5px rgba(255, 255, 255, 0.08),
+        0 1px 2px rgba(0, 0, 0, 0.45);
 }
 .panels-below-delimiter:active .panels-below-delimiter-line {
-    background: linear-gradient(90deg, transparent 0%, #555 35%, #555 65%, transparent 100%);
+    background-color: rgba(255, 255, 255, 0.4);
 }
 
 /* ── Offline Banner (Header Dot) ────────────── */

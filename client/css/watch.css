@@ -52,6 +52,55 @@ body {
     overflow: hidden;
 }
 
+/* Draggable gutter between stream and chat (desktop only; see watch-split.js) */
+.watch-splitter {
+    display: none;
+    flex: 0 0 6px;
+    width: 6px;
+    min-width: 6px;
+    align-self: stretch;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-sizing: border-box;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background: #121212;
+    box-shadow: inset 1px 0 0 #1f1f1f, inset -1px 0 0 #1f1f1f;
+    z-index: 2;
+}
+.watch-splitter:hover,
+.watch-splitter:focus-visible {
+    background: #1a1a1a;
+    box-shadow: inset 1px 0 0 #2a2a2a, inset -1px 0 0 #2a2a2a;
+}
+.watch-splitter:focus {
+    outline: none;
+}
+.watch-splitter:focus-visible {
+    outline: 2px solid #1e88e5;
+    outline-offset: -1px;
+}
+
+.watch-row.watch-row--resize main.stream-column {
+    border-right: none;
+    min-width: 160px;
+}
+
+body.watch-split-dragging,
+body.watch-split-dragging * {
+    cursor: col-resize !important;
+    user-select: none !important;
+}
+
+@media (min-width: 901px) {
+    .watch-row.watch-row--resize .watch-splitter {
+        display: block;
+    }
+}
+
 /* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
  * scroll-snap-type y proximity — gentle snap toward each section when scrolling ends.
  * scroll-snap-align start on each .stream-snap-page — panels sit below full playback view.

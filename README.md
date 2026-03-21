@@ -83,6 +83,8 @@ The Go proxy listens on `:8443` by default.
 
 Navigate to `http://localhost:8443/watch/my-room` to load the viewer page.
 
+On wide viewports, drag the **resize bar** between the stream and chat to change the split; the choice is stored in `localStorage` (`livecamWatchChatPx`). Double-click the bar to reset to roughly half and half. Below ~900px width the layout stacks vertically and the bar is hidden.
+
 ### 4. Broadcast
 
 **Option A — OBS Studio (desktop, highest quality)**

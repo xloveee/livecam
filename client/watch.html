@@ -78,6 +78,8 @@
         </section>
     </main>
 
+    <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag to resize chat. Double-click to reset." tabindex="-1" hidden></div>
+
     <aside class="chat-panel" aria-label="Chat">
         <div class="chat-header">
             <span>Chat</span>
@@ -140,6 +142,7 @@
     <script src="/js/watch-core.js"></script>
     <script src="/js/chat.js"></script>
     <script src="/js/donate.js"></script>
+    <script src="/js/watch-split.js"></script>
     <script>
         (async function init() {
             roomId = getRoomIdFromURL();

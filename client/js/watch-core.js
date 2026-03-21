@@ -16,8 +16,8 @@ var roomIdFromURL = false;
 var sessionId = null;
 var roomPassword = '';
 var pc = null;
-var audioElement = null;
 var pollInterval = null;
+var unmuteOverlay = document.getElementById('unmute-overlay');
 var lastBytesReceived = 0;
 var stallCount = 0;
 var connectTimeout = null;
@@ -273,11 +273,7 @@ function teardownConnection() {
     }
     video.srcObject = null;
     video.style.aspectRatio = '';
-    if (audioElement) {
-        audioElement.srcObject = null;
-        audioElement.remove();
-        audioElement = null;
-    }
+    hideUnmuteUI();
     sessionId = null;
     lastBytesReceived = 0;
     stallCount = 0;
@@ -319,23 +315,18 @@ async function connectWHEP() {
             receivers.push(recv);
             recv.jitterBufferTarget = 0.15;
         }
-        if (track.kind === 'video') {
-            video.srcObject = new MediaStream([track]);
-            video.play().catch(function () {
-                video.muted = true;
-                video.play().catch(function () {});
-            });
-        } else if (track.kind === 'audio') {
-            if (audioElement) {
-                audioElement.srcObject = null;
-                audioElement.remove();
-            }
-            audioElement = document.createElement('audio');
-            audioElement.autoplay = true;
-            audioElement.style.display = 'none';
-            document.body.appendChild(audioElement);
-            audioElement.srcObject = new MediaStream([track]);
-            audioElement.play().catch(function () {});
+
+        var stream = video.srcObject;
+        if (!(stream instanceof MediaStream)) {
+            stream = new MediaStream();
+            video.srcObject = stream;
+        }
+        stream.addTrack(track);
+
+        video.play().catch(function () {});
+
+        if (track.kind === 'audio' && video.muted) {
+            showUnmuteUI();
         }
     };
     pc._aqReceivers = receivers;
@@ -418,6 +409,25 @@ btnPasswordSubmit.onclick = function () {
 
 passwordInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') btnPasswordSubmit.click();
+});
+
+/* ── Unmute UI ──────────────────────────────────────────── */
+
+function showUnmuteUI() {
+    if (unmuteOverlay) unmuteOverlay.style.display = 'flex';
+}
+
+function hideUnmuteUI() {
+    if (unmuteOverlay) unmuteOverlay.style.display = 'none';
+}
+
+function userUnmute() {
+    video.muted = false;
+    hideUnmuteUI();
+}
+
+video.addEventListener('volumechange', function () {
+    if (!video.muted) hideUnmuteUI();
 });
 
 /* ── Unified Stats Loop ─────────────────────────────────── */

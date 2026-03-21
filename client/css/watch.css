@@ -190,6 +190,33 @@ video {
     object-fit: contain;
 }
 
+/* ── Unmute Overlay ─────────────────────────── */
+
+#unmute-overlay {
+    position: absolute;
+    bottom: 4.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: none;
+    align-items: center;
+    gap: 0.4rem;
+    background: rgba(0, 0, 0, 0.78);
+    color: #fff;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    padding: 0.5rem 1.2rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+    cursor: pointer;
+    z-index: 10;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    white-space: nowrap;
+    transition: background 0.15s;
+}
+#unmute-overlay:hover { background: rgba(0, 0, 0, 0.92); }
+#unmute-overlay svg { flex-shrink: 0; }
+
 /* ── Stream Controls ────────────────────────── */
 
 .stream-controls {
@@ -240,6 +267,7 @@ button:disabled { background: #555; cursor: default; }
 /* ── Stream Viewport & “more below” delimiter ─ */
 
 .stream-viewport {
+    position: relative;
     width: 100%;
     flex: 1;
     min-height: 0;

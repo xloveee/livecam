@@ -39,13 +39,11 @@ function setState(next) {
 }
 
 function renderState() {
-    offlineBanner.style.display = 'none';
     passwordPrompt.style.display = 'none';
     statusEl.classList.remove('error');
 
     switch (viewerState) {
         case 'offline':
-            offlineBanner.style.display = 'block';
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'No broadcast right now';
             statusEl.textContent = 'Offline';
@@ -55,21 +53,23 @@ function renderState() {
             break;
         case 'need_password':
             passwordPrompt.style.display = 'block';
+            offlineBanner.classList.remove('live');
             statusEl.textContent = 'Password required';
             qualitySelect.disabled = true;
             disableChat();
             break;
         case 'connecting':
+            offlineBanner.classList.remove('live');
             statusEl.textContent = 'Connecting...';
             qualitySelect.disabled = true;
             break;
         case 'live':
+            offlineBanner.classList.add('live');
             statusEl.textContent = 'Live';
             qualitySelect.disabled = false;
             enableChat();
             break;
         case 'room_full':
-            offlineBanner.style.display = 'block';
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'Room is full — retrying...';
             statusEl.textContent = 'Waiting';
@@ -77,7 +77,6 @@ function renderState() {
             disableChat();
             break;
         case 'rate_limited':
-            offlineBanner.style.display = 'block';
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'Too many requests — retrying...';
             statusEl.textContent = 'Waiting';

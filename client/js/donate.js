@@ -68,8 +68,10 @@ function fetchDonateMethods() {
 
             if (data.panels && data.panels.panels && data.panels.panels.length > 0) {
                 var section = document.getElementById('panels-section');
+                var hasValidPanels = false;
                 data.panels.panels.forEach(function(p) {
                     if (!p.image_url) return;
+                    hasValidPanels = true;
                     var a = document.createElement('a');
                     if (p.link_url) {
                         a.href = p.link_url;
@@ -86,6 +88,11 @@ function fetchDonateMethods() {
                     a.appendChild(img);
                     section.appendChild(a);
                 });
+                
+                var scrollHint = document.getElementById('scroll-hint');
+                if (hasValidPanels && scrollHint) {
+                    scrollHint.style.display = 'block';
+                }
             }
         })
         .catch(function () { panelDonate.style.display = 'none'; });

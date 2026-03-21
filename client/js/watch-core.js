@@ -326,6 +326,10 @@ async function connectWHEP() {
         watchAdapter.play().then(function (result) {
             debugPlayResult = result.ok ? 'ok' : result.error;
             debugEvent('play:' + debugPlayResult);
+            if (!result.ok && result.error === 'play-timeout') {
+                debugEvent('auto-hls-fallback');
+                switchToHLS();
+            }
         });
         if (kind === 'audio' && video.muted) {
             showUnmuteUI();

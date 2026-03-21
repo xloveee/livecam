@@ -4,7 +4,6 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use str0m::bwe::{Bitrate, BweKind};
 use str0m::format::Codec;
 use str0m::media::{KeyframeRequest, KeyframeRequestKind, MediaData, Mid, Rid};
 use str0m::net::{Protocol, Receive};
@@ -117,7 +116,6 @@ const AQ_LOSS_BAD: f32 = 0.05;
 const AQ_LOSS_GOOD: f32 = 0.01;
 const AQ_NACK_BAD: u64 = 10;
 const AQ_NACK_GOOD: u64 = 2;
-const BWE_THRESHOLDS_KBPS: [f64; 3] = [2000.0, 800.0, 250.0];
 
 /// Per-peer session state.
 struct Peer {
@@ -135,7 +133,6 @@ struct Peer {
     aq_last_change: Option<Instant>,
     aq_manual: bool,
     write_error_count: u32,
-    bwe_kbps: f64,
 }
 
 const WRITE_ERROR_DISCONNECT_THRESHOLD: u32 = 50;
@@ -157,7 +154,6 @@ impl Peer {
             aq_last_change: None,
             aq_manual: false,
             write_error_count: 0,
-            bwe_kbps: 0.0,
         }
     }
 }
@@ -326,7 +322,6 @@ pub async fn run_sfu_loop(
             }
 
             if role == PeerRole::Viewer {
-                peer.rtc.bwe().set_desired_bitrate(Bitrate::kbps(4000));
                 for bcast in peers.iter().filter(|p| {
                     p.role == PeerRole::Broadcaster && p.room_id == room_id
                 }) {
@@ -600,19 +595,12 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
             }
 
             let loss = stats.loss.unwrap_or(0.0);
-            let mut is_bad = loss > AQ_LOSS_BAD || stats.nacks > AQ_NACK_BAD;
-            let mut is_good = loss < AQ_LOSS_GOOD && stats.nacks <= AQ_NACK_GOOD;
+            let is_bad = loss > AQ_LOSS_BAD || stats.nacks > AQ_NACK_BAD;
+            let is_good = loss < AQ_LOSS_GOOD && stats.nacks <= AQ_NACK_GOOD;
 
             let current_idx = peer.chosen_rid.as_ref()
                 .and_then(|r| QUALITY_LEVELS.iter().position(|&q| q == &**r))
                 .unwrap_or(0);
-
-            if peer.bwe_kbps > 0.0 && current_idx < BWE_THRESHOLDS_KBPS.len() {
-                if peer.bwe_kbps < BWE_THRESHOLDS_KBPS[current_idx] {
-                    is_bad = true;
-                    is_good = false;
-                }
-            }
 
             if is_bad {
                 peer.aq_good_count = 0;
@@ -643,9 +631,7 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 let can_upgrade = peer.aq_last_change
                     .map(|t| now.saturating_duration_since(t) >= AQ_UPGRADE_COOLDOWN)
                     .unwrap_or(true);
-                let bwe_ok = peer.bwe_kbps <= 0.0
-                    || peer.bwe_kbps >= BWE_THRESHOLDS_KBPS[current_idx - 1] * 1.2;
-                if can_upgrade && bwe_ok {
+                if can_upgrade {
                     peer.aq_good_count = 0;
                     Some(current_idx - 1)
                 } else {
@@ -658,8 +644,8 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
             if let Some(idx) = new_idx {
                 let new_rid: Rid = QUALITY_LEVELS[idx].into();
                 tracing::info!(
-                    "{}: auto-quality {:?} -> {} (loss={:.1}% nacks={} bwe={:.0}kbps)",
-                    peer.id, peer.chosen_rid, &*new_rid, loss * 100.0, stats.nacks, peer.bwe_kbps
+                    "{}: auto-quality {:?} -> {} (loss={:.1}% nacks={})",
+                    peer.id, peer.chosen_rid, &*new_rid, loss * 100.0, stats.nacks
                 );
                 peer.chosen_rid = Some(new_rid.clone());
                 peer.aq_last_change = Some(now);
@@ -679,21 +665,6 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 }
             }
 
-            Propagated::Noop
-        }
-
-        Event::EgressBitrateEstimate(bwe) => {
-            if peer.role == PeerRole::Viewer {
-                let kbps = match &bwe {
-                    BweKind::Twcc(b) => b.as_f64() / 1000.0,
-                    BweKind::Remb(_, b) => b.as_f64() / 1000.0,
-                    _ => 0.0,
-                };
-                if kbps > 0.0 {
-                    peer.bwe_kbps = kbps;
-                }
-                tracing::debug!("{}: BWE {:.0} kbps", peer.id, peer.bwe_kbps);
-            }
             Propagated::Noop
         }
 

@@ -29,6 +29,29 @@ video.addEventListener('resize', function() {
     }
 });
 
+/* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
+function resetWatchStreamColumnToTop() {
+    var col = document.querySelector('main.stream-column');
+    if (!col || !window.matchMedia('(max-width: 900px)').matches) {
+        return;
+    }
+    col.scrollTop = 0;
+}
+
+function scheduleResetWatchStreamColumnToTop() {
+    resetWatchStreamColumnToTop();
+    requestAnimationFrame(function () {
+        resetWatchStreamColumnToTop();
+        requestAnimationFrame(resetWatchStreamColumnToTop);
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', scheduleResetWatchStreamColumnToTop);
+} else {
+    scheduleResetWatchStreamColumnToTop();
+}
+
 /* ── State Machine ──────────────────────────────────────── */
 
 function setState(next) {

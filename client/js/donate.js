@@ -105,6 +105,23 @@ function fetchDonateMethods() {
                     scrollHint.style.display = 'flex';
                 }
             }
+            /* After banners mount, correct bad initial scroll-snap (phone) without clobbering user scroll */
+            requestAnimationFrame(function () {
+                requestAnimationFrame(function () {
+                    if (!window.matchMedia('(max-width: 900px)').matches) {
+                        return;
+                    }
+                    var col = document.querySelector('main.stream-column');
+                    var playback = document.querySelector('.stream-snap-page--playback');
+                    if (!col || !playback) {
+                        return;
+                    }
+                    var thresh = Math.max(Math.floor(playback.offsetHeight * 0.45), 100);
+                    if (col.scrollTop > thresh) {
+                        col.scrollTop = 0;
+                    }
+                });
+            });
         })
         .catch(function () { panelDonate.style.display = 'none'; });
 }

@@ -769,10 +769,8 @@ button:disabled { background: #555; cursor: default; }
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
-    .stream-snap-page--playback {
-        min-height: 50vh;
-        min-height: min(100%, 52dvh);
-    }
+    /* Inherit .stream-snap-page--playback { min-height: 100% } — do not cap with 52dvh or the first
+     * snap page is shorter than the scrollport; scroll-snap then settles on panels / banners. */
     .site-header {
         padding: 0.45rem 0.65rem;
     }

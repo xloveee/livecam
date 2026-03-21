@@ -163,12 +163,31 @@ button:disabled { background: #555; cursor: default; }
 
 #password-prompt {
     display: none;
-    margin-top: 0.8rem;
+    position: fixed;
+    inset: 0;
+    z-index: 500;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
     text-align: center;
-    flex-shrink: 0;
+}
+#password-prompt label {
+    font-size: 1.1rem;
+    color: #fff;
+    margin-bottom: 1rem;
+}
+.password-box {
+    background: #111;
+    border: 1px solid #333;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
 }
 #password-prompt input {
-    background: #1e1e1e;
+    background: #1a1a1a;
     color: #e0e0e0;
     border: 1px solid #444;
     padding: 0.5rem 0.8rem;
@@ -184,7 +203,7 @@ button:disabled { background: #555; cursor: default; }
 #password-error {
     color: #ef5350;
     font-size: 0.85rem;
-    margin-top: 0.4rem;
+    margin-top: 0.8rem;
 }
 
 /* ── Connection Quality Banner ───────────────── */

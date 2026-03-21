@@ -14,15 +14,15 @@
             <header class="stream-header">
                 <div class="header-left">
                     <h1>
-                        <span id="offline-banner" title="Stream status">
-                            <span class="dot"></span>
-                        </span>
                         Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
                     </h1>
                     <div class="viewer-count" id="viewer-count"></div>
                     <span id="offline-text" style="display:none;"></span>
                 </div>
                 <div class="stream-controls" id="controls">
+                    <span id="offline-banner" title="Stream status">
+                        <span class="dot"></span>
+                    </span>
                     <span id="status">Checking stream...</span>
                     <select id="quality-select" disabled>
                         <option value="">Auto</option>
@@ -36,10 +36,12 @@
             <video id="player" autoplay controls playsinline></video>
 
             <div id="password-prompt">
-                <label>This broadcast requires a password</label><br><br>
-                <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
-                <button id="btn-password-submit">Join</button>
-                <div id="password-error"></div>
+                <div class="password-box">
+                    <label>This broadcast requires a password</label><br><br>
+                    <input type="password" id="room-password-input" placeholder="Enter password" autocomplete="off">
+                    <button id="btn-password-submit">Join</button>
+                    <div id="password-error"></div>
+                </div>
             </div>
 
             <div id="degrade-banner">

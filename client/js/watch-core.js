@@ -52,7 +52,7 @@ function renderState() {
             disableChat();
             break;
         case 'need_password':
-            passwordPrompt.style.display = 'block';
+            passwordPrompt.style.display = 'flex';
             offlineBanner.classList.remove('live');
             statusEl.textContent = 'Password required';
             qualitySelect.disabled = true;

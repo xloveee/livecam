@@ -549,18 +549,35 @@ input:focus, select:focus {
     .controls-bar { padding: 0.6rem 0; }
     .settings-page .row { gap: 0.5rem; }
     .settings-toggle { display: none; }
-    .settings-overlay { display: flex !important; position: static; background: transparent; padding: 0; align-items: stretch; }
-    .settings-overlay-backdrop { display: none; }
     /*
-     * Fixed-height settings shell: tab switches no longer grow/shrink the panel from content
-     * (Panels + Donations lists were resizing .settings-body vs Stream/Room). Body scrolls inside.
+     * Desktop: overlay must own the fixed height. If only the inner panel has height while the
+     * overlay is auto-sized, flex min-height:auto lets tall tab content expand the panel past
+     * max-height (Panels / Donations), so the whole overlay grows — fix: height on overlay +
+     * min-height:0 on both shells so content scrolls inside .settings-body only.
      */
-    .settings-overlay-panel {
-        max-width: 720px;
+    .settings-overlay {
+        display: flex !important;
+        position: static;
+        background: transparent;
+        padding: 0;
+        align-items: stretch;
+        align-self: stretch;
         width: 100%;
+        max-width: 720px;
         height: min(70vh, calc(100dvh - 9rem));
         max-height: min(70vh, calc(100dvh - 9rem));
-        min-height: 260px;
+        min-height: 0;
+        overflow: hidden;
+        flex-shrink: 0;
+    }
+    .settings-overlay-backdrop { display: none; }
+    .settings-overlay-panel {
+        flex: 1 1 0;
+        max-width: 720px;
+        width: 100%;
+        min-height: 0;
+        height: auto;
+        max-height: none;
         background: transparent;
         padding: 0;
         box-shadow: none;

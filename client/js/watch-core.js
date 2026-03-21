@@ -317,17 +317,20 @@ async function connectWHEP() {
         iceServers: config.iceServers || []
     });
 
+    var receivers = [];
     pc.ontrack = function (event) {
         var track = event.track;
+        var recv = event.receiver;
+        if (typeof recv.jitterBufferTarget !== 'undefined') {
+            receivers.push(recv);
+            recv.jitterBufferTarget = 0.15;
+        }
         if (track.kind === 'video') {
             video.srcObject = new MediaStream([track]);
             video.play().catch(function () {
                 video.muted = true;
                 video.play().catch(function () {});
             });
-            if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
-                event.receiver.jitterBufferTarget = 0.15;
-            }
         } else if (track.kind === 'audio') {
             if (audioElement) {
                 audioElement.srcObject = null;
@@ -339,11 +342,9 @@ async function connectWHEP() {
             document.body.appendChild(audioElement);
             audioElement.srcObject = new MediaStream([track]);
             audioElement.play().catch(function () {});
-            if (typeof event.receiver.jitterBufferTarget !== 'undefined') {
-                event.receiver.jitterBufferTarget = 0.15;
-            }
         }
     };
+    pc._aqReceivers = receivers;
 
     pc.oniceconnectionstatechange = onPeerStateChange;
     pc.onconnectionstatechange = onPeerStateChange;
@@ -492,12 +493,14 @@ function startAutoQuality() {
 
         if (aqPrevTs === 0) return;
 
-        var isBad = lossPct > 5 || fps < 10;
-        var isGood = lossPct < 1 && fps > 22 && bitrateKbps > 200;
+        var isBurst = fps > 60;
+        var isBad = lossPct > 5 || fps < 10 || isBurst;
+        var isGood = lossPct < 1 && fps > 20 && fps <= 60 && bitrateKbps > 200;
 
         if (isBad) {
             aqGoodStreak = 0;
             aqBadStreak++;
+            tuneJitterBuffer(lossPct, isBurst);
             if (aqBadStreak >= 3) {
                 downgradeQuality();
                 aqBadStreak = 0;
@@ -508,6 +511,7 @@ function startAutoQuality() {
             if (aqGoodStreak >= 8) {
                 upgradeQuality();
                 aqGoodStreak = 0;
+                tightenJitterBuffer();
             }
         } else {
             aqBadStreak = Math.max(0, aqBadStreak - 1);
@@ -564,6 +568,38 @@ function showDegradeBanner() {
 function hideDegradeBanner() {
     if (degradeBanner) degradeBanner.style.display = 'none';
     if (hlsBanner) hlsBanner.style.display = 'none';
+}
+
+var currentJBTarget = 0.15;
+var JB_MIN = 0.15;
+var JB_MAX = 1.0;
+
+function tuneJitterBuffer(lossPct, isBurst) {
+    var target = currentJBTarget;
+    if (isBurst) {
+        target = Math.min(target + 0.15, JB_MAX);
+    } else if (lossPct > 10) {
+        target = Math.min(target + 0.1, JB_MAX);
+    } else if (lossPct > 5) {
+        target = Math.min(target + 0.05, JB_MAX);
+    }
+    if (target !== currentJBTarget) {
+        currentJBTarget = target;
+        applyJitterBuffer(target);
+    }
+}
+
+function tightenJitterBuffer() {
+    if (currentJBTarget <= JB_MIN) return;
+    currentJBTarget = Math.max(currentJBTarget - 0.05, JB_MIN);
+    applyJitterBuffer(currentJBTarget);
+}
+
+function applyJitterBuffer(target) {
+    if (!pc || !pc._aqReceivers) return;
+    for (var i = 0; i < pc._aqReceivers.length; i++) {
+        try { pc._aqReceivers[i].jitterBufferTarget = target; } catch (e) {}
+    }
 }
 
 /* ── HLS Fallback ───────────────────────────────────────── */
@@ -787,7 +823,8 @@ function renderDebug(d) {
             row('Decoded', d.framesDecoded || 0),
             row('Dropped', d.framesDropped || 0, d.framesDropped > 0 ? (dropRate > 2 ? 'bad' : 'warn') : ''),
             row('NACK/PLI/FIR', d.videoNack + ' / ' + d.videoPli + ' / ' + d.videoFir),
-            row('Jitter buf', d.jitterBufferMs ? d.jitterBufferMs.toFixed(0) + ' ms' : '—')
+            row('Jitter buf', d.jitterBufferMs ? d.jitterBufferMs.toFixed(0) + ' ms' : '—'),
+            row('JB target', (currentJBTarget * 1000).toFixed(0) + ' ms', currentJBTarget > 0.3 ? 'warn' : '')
         ]);
     }
 

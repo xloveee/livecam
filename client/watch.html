@@ -39,6 +39,15 @@
             <div id="password-error"></div>
         </div>
 
+        <div id="degrade-banner">
+            <span class="degrade-icon">&#9888;</span>
+            <span id="degrade-text"></span>
+            <div id="hls-banner">
+                <button onclick="switchToHLS()">Switch to stable playback</button>
+                <button class="degrade-back" onclick="switchToWebRTC()">Back to real-time</button>
+            </div>
+        </div>
+
         <section class="panels-section" id="panels-section">
             <div class="panel-card panel-donate" id="panel-donate" style="display:none">
                 <div class="panel-donate-body">
@@ -107,6 +116,7 @@
         <div id="debug-content"></div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js" async></script>
     <script src="/js/watch-core.js"></script>
     <script src="/js/chat.js"></script>
     <script src="/js/donate.js"></script>

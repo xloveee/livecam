@@ -88,6 +88,13 @@ func main() {
 	staticFS := http.FileServer(http.Dir(clientDir))
 	mux.Handle("/css/", staticFS)
 	mux.Handle("/js/", staticFS)
+
+	hlsDir := os.Getenv("HLS_DIR")
+	if hlsDir == "" {
+		hlsDir = "/var/hls"
+	}
+	hlsFS := http.StripPrefix("/hls/", http.FileServer(http.Dir(hlsDir)))
+	mux.Handle("/hls/", setCORSAndCache(hlsFS))
 	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/watch/", watchHandler)
@@ -670,6 +677,20 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
+}
+
+func setCORSAndCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Cache-Control", "no-cache, no-store")
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Cache-Control", "public, max-age=30")
+			w.Header().Set("Content-Type", "video/mp2t")
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func qualityProxyHandler(w http.ResponseWriter, r *http.Request) {

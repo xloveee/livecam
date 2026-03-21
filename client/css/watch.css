@@ -154,6 +154,53 @@ button:disabled { background: #555; cursor: default; }
     margin-top: 0.4rem;
 }
 
+/* ── Connection Quality Banner ───────────────── */
+
+#degrade-banner {
+    display: none;
+    width: 100%;
+    max-width: 960px;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.7rem;
+    margin-top: 0.4rem;
+    background: rgba(255, 179, 0, 0.08);
+    border: 1px solid rgba(255, 179, 0, 0.2);
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+#degrade-banner .degrade-icon {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+#degrade-text {
+    font-size: 0.75rem;
+    color: #ccc;
+    flex: 1;
+}
+#hls-banner {
+    display: none;
+    margin-top: 0.3rem;
+}
+#hls-banner button {
+    background: #1e88e5;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.72rem;
+    border-radius: 4px;
+}
+#hls-banner button:hover { background: #1565c0; }
+.degrade-back {
+    background: transparent;
+    border: 1px solid #555;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.68rem;
+    color: #aaa;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 0.3rem;
+}
+.degrade-back:hover { border-color: #888; color: #fff; }
+
 /* ── Below-Stream Panels ────────────────────── */
 
 .panels-section {

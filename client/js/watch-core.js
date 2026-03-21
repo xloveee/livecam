@@ -425,6 +425,212 @@ passwordInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') btnPasswordSubmit.click();
 });
 
+/* ── Auto Quality Adaptation ────────────────────────────── */
+
+var qualityLevels = ['h', 'm', 'l'];
+var currentQualityIdx = -1; // -1 = auto (server decides)
+var aqInterval = null;
+var aqPrevBytes = 0;
+var aqPrevTs = 0;
+var aqPrevPackets = 0;
+var aqPrevLost = 0;
+var aqBadStreak = 0;
+var aqGoodStreak = 0;
+var aqManualOverride = false;
+var degradeBanner = document.getElementById('degrade-banner');
+var degradeText = document.getElementById('degrade-text');
+var hlsBanner = document.getElementById('hls-banner');
+
+qualitySelect.addEventListener('change', function () {
+    aqManualOverride = true;
+    aqBadStreak = 0;
+    aqGoodStreak = 0;
+});
+
+function startAutoQuality() {
+    stopAutoQuality();
+    aqPrevBytes = 0;
+    aqPrevTs = 0;
+    aqPrevPackets = 0;
+    aqPrevLost = 0;
+    aqBadStreak = 0;
+    aqGoodStreak = 0;
+    aqManualOverride = false;
+    currentQualityIdx = -1;
+    hideDegradeBanner();
+
+    aqInterval = setInterval(async function () {
+        if (!pc || viewerState !== 'live' || aqManualOverride) return;
+
+        var stats;
+        try { stats = await pc.getStats(); } catch (e) { return; }
+
+        var fps = 0;
+        var lossPct = 0;
+        var bitrateKbps = 0;
+
+        stats.forEach(function (r) {
+            if (r.type === 'inbound-rtp' && r.kind === 'video') {
+                fps = r.framesPerSecond || 0;
+                if (aqPrevTs > 0) {
+                    var dt = (r.timestamp - aqPrevTs) / 1000;
+                    if (dt > 0) {
+                        bitrateKbps = ((r.bytesReceived - aqPrevBytes) * 8) / dt / 1000;
+                    }
+                    var pktDelta = (r.packetsReceived || 0) - aqPrevPackets;
+                    var lostDelta = (r.packetsLost || 0) - aqPrevLost;
+                    if (pktDelta + lostDelta > 0) {
+                        lossPct = (lostDelta / (pktDelta + lostDelta)) * 100;
+                    }
+                }
+                aqPrevBytes = r.bytesReceived || 0;
+                aqPrevTs = r.timestamp;
+                aqPrevPackets = r.packetsReceived || 0;
+                aqPrevLost = r.packetsLost || 0;
+            }
+        });
+
+        if (aqPrevTs === 0) return;
+
+        var isBad = lossPct > 5 || fps < 10;
+        var isGood = lossPct < 1 && fps > 22 && bitrateKbps > 200;
+
+        if (isBad) {
+            aqGoodStreak = 0;
+            aqBadStreak++;
+            if (aqBadStreak >= 3) {
+                downgradeQuality();
+                aqBadStreak = 0;
+            }
+        } else if (isGood) {
+            aqBadStreak = 0;
+            aqGoodStreak++;
+            if (aqGoodStreak >= 8) {
+                upgradeQuality();
+                aqGoodStreak = 0;
+            }
+        } else {
+            aqBadStreak = Math.max(0, aqBadStreak - 1);
+            aqGoodStreak = 0;
+        }
+    }, 2000);
+}
+
+function stopAutoQuality() {
+    if (aqInterval) { clearInterval(aqInterval); aqInterval = null; }
+    hideDegradeBanner();
+}
+
+function downgradeQuality() {
+    var nextIdx = currentQualityIdx + 1;
+    if (nextIdx >= qualityLevels.length) {
+        showDegradeBanner();
+        return;
+    }
+    currentQualityIdx = nextIdx;
+    var rid = qualityLevels[currentQualityIdx];
+    qualitySelect.value = rid;
+    setQuality(rid);
+    showDegradeBanner();
+}
+
+function upgradeQuality() {
+    if (currentQualityIdx <= 0) {
+        currentQualityIdx = -1;
+        qualitySelect.value = '';
+        setQuality(null);
+        hideDegradeBanner();
+        return;
+    }
+    currentQualityIdx--;
+    var rid = qualityLevels[currentQualityIdx];
+    qualitySelect.value = rid;
+    setQuality(rid);
+}
+
+function showDegradeBanner() {
+    if (!degradeBanner) return;
+    var atLowest = currentQualityIdx >= qualityLevels.length - 1;
+    degradeBanner.style.display = 'flex';
+    if (atLowest) {
+        degradeText.textContent = 'Your connection is unstable — quality reduced to minimum.';
+        checkHLSAvailable();
+    } else {
+        degradeText.textContent = 'Connection unstable — quality lowered automatically.';
+        if (hlsBanner) hlsBanner.style.display = 'none';
+    }
+}
+
+function hideDegradeBanner() {
+    if (degradeBanner) degradeBanner.style.display = 'none';
+    if (hlsBanner) hlsBanner.style.display = 'none';
+}
+
+/* ── HLS Fallback ───────────────────────────────────────── */
+
+var hlsPlayer = null;
+var hlsActive = false;
+
+function checkHLSAvailable() {
+    if (!roomId || !hlsBanner) return;
+    fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
+        .then(function (r) {
+            if (r.ok) {
+                hlsBanner.style.display = 'block';
+            }
+        })
+        .catch(function () {});
+}
+
+function switchToHLS() {
+    if (!roomId) return;
+    var hlsUrl = '/hls/' + roomId + '/master.m3u8';
+
+    teardownConnection();
+    stopAutoQuality();
+    hlsActive = true;
+    qualitySelect.disabled = true;
+
+    if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+        video.play().catch(function () {});
+        onHLSPlaying();
+    } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+        hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
+        hlsPlayer.loadSource(hlsUrl);
+        hlsPlayer.attachMedia(video);
+        hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
+            video.play().catch(function () {});
+        });
+        onHLSPlaying();
+    } else {
+        statusEl.textContent = 'HLS not supported in this browser';
+        statusEl.classList.add('error');
+    }
+}
+
+function onHLSPlaying() {
+    viewerState = 'live';
+    statusEl.textContent = 'Live (HLS)';
+    statusEl.classList.remove('error');
+    if (degradeBanner) {
+        degradeText.textContent = 'Switched to stable playback (HLS). Latency is higher (~5s).';
+        if (hlsBanner) hlsBanner.style.display = 'none';
+    }
+}
+
+function switchToWebRTC() {
+    if (hlsPlayer) {
+        hlsPlayer.destroy();
+        hlsPlayer = null;
+    }
+    video.removeAttribute('src');
+    video.srcObject = null;
+    hlsActive = false;
+    hideDegradeBanner();
+    connectWHEP();
+}
+
 /* ── Debug Overlay (?debug=1) ───────────────────────────── */
 
 var debugEnabled = /[?&]debug=1/.test(window.location.search);
@@ -616,17 +822,19 @@ function colorIce(state) {
     return '';
 }
 
-/* Hook debug into the lifecycle */
+/* Hook auto-quality + debug into the lifecycle */
 var _origOnPeerStateChange = onPeerStateChange;
 onPeerStateChange = function () {
     _origOnPeerStateChange();
-    if (debugEnabled && pc && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) {
-        startDebugStats();
+    if (pc && (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed')) {
+        startAutoQuality();
+        if (debugEnabled) startDebugStats();
     }
 };
 
 var _origTeardown = teardownConnection;
 teardownConnection = function () {
+    stopAutoQuality();
     stopDebugStats();
     _origTeardown();
 };

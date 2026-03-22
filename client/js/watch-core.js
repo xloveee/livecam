@@ -53,13 +53,9 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        if (event.streams && event.streams[0]) {
-            video.srcObject = event.streams[0];
-        } else {
-            var existing = video.srcObject instanceof MediaStream ? video.srcObject : new MediaStream();
-            existing.addTrack(event.track);
-            video.srcObject = existing;
-        }
+        var stream = video.srcObject instanceof MediaStream ? video.srcObject : new MediaStream();
+        stream.addTrack(event.track);
+        video.srcObject = stream;
         return event.track.kind;
     },
 

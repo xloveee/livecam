@@ -53,13 +53,15 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        var stream = video.srcObject;
-        if (!(stream instanceof MediaStream)) {
-            stream = new MediaStream();
-        }
-        stream.addTrack(event.track);
-        video.srcObject = stream;
         return event.track.kind;
+    },
+
+    attachReceivers: function () {
+        if (!pc) return;
+        var tracks = pc.getReceivers().map(function (r) { return r.track; })
+            .filter(function (t) { return t; });
+        if (tracks.length === 0) return;
+        video.srcObject = new MediaStream(tracks);
     },
 
     play: function () {
@@ -337,18 +339,10 @@ function onPeerStateChange() {
     debugEvent('ice:' + s);
     if (s === 'connected' || s === 'completed') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+        watchAdapter.attachReceivers();
         setState('live');
         startStatsLoop();
-        setTimeout(function () {
-            if (video.paused && viewerState === 'live') {
-                debugPlayResult = 'autoplay-blocked';
-                debugEvent('play:autoplay-blocked');
-                showUnmuteUI();
-            } else {
-                debugPlayResult = 'ok';
-                debugEvent('play:ok');
-            }
-        }, 2000);
+        if (video.muted) showUnmuteUI();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -372,11 +366,7 @@ async function connectWHEP() {
     pc = watchAdapter.createPC(config.iceServers || []);
 
     pc.ontrack = function (event) {
-        var kind = watchAdapter.onTrack(event);
-        debugEvent('track:' + kind + ' ' + event.track.readyState);
-        if (kind === 'audio' && video.muted) {
-            showUnmuteUI();
-        }
+        debugEvent('track:' + event.track.kind + ' ' + event.track.readyState);
     };
 
     pc.oniceconnectionstatechange = onPeerStateChange;

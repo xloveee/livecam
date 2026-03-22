@@ -133,6 +133,7 @@ struct Peer {
     aq_last_change: Option<Instant>,
     aq_manual: bool,
     write_error_count: u32,
+    last_video_write: Instant,
 }
 
 const WRITE_ERROR_DISCONNECT_THRESHOLD: u32 = 50;
@@ -154,6 +155,7 @@ impl Peer {
             aq_last_change: None,
             aq_manual: false,
             write_error_count: 0,
+            last_video_write: Instant::now(),
         }
     }
 }
@@ -594,6 +596,33 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 return Propagated::Noop;
             }
 
+            if peer.chosen_rid.is_some() {
+                let stale = stats.timestamp.saturating_duration_since(peer.last_video_write);
+                if stale > Duration::from_secs(3) {
+                    tracing::warn!(
+                        "{}: video stale {:.1}s on {:?}, resetting to default layer",
+                        peer.id, stale.as_secs_f32(), peer.chosen_rid
+                    );
+                    peer.chosen_rid = None;
+                    peer.aq_bad_count = 0;
+                    peer.aq_good_count = 0;
+                    peer.aq_last_change = Some(stats.timestamp);
+                    if let Some(track_out) = peer.tracks_out.iter().find(|t| {
+                        t.kind == str0m::media::MediaKind::Video
+                    }) {
+                        return Propagated::Keyframe {
+                            request: KeyframeRequest {
+                                mid: track_out.local_mid.unwrap_or(track_out.source_mid),
+                                rid: Some("h".into()),
+                                kind: KeyframeRequestKind::Pli,
+                            },
+                            target_peer: track_out.source_peer,
+                            source_mid: track_out.source_mid,
+                        };
+                    }
+                }
+            }
+
             let loss = stats.loss.unwrap_or(0.0);
             let is_bad = loss > AQ_LOSS_BAD || stats.nacks > AQ_NACK_BAD;
             let is_good = loss < AQ_LOSS_GOOD && stats.nacks <= AQ_NACK_GOOD;
@@ -730,9 +759,10 @@ fn propagate(
                     }
                 }
 
-                let local_mid = peer.tracks_out.iter()
+                let (local_mid, is_video) = peer.tracks_out.iter()
                     .find(|t| t.source_peer == source_peer && t.source_mid == data.mid)
-                    .and_then(|t| t.local_mid);
+                    .map(|t| (t.local_mid, t.kind == str0m::media::MediaKind::Video))
+                    .unwrap_or((None, false));
 
                 let Some(mid) = local_mid else {
                     continue;
@@ -758,7 +788,10 @@ fn propagate(
                 };
 
                 match writer.write(pt, data.network_time, data.time, frame) {
-                    Ok(()) => { peer.write_error_count = 0; }
+                    Ok(()) => {
+                        peer.write_error_count = 0;
+                        if is_video { peer.last_video_write = Instant::now(); }
+                    }
                     Err(e) => {
                         peer.write_error_count += 1;
                         if peer.write_error_count >= WRITE_ERROR_DISCONNECT_THRESHOLD {

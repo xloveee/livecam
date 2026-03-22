@@ -178,16 +178,22 @@ main.stream-column {
     padding-bottom: 0.35rem;
 }
 
-/* ── Video Player ───────────────────────────── */
+/* ── Video Player ─────────────────────────────
+ * WebRTC: intrinsic size arrives late — never use min-height:0 on the <video> or flex can
+ * collapse the box on WebKit. Keep a floor + stacking so native controls stay tappable. */
 
-video {
+#player {
+    display: block;
     width: 100%;
-    flex: 1 1 0;
-    min-height: 0;
-    max-width: none;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-height: 12rem;
     background: #000;
     border-radius: 4px;
     object-fit: contain;
+    position: relative;
+    z-index: 1;
+    touch-action: manipulation;
 }
 
 /* ── Stream Controls ────────────────────────── */
@@ -766,28 +772,34 @@ button:disabled { background: #555; cursor: default; }
         padding: 0.45rem 0.55rem;
         overflow-y: auto;
         overflow-x: hidden;
-        scroll-snap-type: y proximity;
+        /* scroll-snap fights native <video> controls on iOS — off on phone */
+        scroll-snap-type: none;
         overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
-    /* Inherit .stream-snap-page--playback { min-height: 100% } — do not cap with 52dvh or the first
-     * snap page is shorter than the scrollport; scroll-snap then settles on panels / banners. */
+    .stream-snap-page--playback {
+        min-height: auto;
+    }
     .site-header {
         padding: 0.45rem 0.65rem;
     }
     .site-header h1 { font-size: 0.9rem; }
     .stream-controls { width: 100%; justify-content: space-between; }
     .stream-viewport {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
         min-height: 0;
-    }
-    video {
-        flex: 0 1 auto;
         width: 100%;
-        min-height: 0;
-        max-height: 42dvh;
-        max-height: 42vh;
-        aspect-ratio: 16 / 9;
+    }
+    /* Readable touch target: no max-height trap, no flex-shrink-to-zero */
+    #player {
+        flex: 0 0 auto;
+        width: 100%;
+        min-height: 56vw;
+        max-height: none;
+        aspect-ratio: auto;
         object-fit: contain;
     }
     .panels-section { padding: 0.5rem 0 0.75rem; }

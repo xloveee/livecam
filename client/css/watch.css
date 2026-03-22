@@ -188,8 +188,6 @@ video {
     background: #000;
     border-radius: 4px;
     object-fit: contain;
-    -webkit-transform: translateZ(0);
-    transform: translateZ(0);
 }
 
 /* ── Stream Controls ────────────────────────── */
@@ -811,10 +809,11 @@ button:disabled { background: #555; cursor: default; }
         min-height: 0;
     }
     video {
-        flex: 0 0 auto;
+        flex: 0 1 auto;
         width: 100%;
-        max-height: 42vh;
+        min-height: 0;
         max-height: 42dvh;
+        max-height: 42vh;
         aspect-ratio: 16 / 9;
         object-fit: contain;
     }

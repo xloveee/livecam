@@ -28,7 +28,6 @@ var lastBytesReceived = 0;
 var stallCount = 0;
 var webrtcFailCount = 0;
 var connectTimeout = null;
-var playDebounce = null;
 var viewerState = 'init';
 
 /* ── Media Adapter ─────────────────────────────────────── */
@@ -54,18 +53,12 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        if (event.streams && event.streams.length > 0) {
-            if (video.srcObject !== event.streams[0]) {
-                video.srcObject = event.streams[0];
-            }
-        } else {
-            var stream = video.srcObject;
-            if (!(stream instanceof MediaStream)) {
-                stream = new MediaStream();
-                video.srcObject = stream;
-            }
-            stream.addTrack(event.track);
+        var stream = video.srcObject;
+        if (!(stream instanceof MediaStream)) {
+            stream = new MediaStream();
+            video.srcObject = stream;
         }
+        stream.addTrack(event.track);
         return event.track.kind;
     },
 
@@ -310,7 +303,6 @@ function teardownConnection() {
     debugEvent('teardown');
     debugPlayResult = '';
     clearPollTimer();
-    if (playDebounce) { clearTimeout(playDebounce); playDebounce = null; }
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
     stopStatsLoop();
     if (pc) {
@@ -368,14 +360,10 @@ async function connectWHEP() {
     pc.ontrack = function (event) {
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
-        if (playDebounce) clearTimeout(playDebounce);
-        playDebounce = setTimeout(function () {
-            playDebounce = null;
-            watchAdapter.play().then(function (result) {
-                debugPlayResult = result.ok ? 'ok' : result.error;
-                debugEvent('play:' + debugPlayResult);
-            });
-        }, 100);
+        watchAdapter.play().then(function (result) {
+            debugPlayResult = result.ok ? 'ok' : result.error;
+            debugEvent('play:' + debugPlayResult);
+        });
         if (kind === 'audio' && video.muted) {
             showUnmuteUI();
         }
@@ -703,6 +691,25 @@ function stopStatsLoop() {
 
 /* ── HLS Fallback ───────────────────────────────────────── */
 
+var hlsJsLoading = false;
+
+function ensureHlsJs(callback) {
+    if (nativeHLS || typeof Hls !== 'undefined') { callback(); return; }
+    if (hlsJsLoading) {
+        var poll = setInterval(function () {
+            if (typeof Hls !== 'undefined') { clearInterval(poll); callback(); }
+        }, 50);
+        setTimeout(function () { clearInterval(poll); callback(); }, 8000);
+        return;
+    }
+    hlsJsLoading = true;
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js';
+    s.onload = function () { callback(); };
+    s.onerror = function () { callback(); };
+    document.head.appendChild(s);
+}
+
 function checkHLSAvailable() {
     if (!roomId || !hlsBanner) return;
     fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' })
@@ -725,21 +732,23 @@ function tryHLSFallback() {
 
 function switchToHLS() {
     if (!roomId) return;
-    var hlsUrl = '/hls/' + roomId + '/master.m3u8';
     teardownConnection();
     qualitySelect.disabled = true;
 
-    var started = watchAdapter.startHLS(hlsUrl);
-    if (started) {
-        watchAdapter.onHLSError(function () {
-            teardownConnection();
-            setState('offline');
-        });
-        onHLSPlaying();
-    } else {
-        statusEl.textContent = 'HLS not supported in this browser';
-        statusEl.classList.add('error');
-    }
+    ensureHlsJs(function () {
+        var hlsUrl = '/hls/' + roomId + '/master.m3u8';
+        var started = watchAdapter.startHLS(hlsUrl);
+        if (started) {
+            watchAdapter.onHLSError(function () {
+                teardownConnection();
+                setState('offline');
+            });
+            onHLSPlaying();
+        } else {
+            statusEl.textContent = 'HLS not supported in this browser';
+            statusEl.classList.add('error');
+        }
+    });
 }
 
 function onHLSPlaying() {

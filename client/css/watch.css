@@ -14,37 +14,44 @@ body {
     min-height: 0;
 }
 
-/* ── Site header (thin bar: title + viewer count + stream status / quality) ─ */
+/* ── Site header (single thin row: title · viewers · status · quality) ─ */
 
 .site-header {
     flex-shrink: 0;
     width: 100%;
-    padding: 0.2rem 0.65rem;
+    padding: 0.12rem 0.45rem;
     border-bottom: 1px solid #1a1a1a;
     background: #0a0a0a;
 }
 .site-header-inner {
     display: flex;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.35rem 0.65rem;
+    gap: 0.35rem;
     width: 100%;
     min-height: 0;
+    max-width: 100%;
 }
 .header-left {
     display: flex;
-    flex-direction: column;
-    gap: 0;
-    flex: 0 1 auto;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 0;
     min-width: 0;
-    max-width: 100%;
 }
 .site-header h1 {
-    font-size: 0.8rem;
+    font-size: 0.65rem;
     font-weight: 600;
-    line-height: 1.25;
+    line-height: 1.15;
     color: #fff;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .site-header h1 a {
     color: #1e88e5;
@@ -53,40 +60,47 @@ body {
 .site-header h1 a:hover { text-decoration: underline; }
 
 .site-header .viewer-count {
-    font-size: 0.68rem;
-    line-height: 1.2;
-    margin-top: 0.05rem;
+    font-size: 0.58rem;
+    line-height: 1.1;
+    color: #777;
+    flex-shrink: 0;
+    white-space: nowrap;
 }
 
-/* Tools sit in the header row: no extra wrapper, no flex-grow gap */
 .site-header-tools {
     display: flex;
     align-items: center;
-    flex-wrap: wrap;
-    gap: 0.3rem 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
     flex: 0 0 auto;
     margin: 0;
     padding: 0;
     min-width: 0;
     margin-left: auto;
 }
+.site-header .stream-status-cluster {
+    flex-shrink: 0;
+    gap: 0.15rem;
+}
 .site-header #status {
-    font-size: 0.72rem;
-    line-height: 1.2;
+    font-size: 0.6rem;
+    line-height: 1.1;
+    white-space: nowrap;
 }
 .site-header select {
-    padding: 0.2rem 0.45rem;
-    font-size: 0.72rem;
+    padding: 0.08rem 0.28rem;
+    font-size: 0.6rem;
     line-height: 1.2;
-    border-radius: 3px;
+    border-radius: 2px;
+    max-width: 7.5rem;
 }
 .site-header #offline-banner .dot {
-    width: 7px;
-    height: 7px;
+    width: 5px;
+    height: 5px;
     border-width: 1px;
 }
 .site-header #offline-banner.live .dot {
-    box-shadow: 0 0 4px rgba(211,47,47,0.55);
+    box-shadow: 0 0 3px rgba(211,47,47,0.5);
 }
 
 /* ── Stream + chat row (50 / 50) ────────────── */
@@ -852,19 +866,27 @@ button:disabled { background: #555; cursor: default; }
         min-height: auto;
     }
     .site-header {
-        padding: 0.2rem 0.5rem;
+        padding: 0.1rem 0.4rem;
     }
-    .site-header h1 { font-size: 0.78rem; }
+    .site-header h1 { font-size: 0.62rem; }
+    .site-header .viewer-count { font-size: 0.55rem; }
+    .site-header #status { font-size: 0.58rem; }
+    .site-header select {
+        font-size: 0.58rem;
+        max-width: 6.5rem;
+        padding: 0.06rem 0.22rem;
+    }
+    /* Keep one row; title ellipsizes on narrow phones */
     .site-header-inner {
-        flex-direction: column;
-        align-items: stretch;
-        gap: 0.28rem;
+        flex-wrap: nowrap;
+    }
+    .header-left {
+        flex-direction: row;
     }
     .site-header-tools {
-        flex: 0 0 auto;
-        width: 100%;
-        margin-left: 0;
-        justify-content: space-between;
+        margin-left: auto;
+        width: auto;
+        flex-shrink: 0;
     }
     .stream-viewport {
         display: flex;

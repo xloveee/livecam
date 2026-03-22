@@ -7,6 +7,10 @@
  * Playback: assign remote tracks to video.srcObject in onTrack (one MediaStream).
  * Do not call video.play() from JS — the page uses native <video controls> so the
  * user starts playback with an explicit gesture (required on iOS / many WebViews).
+ *
+ * iOS / iPadOS: many in-app browsers (WKWebView) decode WebRTC video poorly; when
+ * native HLS is available we watch via /hls/.../master.m3u8 instead of WHEP.
+ * Broadcasting (WHIP) is unchanged — only the viewer path differs.
  */
 
 var video       = document.getElementById('player');
@@ -35,6 +39,21 @@ var viewerState = 'init';
 /* ── Media Adapter ─────────────────────────────────────── */
 
 var nativeHLS = !!video.canPlayType('application/vnd.apple.mpegurl');
+
+function isIosLikeDevice() {
+    var ua = navigator.userAgent || '';
+    if (/iPad|iPhone|iPod/.test(ua)) {
+        return true;
+    }
+    if (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1) {
+        return true;
+    }
+    return false;
+}
+
+function shouldPreferHlsViewer() {
+    return nativeHLS && isIosLikeDevice();
+}
 
 var watchAdapter = {
     name: nativeHLS ? 'native-hls' : 'chromium',
@@ -207,7 +226,7 @@ function clearPollTimer() {
 function managePoll() {
     clearPollTimer();
     if (viewerState === 'room_full' || viewerState === 'rate_limited') {
-        pollInterval = setInterval(function () { connectWHEP(); }, 5000);
+        pollInterval = setInterval(function () { connectViewer(); }, 5000);
     } else if (viewerState === 'offline' || viewerState === 'need_password') {
         pollInterval = setInterval(pollActive, 5000);
     }
@@ -227,7 +246,7 @@ async function pollActive() {
             if (info.has_password && !roomPassword) {
                 setState('need_password');
             } else {
-                connectWHEP();
+                connectViewer();
             }
             return;
         }
@@ -247,7 +266,7 @@ async function pollActive() {
             setState('need_password');
         } else {
             if (!data.has_password) { roomPassword = ''; passwordInput.value = ''; }
-            connectWHEP();
+            connectViewer();
         }
     } catch (e) { /* ignore */ }
 }
@@ -329,6 +348,28 @@ function onPeerStateChange() {
         teardownConnection();
         setState('offline');
     }
+}
+
+/**
+ * Entry point for playback. On iOS Safari family, use native HLS when the packager
+ * exposes a manifest (reliable); otherwise WHEP. Pass forceWebRtc to skip HLS (e.g. “Back to real-time”).
+ */
+async function connectViewer(forceWebRtc) {
+    if (!roomId) return;
+    if (viewerState === 'connecting') return;
+    if (!forceWebRtc && shouldPreferHlsViewer()) {
+        try {
+            var head = await fetch('/hls/' + roomId + '/master.m3u8', { method: 'HEAD' });
+            if (head.ok) {
+                debugEvent('viewer:hls-native-ios');
+                switchToHLS();
+                return;
+            }
+        } catch (e) {
+            debugEvent('viewer:hls-head-fail');
+        }
+    }
+    await connectWHEP();
 }
 
 async function connectWHEP() {
@@ -435,7 +476,7 @@ btnPasswordSubmit.onclick = function () {
         return;
     }
     passwordError.textContent = '';
-    connectWHEP();
+    connectViewer();
 };
 
 passwordInput.addEventListener('keydown', function (e) {
@@ -724,7 +765,7 @@ function switchToWebRTC() {
     webrtcFailCount = 0;
     if (degradeBanner) degradeBanner.style.display = 'none';
     if (hlsBanner) hlsBanner.style.display = 'none';
-    connectWHEP();
+    connectViewer(true);
 }
 
 /* ── Debug Overlay (?debug=1) ───────────────────────────── */

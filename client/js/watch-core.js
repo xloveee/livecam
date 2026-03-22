@@ -119,44 +119,19 @@ video.addEventListener('playing', function () {
     hideUnmuteUI();
 });
 
-var kickPlayTimer = null;
-function kickPlay() {
-    if (kickPlayTimer) { clearTimeout(kickPlayTimer); kickPlayTimer = null; }
-
+function tryAutoplay() {
     video.muted = true;
     var p = video.play();
     if (p && typeof p.then === 'function') {
         p.then(function () {
             debugPlayResult = 'ok';
             debugEvent('play:ok');
-            showUnmuteUI();
         }).catch(function () {
-            debugPlayResult = 'blocked';
-            debugEvent('play:blocked');
-            showUnmuteUI();
+            debugPlayResult = 'needs-gesture';
+            debugEvent('play:needs-gesture');
         });
     }
-
-    kickPlayTimer = setTimeout(function () {
-        kickPlayTimer = null;
-        if (video.readyState === 0 && viewerState === 'live' && video.srcObject) {
-            debugEvent('play:kick-retry');
-            video.load();
-            video.muted = true;
-            var p2 = video.play();
-            if (p2 && typeof p2.then === 'function') {
-                p2.then(function () {
-                    debugPlayResult = 'ok-retry';
-                    debugEvent('play:ok-retry');
-                    showUnmuteUI();
-                }).catch(function () {
-                    debugPlayResult = 'blocked-retry';
-                    debugEvent('play:blocked-retry');
-                    showUnmuteUI();
-                });
-            }
-        }
-    }, 3000);
+    showUnmuteUI();
 }
 
 /* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
@@ -337,7 +312,6 @@ function teardownConnection() {
     debugPlayResult = '';
     clearPollTimer();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
-    if (kickPlayTimer) { clearTimeout(kickPlayTimer); kickPlayTimer = null; }
     stopStatsLoop();
     if (pc) {
         if (sessionId && roomId) {
@@ -369,7 +343,7 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
-        kickPlay();
+        tryAutoplay();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -498,23 +472,18 @@ function hideUnmuteUI() {
 }
 
 function userUnmute() {
-    hideUnmuteUI();
-    video.muted = true;
+    video.muted = false;
     var p = video.play();
     if (p && typeof p.then === 'function') {
         p.then(function () {
-            video.muted = false;
-            debugPlayResult = 'ok-tap';
-            debugEvent('play:ok-tap');
+            debugPlayResult = 'ok';
+            debugEvent('play:ok');
         }).catch(function () {
-            video.muted = false;
-            video.play().catch(function () {});
-            debugPlayResult = 'tap-fallback';
-            debugEvent('play:tap-fallback');
+            debugPlayResult = 'gesture-failed';
+            debugEvent('play:gesture-failed');
         });
-    } else {
-        video.muted = false;
     }
+    hideUnmuteUI();
 }
 
 if (unmuteOverlay) {

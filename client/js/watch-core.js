@@ -125,6 +125,11 @@ video.addEventListener('resize', function() {
     }
 });
 
+video.addEventListener('playing', function () {
+    debugPlayResult = 'ok';
+    hideUnmuteUI();
+});
+
 /* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
 function resetWatchStreamColumnToTop() {
     var col = document.querySelector('main.stream-column');
@@ -334,6 +339,16 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
+        setTimeout(function () {
+            if (video.paused && viewerState === 'live') {
+                debugPlayResult = 'autoplay-blocked';
+                debugEvent('play:autoplay-blocked');
+                showUnmuteUI();
+            } else {
+                debugPlayResult = 'ok';
+                debugEvent('play:ok');
+            }
+        }, 2000);
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -359,13 +374,6 @@ async function connectWHEP() {
     pc.ontrack = function (event) {
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
-        watchAdapter.play().then(function (result) {
-            debugPlayResult = result.ok ? 'ok' : result.error;
-            debugEvent('play:' + debugPlayResult);
-            if (!result.ok) {
-                showUnmuteUI();
-            }
-        });
         if (kind === 'audio' && video.muted) {
             showUnmuteUI();
         }

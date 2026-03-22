@@ -27,8 +27,8 @@ body {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 0.3rem 0.75rem;
+    justify-content: flex-start;
+    gap: 0.35rem 0.65rem;
     width: 100%;
     min-height: 0;
 }
@@ -36,8 +36,9 @@ body {
     display: flex;
     flex-direction: column;
     gap: 0;
-    flex: 1 1 10rem;
+    flex: 0 1 auto;
     min-width: 0;
+    max-width: 100%;
 }
 .site-header h1 {
     font-size: 0.8rem;
@@ -57,15 +58,17 @@ body {
     margin-top: 0.05rem;
 }
 
-.site-header .stream-toolbar {
-    flex: 0 1 auto;
-    align-self: center;
+/* Tools sit in the header row: no extra wrapper, no flex-grow gap */
+.site-header-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.5rem;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
     min-width: 0;
-    max-width: 100%;
-    padding-bottom: 0;
-}
-.site-header .stream-controls {
-    gap: 0.3rem;
+    margin-left: auto;
 }
 .site-header #status {
     font-size: 0.72rem;
@@ -857,12 +860,12 @@ button:disabled { background: #555; cursor: default; }
         align-items: stretch;
         gap: 0.28rem;
     }
-    .site-header .stream-toolbar {
-        flex: 1 1 auto;
+    .site-header-tools {
+        flex: 0 0 auto;
         width: 100%;
-        align-self: stretch;
+        margin-left: 0;
+        justify-content: space-between;
     }
-    .site-header .stream-controls { width: 100%; justify-content: space-between; }
     .stream-viewport {
         display: flex;
         flex-direction: column;

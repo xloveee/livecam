@@ -62,6 +62,7 @@ var watchAdapter = {
             .filter(function (t) { return t; });
         if (tracks.length === 0) return;
         video.srcObject = new MediaStream(tracks);
+        video.play().catch(function () {});
     },
 
     play: function () {

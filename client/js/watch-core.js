@@ -498,9 +498,23 @@ function hideUnmuteUI() {
 }
 
 function userUnmute() {
-    video.muted = false;
-    video.play().catch(function () {});
     hideUnmuteUI();
+    video.muted = true;
+    var p = video.play();
+    if (p && typeof p.then === 'function') {
+        p.then(function () {
+            video.muted = false;
+            debugPlayResult = 'ok-tap';
+            debugEvent('play:ok-tap');
+        }).catch(function () {
+            video.muted = false;
+            video.play().catch(function () {});
+            debugPlayResult = 'tap-fallback';
+            debugEvent('play:tap-fallback');
+        });
+    } else {
+        video.muted = false;
+    }
 }
 
 if (unmuteOverlay) {

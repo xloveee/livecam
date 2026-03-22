@@ -134,10 +134,33 @@ var watchAdapter = {
     }
 };
 
-video.addEventListener('resize', function() {
+/** Match letterboxing to frame; set portrait/landscape for CSS that prioritizes stream area. */
+var lastStreamLayoutSig = '';
+function syncVideoAspectAndStreamLayout() {
     if (video.videoWidth && video.videoHeight) {
         video.style.aspectRatio = video.videoWidth + '/' + video.videoHeight;
     }
+    var w = video.videoWidth;
+    var h = video.videoHeight;
+    if (w && h) {
+        document.body.classList.toggle('watch-stream-portrait', h > w);
+        document.body.classList.toggle('watch-stream-landscape', h <= w);
+        var sig = w + 'x' + h;
+        if (sig !== lastStreamLayoutSig) {
+            lastStreamLayoutSig = sig;
+            requestAnimationFrame(function () {
+                window.dispatchEvent(new Event('resize'));
+            });
+        }
+    }
+}
+
+video.addEventListener('resize', syncVideoAspectAndStreamLayout);
+video.addEventListener('loadedmetadata', syncVideoAspectAndStreamLayout);
+video.addEventListener('emptied', function () {
+    lastStreamLayoutSig = '';
+    document.body.classList.remove('watch-stream-portrait', 'watch-stream-landscape');
+    video.style.aspectRatio = '';
 });
 
 video.addEventListener('playing', function () {

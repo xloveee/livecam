@@ -110,7 +110,7 @@ body {
     }
     .watch-row.watch-row--resize-mobile main.stream-column {
         border-bottom: none;
-        min-height: 120px;
+        min-height: min(42vh, 320px);
     }
     .watch-row.watch-row--resize-mobile .chat-panel {
         border-top: none;
@@ -140,7 +140,7 @@ body.watch-split-dragging.watch-split-dragging--row * {
  * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
 
 main.stream-column {
-    flex: 1 1 0;
+    flex: 1.25 1 0;
     min-height: 0;
     min-width: 0;
     width: 0;
@@ -196,6 +196,13 @@ main.stream-column {
     touch-action: manipulation;
 }
 
+@media (min-width: 901px) {
+    /* Vertical / phone-style frame: reserve height so chat split does not crush the picture */
+    body.watch-stream-portrait #player {
+        min-height: min(72vh, 90vw);
+    }
+}
+
 /* ── Stream Controls ────────────────────────── */
 
 .stream-controls {
@@ -247,6 +254,7 @@ button:disabled { background: #555; cursor: default; }
 
 .stream-viewport {
     position: relative;
+    z-index: 2;
     width: 100%;
     flex: 1;
     min-height: 0;
@@ -527,7 +535,7 @@ button:disabled { background: #555; cursor: default; }
 /* ── Chat Panel ─────────────────────────────── */
 
 .chat-panel {
-    flex: 1 1 0;
+    flex: 0.85 1 0;
     min-width: 0;
     width: 0;
     min-height: 0;
@@ -821,6 +829,10 @@ button:disabled { background: #555; cursor: default; }
         max-height: none;
         aspect-ratio: auto;
         object-fit: contain;
+    }
+    /* Portrait frame (typical phone camera): give video more vertical room vs chat */
+    body.watch-stream-portrait #player {
+        min-height: min(68vh, 178vw);
     }
     .panels-section { padding: 0.5rem 0 0.75rem; }
     .chat-panel {

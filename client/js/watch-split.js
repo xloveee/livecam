@@ -7,11 +7,15 @@
     var SPLITTER = 6;
     /* Desktop: keep chat wide enough for input + Send without crunching */
     var CHAT_MIN_W = 240;
-    var STREAM_MIN_W = 160;
-    /* Mobile: room for header + input + a sliver of messages; stream stays usable */
+    /* Reserve enough width for video so chat cannot dominate the row */
+    var STREAM_MIN_W = 300;
+    /* Mobile: reserve vertical space for the stream (phone broadcasters are often 9:16) */
     var CHAT_MIN_H = 176;
-    var STREAM_MIN_H = 120;
-    var CHAT_MAX_FRAC = 0.72;
+    var STREAM_MIN_H = 240;
+    /* Chat cannot take more than this fraction of row — stream gets the rest first */
+    var CHAT_MAX_FRAC = 0.46;
+    /* Default chat size as fraction of row (stream gets ~1 − this, minus splitter) */
+    var DEFAULT_CHAT_FRAC = 0.34;
 
     var row = document.querySelector('.watch-row');
     var splitter = document.getElementById('watch-splitter');
@@ -115,12 +119,12 @@
 
     function defaultHalfWidth() {
         var rw = row.getBoundingClientRect().width;
-        return clampChatWidth(Math.round((rw - SPLITTER) / 2), rw);
+        return clampChatWidth(Math.round((rw - SPLITTER) * DEFAULT_CHAT_FRAC), rw);
     }
 
     function defaultHalfHeight() {
         var rh = row.getBoundingClientRect().height;
-        return clampChatHeight(Math.round((rh - SPLITTER) / 2), rh);
+        return clampChatHeight(Math.round((rh - SPLITTER) * DEFAULT_CHAT_FRAC), rh);
     }
 
     function updateAria(size, total, desktop) {

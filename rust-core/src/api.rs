@@ -52,7 +52,6 @@ pub async fn whip_handler(
         .set_reordering_size_audio(0)
         .clear_codecs()
         .enable_h264(true)
-        .enable_vp8(true)
         .enable_opus(true)
         .build(Instant::now());
 
@@ -150,7 +149,6 @@ pub async fn whep_handler(
         .set_stats_interval(Some(std::time::Duration::from_secs(2)))
         .clear_codecs()
         .enable_h264(true)
-        .enable_vp8(true)
         .enable_opus(true)
         .build(Instant::now());
 

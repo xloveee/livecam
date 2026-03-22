@@ -34,6 +34,8 @@ var viewerState = 'init';
 
 var nativeHLS = !!video.canPlayType('application/vnd.apple.mpegurl');
 
+var playDebounce = null;
+
 var watchAdapter = {
     name: nativeHLS ? 'native-hls' : 'chromium',
     hlsPlayer: null,
@@ -53,12 +55,19 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        var stream = video.srcObject;
-        if (!(stream instanceof MediaStream)) {
-            stream = new MediaStream();
+        var stream;
+        if (event.streams && event.streams[0]) {
+            stream = event.streams[0];
+        } else {
+            stream = video.srcObject;
+            if (!(stream instanceof MediaStream)) {
+                stream = new MediaStream();
+            }
+            stream.addTrack(event.track);
+        }
+        if (video.srcObject !== stream) {
             video.srcObject = stream;
         }
-        stream.addTrack(event.track);
         return event.track.kind;
     },
 
@@ -303,6 +312,7 @@ function teardownConnection() {
     debugEvent('teardown');
     debugPlayResult = '';
     clearPollTimer();
+    if (playDebounce) { clearTimeout(playDebounce); playDebounce = null; }
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
     stopStatsLoop();
     if (pc) {
@@ -335,7 +345,15 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
-    } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
+    } else if (s === 'failed') {
+        webrtcFailCount++;
+        teardownConnection();
+        if (webrtcFailCount >= 2) {
+            tryHLSFallback();
+        } else {
+            setState('offline');
+        }
+    } else if (s === 'disconnected' || s === 'closed') {
         teardownConnection();
         setState('offline');
     }
@@ -360,10 +378,14 @@ async function connectWHEP() {
     pc.ontrack = function (event) {
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
-        watchAdapter.play().then(function (result) {
-            debugPlayResult = result.ok ? 'ok' : result.error;
-            debugEvent('play:' + debugPlayResult);
-        });
+        if (playDebounce) clearTimeout(playDebounce);
+        playDebounce = setTimeout(function () {
+            playDebounce = null;
+            watchAdapter.play().then(function (result) {
+                debugPlayResult = result.ok ? 'ok' : result.error;
+                debugEvent('play:' + debugPlayResult);
+            });
+        }, 50);
         if (kind === 'audio' && video.muted) {
             showUnmuteUI();
         }
@@ -431,15 +453,25 @@ async function connectWHEP() {
 
         connectTimeout = setTimeout(function () {
             if (viewerState === 'connecting') {
+                webrtcFailCount++;
                 teardownConnection();
-                setState('offline');
+                if (webrtcFailCount >= 2) {
+                    tryHLSFallback();
+                } else {
+                    setState('offline');
+                }
             }
         }, 10000);
 
     } catch (err) {
         console.error('WHEP connection failed:', err);
+        webrtcFailCount++;
         teardownConnection();
-        setState('offline');
+        if (webrtcFailCount >= 2) {
+            tryHLSFallback();
+        } else {
+            setState('offline');
+        }
     }
 }
 

@@ -108,13 +108,13 @@ struct TrackOut {
 
 /// Simulcast quality levels in descending order.
 const QUALITY_LEVELS: &[&str] = &["h", "m", "l"];
-const AQ_BAD_THRESHOLD: u8 = 2;
+const AQ_BAD_THRESHOLD: u8 = 1;
 const AQ_GOOD_THRESHOLD: u8 = 6;
 const AQ_COOLDOWN: Duration = Duration::from_secs(8);
 const AQ_UPGRADE_COOLDOWN: Duration = Duration::from_secs(30);
-const AQ_LOSS_BAD: f32 = 0.05;
+const AQ_LOSS_BAD: f32 = 0.03;
 const AQ_LOSS_GOOD: f32 = 0.01;
-const AQ_NACK_BAD: u64 = 10;
+const AQ_NACK_BAD: u64 = 5;
 const AQ_NACK_GOOD: u64 = 2;
 
 /// Per-peer session state.
@@ -544,6 +544,11 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                         if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
                             tx.set_rtx_cache(1024, Duration::from_secs(2), Some(0.15));
                             tracing::info!("{}: RTX cache tuned for video mid={}", peer.id, ev.mid);
+                        }
+                    } else if ev.kind == str0m::media::MediaKind::Audio {
+                        if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
+                            tx.set_rtx_cache(1, Duration::from_millis(1), Some(0.0));
+                            tracing::info!("{}: audio RTX disabled mid={}", peer.id, ev.mid);
                         }
                     }
                 }

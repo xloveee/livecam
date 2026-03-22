@@ -1,0 +1,920 @@
+/* watch.css — viewer page styles */
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+    height: 100%;
+    overflow: hidden;
+}
+body {
+    background-color: #0a0a0a;
+    color: #e0e0e0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+/* ── Site header (above stream + chat, not in stream column) ─ */
+
+.site-header {
+    flex-shrink: 0;
+    width: 100%;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid #1a1a1a;
+    background: #0a0a0a;
+}
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+.site-header h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #fff;
+}
+.site-header h1 a {
+    color: #1e88e5;
+    text-decoration: none;
+}
+.site-header h1 a:hover { text-decoration: underline; }
+
+/* ── Stream + chat row (50 / 50) ────────────── */
+
+.watch-row {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: row;
+    align-items: stretch;
+    align-content: stretch;
+    min-width: 0;
+    overflow: hidden;
+}
+
+/* Draggable gutter between stream and chat (watch-split.js: vertical bar desktop, horizontal bar phone) */
+.watch-splitter {
+    display: none;
+    flex: 0 0 6px;
+    margin: 0;
+    padding: 0;
+    border: none;
+    box-sizing: border-box;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    background: #121212;
+    z-index: 2;
+}
+.watch-splitter:focus {
+    outline: none;
+}
+.watch-splitter:focus-visible {
+    outline: 2px solid #1e88e5;
+    outline-offset: -1px;
+}
+
+/* Desktop: vertical grip between columns */
+@media (min-width: 901px) {
+    .watch-row.watch-row--resize .watch-splitter {
+        display: block;
+        width: 6px;
+        min-width: 6px;
+        align-self: stretch;
+        cursor: col-resize;
+        box-shadow: inset 1px 0 0 #1f1f1f, inset -1px 0 0 #1f1f1f;
+    }
+    .watch-row.watch-row--resize .watch-splitter:hover,
+    .watch-row.watch-row--resize .watch-splitter:focus-visible {
+        background: #1a1a1a;
+        box-shadow: inset 1px 0 0 #2a2a2a, inset -1px 0 0 #2a2a2a;
+    }
+}
+
+/* Phone: horizontal grip between stacked stream and chat */
+@media (max-width: 900px) {
+    .watch-row.watch-row--resize .watch-splitter {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        height: 6px;
+        min-height: 6px;
+        flex: 0 0 6px;
+        cursor: row-resize;
+        box-shadow: inset 0 1px 0 #1f1f1f, inset 0 -1px 0 #1f1f1f;
+    }
+    .watch-row.watch-row--resize .watch-splitter:hover,
+    .watch-row.watch-row--resize .watch-splitter:focus-visible {
+        background: #1a1a1a;
+        box-shadow: inset 0 1px 0 #2a2a2a, inset 0 -1px 0 #2a2a2a;
+    }
+    .watch-row.watch-row--resize-mobile main.stream-column {
+        border-bottom: none;
+        min-height: 120px;
+    }
+    .watch-row.watch-row--resize-mobile .chat-panel {
+        border-top: none;
+    }
+}
+
+.watch-row.watch-row--resize-desktop main.stream-column {
+    border-right: none;
+    min-width: 160px;
+}
+
+body.watch-split-dragging * {
+    user-select: none !important;
+}
+body.watch-split-dragging.watch-split-dragging--col,
+body.watch-split-dragging.watch-split-dragging--col * {
+    cursor: col-resize !important;
+}
+body.watch-split-dragging.watch-split-dragging--row,
+body.watch-split-dragging.watch-split-dragging--row * {
+    cursor: row-resize !important;
+}
+
+/* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
+ * scroll-snap-type y proximity — gentle snap toward each section when scrolling ends.
+ * scroll-snap-align start on each .stream-snap-page — panels sit below full playback view.
+ * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
+
+main.stream-column {
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+    width: 0;
+    height: 100%;
+    align-self: stretch;
+    padding: 0.5rem 0.75rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    overscroll-behavior-x: none;
+    -webkit-overflow-scrolling: touch;
+    border-right: 1px solid #1a1a1a;
+}
+
+.stream-snap-page {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+}
+
+/* First snap region: at least one full column viewport tall so panels stay off-screen until scroll */
+.stream-snap-page--playback {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+/* ── Stream toolbar (quality / status only) ─── */
+
+.stream-toolbar {
+    flex-shrink: 0;
+    width: 100%;
+    padding-bottom: 0.35rem;
+}
+
+/* ── Video Player ─────────────────────────────
+ * WebRTC: intrinsic size arrives late — never use min-height:0 on the <video> or flex can
+ * collapse the box on WebKit. Keep a floor + stacking so native controls stay tappable. */
+
+#player {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    flex: 1 1 auto;
+    min-height: 12rem;
+    background: #000;
+    border-radius: 4px;
+    object-fit: contain;
+    position: relative;
+    z-index: 1;
+    touch-action: manipulation;
+}
+
+/* ── Stream Controls ────────────────────────── */
+
+.stream-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+.stream-status-cluster {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+}
+select {
+    background: #1e1e1e;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 0.4rem 0.6rem;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
+select:disabled { opacity: 0.4; cursor: default; }
+button {
+    background: #d32f2f;
+    color: #fff;
+    border: none;
+    padding: 0.6rem 1.6rem;
+    font-size: 0.95rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-weight: 600;
+}
+button:hover { background: #b71c1c; }
+button:disabled { background: #555; cursor: default; }
+#status {
+    font-size: 0.8rem;
+    color: #aaa;
+}
+.error { color: #ef5350; }
+.viewer-count {
+    font-size: 0.8rem;
+    color: #888;
+    flex-shrink: 0;
+}
+
+/* ── Stream Viewport & “more below” delimiter ─ */
+
+.stream-viewport {
+    position: relative;
+    width: 100%;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+.panels-below-delimiter {
+    display: none;
+    width: 100%;
+    margin-top: auto;
+    padding: 0.65rem 0 0.2rem;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: inherit;
+    color: inherit;
+    -webkit-appearance: none;
+    appearance: none;
+    -webkit-tap-highlight-color: transparent;
+}
+.panels-below-delimiter:focus-visible {
+    outline: 1px solid #555;
+    outline-offset: 3px;
+    border-radius: 2px;
+}
+/* iOS-style home-indicator pill: short rounded bar, not a full-width hairline */
+.panels-below-delimiter-line {
+    display: block;
+    flex-shrink: 0;
+    width: 8.375rem;
+    max-width: 42vw;
+    height: 0.3125rem;
+    border-radius: 9999px;
+    background-color: rgba(255, 255, 255, 0.28);
+    box-shadow:
+        0 0 0 0.5px rgba(255, 255, 255, 0.08),
+        0 1px 2px rgba(0, 0, 0, 0.45);
+}
+.panels-below-delimiter:active .panels-below-delimiter-line {
+    background-color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Offline Banner (Header Dot) ────────────── */
+
+#offline-banner {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
+    margin: 0;
+}
+#offline-banner .dot {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 2px solid #555;
+    background: transparent;
+    vertical-align: middle;
+    transition: all 0.2s;
+}
+#offline-banner.live .dot { 
+    background: #d32f2f;
+    border-color: #d32f2f;
+    box-shadow: 0 0 6px rgba(211,47,47,0.6);
+}
+
+/* ── Password Prompt ────────────────────────── */
+
+/* Full-viewport overlay: keep markup under <body> (not inside overflow:auto stream column) so z-index wins over chat on iOS */
+#password-prompt {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 600;
+    background: rgba(0,0,0,0.85);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    text-align: center;
+}
+#password-prompt label {
+    font-size: 1.1rem;
+    color: #fff;
+    margin-bottom: 1rem;
+}
+.password-box {
+    background: #111;
+    border: 1px solid #333;
+    padding: 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+}
+#password-prompt input {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border: 1px solid #444;
+    padding: 0.5rem 0.8rem;
+    font-size: 16px;
+    border-radius: 4px;
+    width: 220px;
+    margin-right: 0.5rem;
+}
+#password-prompt button {
+    padding: 0.5rem 1.2rem;
+    font-size: 0.9rem;
+}
+#password-error {
+    color: #ef5350;
+    font-size: 0.85rem;
+    margin-top: 0.8rem;
+}
+
+/* ── Connection Quality Banner ───────────────── */
+
+#degrade-banner {
+    display: none;
+    width: 100%;
+    max-width: none;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.7rem;
+    margin-top: 0.4rem;
+    background: rgba(255, 179, 0, 0.08);
+    border: 1px solid rgba(255, 179, 0, 0.2);
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+#degrade-banner .degrade-icon {
+    font-size: 0.85rem;
+    flex-shrink: 0;
+}
+#degrade-text {
+    font-size: 0.75rem;
+    color: #ccc;
+    flex: 1;
+}
+#hls-banner {
+    display: none;
+    margin-top: 0.3rem;
+}
+#hls-banner button {
+    background: #1e88e5;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.72rem;
+    border-radius: 4px;
+}
+#hls-banner button:hover { background: #1565c0; }
+.degrade-back {
+    background: transparent;
+    border: 1px solid #555;
+    padding: 0.2rem 0.6rem;
+    font-size: 0.68rem;
+    color: #aaa;
+    border-radius: 3px;
+    cursor: pointer;
+    margin-left: 0.3rem;
+}
+.degrade-back:hover { border-color: #888; color: #fff; }
+
+/* ── Below-Stream Panels ────────────────────── */
+
+.panels-section {
+    width: 100%;
+    max-width: none;
+    padding: 0.8rem 0 1rem;
+    flex-shrink: 0;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+/* Procedural grid: column count follows min banner width; more panels → more tiles per row when space allows */
+.panels-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    gap: 0.5rem;
+    width: 100%;
+    min-width: 0;
+}
+.panels-grid[hidden] {
+    display: none !important;
+}
+.panel-banner-cell {
+    min-width: 0;
+}
+.panel-banner-cell a {
+    display: block;
+    text-decoration: none;
+}
+.panel-banner-cell img {
+    width: 100%;
+    height: auto;
+    vertical-align: middle;
+    border-radius: 6px;
+    border: 1px solid #1a1a1a;
+    display: block;
+    object-fit: cover;
+}
+.panel-card {
+    background: #111;
+    border: 1px solid #1a1a1a;
+    border-radius: 6px;
+    padding: 0.8rem 1rem;
+    margin-bottom: 0.5rem;
+}
+.panel-donate {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    background: linear-gradient(135deg, #111 0%, #151210 100%);
+    border-color: #2a2000;
+}
+.panel-donate-body h3 {
+    font-size: 0.88rem;
+    color: #fff;
+    font-weight: 600;
+    margin-bottom: 0.15rem;
+}
+.panel-donate-body p {
+    font-size: 0.72rem;
+    color: #888;
+    line-height: 1.4;
+}
+.btn-donate {
+    background: #ffb300;
+    color: #000;
+    font-weight: 700;
+    padding: 0.5rem 1.2rem;
+    font-size: 0.85rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.btn-donate:hover { background: #ffa000; }
+
+.panel-about {
+    color: #999;
+    font-size: 0.8rem;
+    line-height: 1.5;
+}
+.panel-about h3 {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: #ccc;
+    margin-bottom: 0.3rem;
+}
+
+/* ── Chat Panel ─────────────────────────────── */
+
+.chat-panel {
+    flex: 1 1 0;
+    min-width: 0;
+    width: 0;
+    min-height: 0;
+    height: 100%;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    background: #0d0d0d;
+}
+.chat-header {
+    padding: 0.8rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #fff;
+    border-bottom: 1px solid #1a1a1a;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+}
+.chat-status {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: #666;
+}
+.chat-status.connected { color: #4caf50; }
+.chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    scrollbar-width: thin;
+    scrollbar-color: #333 transparent;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+}
+.chat-msg {
+    font-size: 0.82rem;
+    line-height: 1.4;
+    padding: 0.15rem 0.4rem;
+    border-radius: 3px;
+    word-break: break-word;
+}
+.chat-msg:hover { background: rgba(255,255,255,0.03); }
+.chat-msg .nick { font-weight: 600; margin-right: 0.3rem; }
+.chat-msg .nick.broadcaster { color: #d32f2f; }
+.chat-msg .nick.mod { color: #5e35b1; }
+.chat-msg .nick.viewer { color: #1e88e5; }
+.chat-msg.system {
+    color: #666;
+    font-style: italic;
+    font-size: 0.78rem;
+}
+.chat-input-area {
+    border-top: 1px solid #1a1a1a;
+    padding: 0.6rem;
+    position: relative;
+}
+.chat-input-area input {
+    flex: 1;
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    padding: 0.5rem 0.6rem;
+    font-size: 16px;
+    border-radius: 4px;
+    outline: none;
+}
+.chat-input-area input:focus { border-color: #d32f2f; }
+.chat-input-area button {
+    padding: 0.5rem 0.8rem;
+    font-size: 0.82rem;
+    white-space: nowrap;
+}
+.chat-guest-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+    cursor: pointer;
+}
+.chat-guest-bar input {
+    pointer-events: none;
+    opacity: 0.4;
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+.chat-guest-bar button {
+    opacity: 0.4;
+    pointer-events: none;
+    flex: 0 0 auto;
+}
+.chat-nick-prompt {
+    position: absolute;
+    bottom: 100%;
+    left: 0;
+    right: 0;
+    background: #151515;
+    border: 1px solid #2a2a2a;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    padding: 0.7rem 0.6rem;
+    display: none;
+    flex-direction: column;
+    gap: 0.4rem;
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.5);
+}
+.chat-nick-prompt.visible { display: flex; }
+.chat-nick-prompt label { font-size: 0.78rem; color: #aaa; font-weight: 600; }
+.chat-nick-prompt .nick-row { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; }
+.chat-nick-prompt .nick-row input { flex: 1 1 10rem; min-width: 0; }
+.chat-nick-prompt .nick-row button { flex: 0 0 auto; }
+.chat-nick-prompt button { background: #1e88e5; font-weight: 600; }
+.chat-nick-prompt button:hover { background: #1565c0; }
+.chat-nick-prompt .nick-error { font-size: 0.72rem; color: #ef5350; min-height: 0; }
+.chat-nick-prompt .nick-hint { font-size: 0.68rem; color: #555; }
+.chat-send {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    align-items: center;
+}
+.chat-send input {
+    flex: 1 1 12rem;
+    min-width: 0;
+}
+.chat-send button {
+    flex: 0 0 auto;
+}
+.chat-nick-badge { font-size: 0.72rem; color: #555; padding: 0 0.2rem 0.2rem; }
+.chat-nick-badge span { color: #1e88e5; font-weight: 600; }
+
+/* ── Donation Chat Messages ─────────────────── */
+
+.chat-msg.donation {
+    background: linear-gradient(135deg, rgba(255,179,0,0.12), rgba(255,152,0,0.06));
+    border-left: 3px solid #ffb300;
+    padding: 0.35rem 0.5rem;
+    margin: 0.15rem 0;
+    border-radius: 4px;
+}
+.chat-msg.donation.tier-2 {
+    background: linear-gradient(135deg, rgba(66,165,245,0.15), rgba(33,150,243,0.08));
+    border-left-color: #42a5f5;
+}
+.chat-msg.donation.tier-3 {
+    background: linear-gradient(135deg, rgba(255,179,0,0.2), rgba(255,152,0,0.12));
+    border-left-color: #ffb300;
+}
+.chat-msg.donation.tier-4 {
+    background: linear-gradient(135deg, rgba(255,87,34,0.2), rgba(244,67,54,0.12));
+    border-left-color: #ff5722;
+}
+.chat-msg.donation.tier-5 {
+    background: linear-gradient(135deg, rgba(233,30,99,0.2), rgba(156,39,176,0.12));
+    border-left-color: #e91e63;
+    font-size: 0.9rem;
+}
+.chat-msg.donation .donation-amount {
+    display: inline-block;
+    background: #ffb300;
+    color: #000;
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 5px;
+    border-radius: 3px;
+    margin-right: 0.3rem;
+}
+.chat-msg.donation.tier-2 .donation-amount { background: #42a5f5; color: #fff; }
+.chat-msg.donation.tier-3 .donation-amount { background: #ffb300; }
+.chat-msg.donation.tier-4 .donation-amount { background: #ff5722; color: #fff; }
+.chat-msg.donation.tier-5 .donation-amount { background: #e91e63; color: #fff; font-size: 0.8rem; padding: 2px 7px; }
+.chat-msg.donation .donation-text {
+    display: block;
+    margin-top: 0.15rem;
+    color: #fff;
+}
+
+/* ── Donate Modal ───────────────────────────── */
+
+.donate-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0,0,0,0.75);
+    align-items: center;
+    justify-content: center;
+}
+.donate-modal-overlay.visible { display: flex; }
+.donate-modal {
+    background: #1a1a1a;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 1.2rem;
+    max-width: 360px;
+    width: 90%;
+}
+.donate-modal h3 {
+    font-size: 0.95rem;
+    color: #fff;
+    margin-bottom: 0.8rem;
+}
+.donate-modal label {
+    font-size: 0.75rem;
+    color: #888;
+    display: block;
+    margin-bottom: 0.2rem;
+}
+.donate-modal select,
+.donate-modal input {
+    width: 100%;
+    margin-bottom: 0.6rem;
+    background: #111;
+    color: #e0e0e0;
+    border: 1px solid #333;
+    padding: 0.5rem 0.6rem;
+    font-size: 16px;
+    border-radius: 4px;
+}
+.donate-modal .donate-actions {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.4rem;
+}
+.donate-modal .donate-actions button { flex: 1; padding: 0.5rem; font-size: 0.85rem; }
+.donate-modal .donate-cancel { background: #333; }
+.donate-modal .donate-cancel:hover { background: #444; }
+.donate-modal .donate-submit { background: #ffb300; color: #000; font-weight: 700; }
+.donate-modal .donate-submit:hover { background: #ffa000; }
+.donate-modal .donate-error { font-size: 0.75rem; color: #ef5350; min-height: 1rem; }
+.donate-modal .donate-hint { font-size: 0.72rem; color: #888; margin-bottom: 0.5rem; }
+.donate-methods { display: flex; gap: 0.3rem; flex-wrap: wrap; margin-bottom: 0.6rem; }
+.donate-methods button { padding: 0.3rem 0.6rem; font-size: 0.72rem; background: #282828; border-radius: 4px; }
+.donate-methods button:hover { background: #333; }
+.donate-methods button.active { background: #ffb300; color: #000; }
+
+/* ── Mobile: stack vertically ───────────────── */
+
+@media (max-width: 900px) {
+    body {
+        overflow: hidden;
+        min-height: 100%;
+        min-height: 100dvh;
+    }
+    .watch-row {
+        flex: 1;
+        min-height: 0;
+        flex-direction: column;
+        align-items: stretch;
+        overflow: hidden;
+    }
+    /* Undo desktop flex equal-width hack (width:0); fill screen width */
+    main.stream-column {
+        width: 100%;
+        flex: 1 1 0;
+        min-height: 0;
+        max-width: none;
+        height: auto;
+        padding: 0.45rem 0.55rem;
+        overflow-y: auto;
+        overflow-x: hidden;
+        /* scroll-snap fights native <video> controls on iOS — off on phone */
+        scroll-snap-type: none;
+        overscroll-behavior-y: contain;
+        border-right: none;
+        border-bottom: 1px solid #1a1a1a;
+    }
+    .stream-snap-page--playback {
+        min-height: auto;
+    }
+    .site-header {
+        padding: 0.45rem 0.65rem;
+    }
+    .site-header h1 { font-size: 0.9rem; }
+    .stream-controls { width: 100%; justify-content: space-between; }
+    .stream-viewport {
+        display: flex;
+        flex-direction: column;
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+    }
+    /* Readable touch target: no max-height trap, no flex-shrink-to-zero */
+    #player {
+        flex: 0 0 auto;
+        width: 100%;
+        min-height: 56vw;
+        max-height: none;
+        aspect-ratio: auto;
+        object-fit: contain;
+    }
+    .panels-section { padding: 0.5rem 0 0.75rem; }
+    .chat-panel {
+        width: 100%;
+        flex: 1 1 0;
+        min-height: 0;
+        max-width: none;
+        height: auto;
+        border-top: 1px solid #1a1a1a;
+    }
+    .panels-grid {
+        grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+    }
+    .panels-below-delimiter {
+        padding-top: 0.45rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .panel-donate { flex-direction: column; align-items: stretch; text-align: center; }
+    .btn-donate { width: 100%; }
+}
+
+/* ── Debug Overlay (?debug=1) ───────────────── */
+
+.debug-overlay {
+    display: none;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: 300;
+    background: rgba(0, 0, 0, 0.82);
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+    font-size: 0.62rem;
+    line-height: 1.55;
+    color: #aaa;
+    pointer-events: auto;
+    user-select: text;
+    -webkit-user-select: text;
+    min-width: 220px;
+    max-width: 300px;
+    cursor: text;
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+}
+.debug-overlay.visible { display: block; }
+.debug-overlay .debug-title {
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.65rem;
+    margin-bottom: 0.25rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    -webkit-tap-highlight-color: transparent;
+}
+.debug-overlay .debug-title::after {
+    content: '▼';
+    font-size: 0.45rem;
+    opacity: 0.5;
+    margin-left: 0.4rem;
+}
+.debug-overlay.collapsed .debug-title { margin-bottom: 0; }
+.debug-overlay.collapsed .debug-title::after { content: '▶'; }
+.debug-overlay #debug-content {
+    overflow-y: auto;
+    max-height: calc(100vh - 56px);
+    max-height: calc(100dvh - 56px);
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: #444 transparent;
+}
+.debug-overlay.collapsed #debug-content { display: none; }
+.debug-overlay .debug-section {
+    border-top: 1px solid #2a2a2a;
+    padding-top: 0.25rem;
+    margin-top: 0.25rem;
+}
+.debug-overlay .debug-section-label {
+    color: #666;
+    font-size: 0.58rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+.debug-overlay .debug-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.6rem;
+}
+.debug-overlay .debug-key { color: #888; }
+.debug-overlay .debug-val { color: #ccc; text-align: right; }
+.debug-overlay .debug-val.warn { color: #ffb300; }
+.debug-overlay .debug-val.bad { color: #ff5722; }
+.debug-overlay .debug-val.good { color: #4caf50; }
+.debug-overlay .debug-btn {
+    display: block;
+    width: 100%;
+    margin-top: 0.3rem;
+    padding: 0.25rem 0;
+    background: #1a1a2e;
+    color: #7eb8da;
+    border: 1px solid #333;
+    border-radius: 3px;
+    font-family: inherit;
+    font-size: 0.6rem;
+    cursor: pointer;
+}
+.debug-overlay .debug-btn:hover { background: #252545; }

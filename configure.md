@@ -145,6 +145,7 @@ SFU_UDP_PORT=50000
 SFU_HTTP_HOST=127.0.0.1
 SFU_HTTP_PORT=8080
 SFU_ARCHIVE_DIR=/opt/livecam/archive
+HLS_DIR=/opt/livecam/hls
 
 # Go Proxy
 GO_LISTEN_PORT=8443
@@ -233,8 +234,8 @@ EOF
 
 ```bash
 # Set permissions
-sudo chown -R www-data:www-data /opt/livecam/archive
-sudo mkdir -p /opt/livecam/archive
+sudo mkdir -p /opt/livecam/archive /opt/livecam/hls
+sudo chown -R www-data:www-data /opt/livecam/archive /opt/livecam/hls
 
 # Load, enable, and start
 sudo systemctl daemon-reload

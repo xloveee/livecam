@@ -83,6 +83,10 @@ The Go proxy listens on `:8443` by default.
 
 Navigate to `http://localhost:8443/watch/my-room` to load the viewer page.
 
+**Playback:** The viewer uses the browser’s native `<video>` controls (no JS autoplay). Tap or click **play** to start. On **iPhone / iPad**, when an HLS manifest is available, the page uses **native HLS** for watching (reliable in Safari and in-app browsers); low-latency **WebRTC (WHEP)** is still used where it works best. Broadcasting always uses **WHIP** regardless.
+
+Drag the **resize bar** between stream and chat to change the split (vertical bar on wide screens, horizontal bar when stacked on phone). **Left / up** gives more space to chat; **right / down** gives less. Sizes are stored in `localStorage` (`livecamWatchChatWidthPx`, `livecamWatchChatHeightPx`). Double-click the bar to reset to roughly half for the current layout.
+
 ### 4. Broadcast
 
 **Option A — OBS Studio (desktop, highest quality)**
@@ -118,6 +122,7 @@ Both options use the same WHIP endpoint and produce the same stream format. The 
 | `SFU_PUBLIC_IP` | `127.0.0.1` | **Your server's public IP** — advertised in ICE candidates |
 | `SFU_UDP_PORT` | `50000` | Public UDP port for WebRTC media |
 | `SFU_ARCHIVE_DIR` | `archive` | Directory for VOD recordings |
+| `HLS_DIR` | `hls` | Directory for live HLS segments (relative to working dir or absolute) |
 
 **Go Proxy** (`go-features/api`):
 
@@ -222,6 +227,6 @@ Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages
 |--------|----------|
 | `main` | Stream only (WHIP/WHEP, browser broadcast, viewer page) |
 | `feature/chat` | Stream + real-time chat |
-| `feature/donations` | Stream + chat + donations *(planned)* |
+| `feature/donations` | Stream + chat + donations (Stripe, PayPal, crypto, bank) |
 
 Development sponsored by xlovecam.com, ad hominem is not welcome. 

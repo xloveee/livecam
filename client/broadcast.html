@@ -4,388 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Broadcast — livecam</title>
-    <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body {
-            height: 100%;
-            overflow: hidden;
-            overflow-x: hidden;
-        }
-        body {
-            background-color: #0a0a0a;
-            color: #e0e0e0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            display: flex;
-            flex-direction: column;
-            min-height: 100vh;
-            min-height: 100dvh;
-        }
-        .main-content {
-            flex: 1 1 0;
-            min-height: 0;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            padding: 0.6rem 0.5rem 0;
-            min-width: 0;
-            overflow-y: auto;
-        }
-        h1 { display: none; }
-        .subtitle { display: none; }
-
-        /* ── Preview ─────────────────────────────────────── */
-        .preview-container {
-            position: relative;
-            width: 100%;
-            max-width: 720px;
-        }
-        video {
-            width: 100%;
-            max-height: 35vh;
-            background: #111;
-            aspect-ratio: 16/9;
-            border-radius: 4px;
-            transform: scaleX(-1);
-            object-fit: contain;
-        }
-        .live-badge {
-            display: none;
-            position: absolute;
-            top: 6px;
-            left: 6px;
-            background: #d32f2f;
-            color: #fff;
-            font-size: 0.65rem;
-            font-weight: 700;
-            padding: 2px 7px;
-            border-radius: 3px;
-            letter-spacing: 0.05em;
-        }
-        .live-badge.visible { display: block; }
-        .stats-overlay {
-            position: absolute;
-            bottom: 6px;
-            right: 6px;
-            font-size: 0.65rem;
-            color: rgba(255,255,255,0.6);
-            background: rgba(0,0,0,0.55);
-            padding: 2px 6px;
-            border-radius: 3px;
-            pointer-events: none;
-        }
-
-        /* ── Controls Bar ────────────────────────────────── */
-        .controls-bar {
-            width: 100%;
-            max-width: 720px;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.4rem 0;
-        }
-        .controls-bar button {
-            flex-shrink: 0;
-        }
-        #status {
-            font-size: 0.75rem;
-            color: #aaa;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-        .error { color: #ef5350; }
-        .connected { color: #4caf50; }
-        .viewer-badge {
-            font-size: 0.7rem;
-            color: #888;
-            margin-left: auto;
-            white-space: nowrap;
-        }
-
-        /* ── Buttons ─────────────────────────────────────── */
-        button {
-            color: #fff;
-            border: none;
-            padding: 0.45rem 1rem;
-            font-size: 0.82rem;
-            border-radius: 4px;
-            cursor: pointer;
-            font-weight: 600;
-            transition: background 0.15s;
-            -webkit-tap-highlight-color: transparent;
-        }
-        #btn-start { background: #d32f2f; }
-        #btn-start:hover { background: #b71c1c; }
-        #btn-stop { background: #555; display: none; }
-        #btn-stop:hover { background: #777; }
-        button:disabled { background: #333; cursor: default; }
-
-        /* ── Settings Toggle ─────────────────────────────── */
-        .settings-toggle {
-            width: 100%;
-            max-width: 720px;
-            display: flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.3rem 0;
-            cursor: pointer;
-            user-select: none;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .settings-toggle .arrow {
-            font-size: 0.65rem;
-            color: #666;
-            transition: transform 0.2s;
-        }
-        .settings-toggle.open .arrow { transform: rotate(90deg); }
-        .settings-toggle span {
-            font-size: 0.72rem;
-            color: #666;
-            font-weight: 500;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-        }
-        .settings-divider {
-            flex: 1;
-            height: 1px;
-            background: #1a1a1a;
-        }
-
-        /* ── Form Group ──────────────────────────────────── */
-        .form-group {
-            width: 100%;
-            max-width: 720px;
-            display: none;
-            flex-direction: column;
-            gap: 0.4rem;
-            padding-bottom: 0.4rem;
-        }
-        .form-group.visible { display: flex; }
-
-        label {
-            font-size: 0.72rem;
-            color: #777;
-        }
-        input, select {
-            background: #141414;
-            color: #e0e0e0;
-            border: 1px solid #282828;
-            padding: 0.4rem 0.5rem;
-            font-size: 16px; /* Prevent iOS zoom on focus */
-            border-radius: 4px;
-            width: 100%;
-        }
-        input:focus, select:focus {
-            outline: none;
-            border-color: #d32f2f;
-        }
-        .row {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 0.4rem;
-        }
-        .row-info {
-            padding: 0.35rem 0;
-            font-size: 0.8rem;
-            color: #888;
-        }
-
-        /* ── Settings Overlay (mobile) ────────────────────── */
-        .settings-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            z-index: 100;
-            background: rgba(0,0,0,0.92);
-            align-items: flex-start;
-            justify-content: center;
-            overflow-y: auto;
-            padding: 1rem;
-        }
-        .settings-overlay.visible { display: flex; }
-        .settings-overlay-backdrop {
-            position: fixed;
-            inset: 0;
-            cursor: pointer;
-        }
-        .settings-overlay-panel {
-            position: relative;
-            z-index: 1;
-            background: #111;
-            border: 1px solid #222;
-            border-radius: 8px;
-            padding: 1rem;
-            max-width: 400px;
-            width: 100%;
-            margin: auto;
-        }
-        .settings-overlay-header {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin-bottom: 1rem;
-            padding-bottom: 0.6rem;
-            border-bottom: 1px solid #222;
-        }
-        .settings-overlay-header span { font-size: 0.9rem; font-weight: 600; color: #fff; }
-        .settings-overlay-close {
-            background: transparent;
-            border: none;
-            color: #888;
-            font-size: 1.2rem;
-            cursor: pointer;
-            padding: 0.2rem 0.4rem;
-            line-height: 1;
-        }
-        .settings-overlay-close:hover { color: #fff; }
-
-        /* ── Chat Panel ──────────────────────────────────── */
-        .chat-panel {
-            width: 100%;
-            flex: 1 1 0;
-            min-height: 0;
-            min-width: 0;
-            display: flex;
-            flex-direction: column;
-            border-top: 1px solid #1a1a1a;
-            background: #0d0d0d;
-        }
-        .chat-header {
-            padding: 0.4rem 0.6rem;
-            font-size: 0.78rem;
-            font-weight: 600;
-            color: #fff;
-            border-bottom: 1px solid #1a1a1a;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-shrink: 0;
-        }
-        .chat-status {
-            font-size: 0.65rem;
-            font-weight: 400;
-            color: #666;
-        }
-        .chat-status.connected { color: #4caf50; }
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 0.3rem;
-            display: flex;
-            flex-direction: column;
-            gap: 0.1rem;
-            scrollbar-width: thin;
-            scrollbar-color: #333 transparent;
-            -webkit-overflow-scrolling: touch;
-        }
-        .chat-msg {
-            font-size: 0.78rem;
-            line-height: 1.3;
-            padding: 0.1rem 0.3rem;
-            border-radius: 3px;
-            word-break: break-word;
-        }
-        .chat-msg:hover { background: rgba(255,255,255,0.03); }
-        .chat-msg .nick {
-            font-weight: 600;
-            margin-right: 0.25rem;
-        }
-        .chat-msg .nick.broadcaster { color: #d32f2f; }
-        .chat-msg .nick.mod { color: #5e35b1; }
-        .chat-msg .nick.viewer { color: #1e88e5; }
-        .chat-msg.system {
-            color: #555;
-            font-style: italic;
-            font-size: 0.72rem;
-        }
-        .chat-mod-bar {
-            display: flex;
-            gap: 0.25rem;
-            padding: 0.3rem 0.4rem;
-            border-top: 1px solid #1a1a1a;
-            flex-wrap: wrap;
-            flex-shrink: 0;
-        }
-        .chat-mod-bar button {
-            padding: 0.2rem 0.5rem;
-            font-size: 0.65rem;
-            background: #1a1a1a;
-            border-radius: 3px;
-        }
-        .chat-mod-bar button:hover { background: #282828; }
-        .chat-input-area {
-            border-top: 1px solid #1a1a1a;
-            padding: 0.4rem;
-            flex-shrink: 0;
-        }
-        .chat-send {
-            display: flex;
-            gap: 0.3rem;
-        }
-        .chat-input-area input {
-            flex: 1;
-            background: #141414;
-            color: #e0e0e0;
-            border: 1px solid #282828;
-            padding: 0.4rem 0.5rem;
-            font-size: 16px; /* Prevent iOS zoom on focus */
-            border-radius: 4px;
-            outline: none;
-        }
-        .chat-input-area input:focus { border-color: #d32f2f; }
-        .chat-input-area button {
-            padding: 0.4rem 0.7rem;
-            font-size: 0.78rem;
-            white-space: nowrap;
-        }
-
-        /* ── Desktop: side-by-side ───────────────────────── */
-        @media (min-width: 901px) {
-            body { flex-direction: row; }
-            h1 {
-                display: block;
-                font-size: 1.2rem;
-                font-weight: 600;
-                margin-bottom: 0.4rem;
-                color: #fff;
-            }
-            .subtitle {
-                display: block;
-                font-size: 0.8rem;
-                color: #888;
-                margin-bottom: 1rem;
-            }
-            .main-content { padding: 1.2rem 1rem; }
-            video { max-height: 65vh; border-radius: 6px; }
-            .live-badge { top: 10px; left: 10px; font-size: 0.72rem; padding: 3px 9px; }
-            .stats-overlay { bottom: 10px; right: 10px; font-size: 0.72rem; }
-            .controls-bar { padding: 0.6rem 0; }
-            .form-group { display: flex; gap: 0.5rem; padding-bottom: 0; }
-            .settings-toggle { display: none; }
-            .settings-overlay { display: flex !important; position: static; background: transparent; padding: 0; align-items: stretch; }
-            .settings-overlay-backdrop { display: none; }
-            .settings-overlay-panel { max-width: 720px; background: transparent; padding: 0; box-shadow: none; margin: 0; }
-            .settings-overlay-header { display: none; }
-            .chat-panel {
-                width: 340px;
-                min-width: 340px;
-                flex: none;
-                min-height: 0;
-                border-top: none;
-                border-left: 1px solid #1a1a1a;
-            }
-            .chat-header { padding: 0.6rem 0.8rem; font-size: 0.85rem; }
-            .chat-messages { padding: 0.4rem; }
-            .chat-msg { font-size: 0.8rem; }
-            button { padding: 0.55rem 1.4rem; font-size: 0.88rem; }
-        }
-
-        /* ── Tiny phones (≤380px) ────────────────────────── */
-        @media (max-width: 380px) {
-            .row { grid-template-columns: 1fr; }
-            .controls-bar button { padding: 0.4rem 0.7rem; font-size: 0.78rem; }
-        }
-    </style>
+    <link rel="stylesheet" href="/css/broadcast.css">
 </head>
 <body>
 
@@ -404,6 +23,12 @@
             <button id="btn-stop">Stop</button>
             <span id="status">Ready</span>
             <span class="viewer-badge" id="viewer-count"></span>
+            <div class="health-indicator" id="health-indicator">
+                <span class="health-dot" id="health-dot"></span>
+                <span class="health-label" id="health-label"></span>
+                <span class="health-detail" id="health-detail"></span>
+                <div class="health-tooltip" id="health-tooltip"></div>
+            </div>
         </div>
 
         <div class="settings-toggle" id="settings-toggle" onclick="toggleSettings()">
@@ -419,42 +44,137 @@
                     <span>Settings</span>
                     <button type="button" class="settings-close" onclick="closeSettings()">&#215;</button>
                 </div>
-                <div class="form-group visible" id="form-group">
-            <div class="row">
-                <div>
-                    <label for="camera-select">Camera</label>
-                    <select id="camera-select"><option value="">Loading...</option></select>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="switchSettingsTab('stream', this)">
+                        <span class="settings-tab-icon">&#9881;</span>Stream
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('room', this)">
+                        <span class="settings-tab-icon">&#9711;</span>Room
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('donations', this)">
+                        <span class="settings-tab-icon">&#9733;</span>Donations
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('panels', this)">
+                        <span class="settings-tab-icon">&#128240;</span>Panels
+                    </button>
                 </div>
-                <div>
-                    <label for="mic-select">Microphone</label>
-                    <select id="mic-select"><option value="">Loading...</option></select>
+                <div class="settings-body">
+
+                    <div class="settings-page active" id="settings-stream">
+                        <div class="settings-page-title">Stream Setup</div>
+                        <div class="row">
+                            <div>
+                                <label for="camera-select">Camera</label>
+                                <select id="camera-select"><option value="">Loading...</option></select>
+                            </div>
+                            <div>
+                                <label for="mic-select">Microphone</label>
+                                <select id="mic-select"><option value="">Loading...</option></select>
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top:0.4rem;">
+                            <div>
+                                <label for="resolution">Resolution</label>
+                                <select id="resolution">
+                                    <option value="1280x720">720p</option>
+                                    <option value="1920x1080">1080p</option>
+                                    <option value="854x480">480p</option>
+                                    <option value="640x360">360p</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="bitrate">Max Bitrate</label>
+                                <select id="bitrate">
+                                    <option value="0">Auto</option>
+                                    <option value="2500">2500 kbps</option>
+                                    <option value="1500" selected>1500 kbps</option>
+                                    <option value="800">800 kbps</option>
+                                    <option value="500">500 kbps</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top:0.4rem;">
+                            <div>
+                                <label>Stream Key</label>
+                                <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-page" id="settings-room">
+                        <div class="settings-page-title">Room Settings</div>
+                        <div class="row">
+                            <div>
+                                <label for="max-viewers">Max Viewers (0 = unlimited)</label>
+                                <input type="number" id="max-viewers" value="0" min="0" max="10000">
+                            </div>
+                            <div>
+                                <label for="room-password">Room Password</label>
+                                <input type="text" id="room-password" placeholder="Open (no password)" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-page" id="settings-donations">
+                        <div class="settings-page-title">Payment Providers</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Enable at least one provider below. Viewers will see a <strong style="color:#ffb300;">Donate</strong> button in chat and can choose from your enabled methods. Payments are processed externally — donations appear highlighted in the live chat.</div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
+                                <label for="stripe-toggle">Stripe (Card payments)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="stripe-key" placeholder="Secret key (sk_live_...)" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
+                                <label for="paypal-toggle">PayPal</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
+                                <label for="crypto-toggle">Crypto (BTC / ETH)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off">
+                                <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
+                                <label for="bank-toggle">Bank / YowPay</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off">
+                                <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off">
+                                <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off">
+                            </div>
+                            <div class="provider-card-hint">Visit <a href="https://yowpay.com" target="_blank" rel="noopener">yowpay.com</a> to create a merchant account.</div>
+                        </div>
+
+                        <div class="row-info" id="donation-status"></div>
+                    </div>
+
+                    <div class="settings-page" id="settings-panels">
+                        <div class="settings-page-title">Below-Stream Panels</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Add image banners and links to display below your stream.</div>
+                        <div id="panels-list" class="panels-list"></div>
+                        <button type="button" onclick="addPanelField()" style="background:#1e88e5;margin-bottom:0.5rem;font-size:0.75rem;padding:0.4rem 0.8rem;">+ Add Panel</button>
+                        <div class="row-info" id="panels-status"></div>
+                    </div>
+
                 </div>
-            </div>
-            <div class="row">
-                <div>
-                    <label for="resolution">Resolution</label>
-                    <select id="resolution">
-                        <option value="1280x720">720p</option>
-                        <option value="1920x1080">1080p</option>
-                        <option value="854x480">480p</option>
-                        <option value="640x360">360p</option>
-                    </select>
-                </div>
-                <div>
-                    <label for="max-viewers">Max Viewers (0 = unlim)</label>
-                    <input type="number" id="max-viewers" value="0" min="0" max="10000">
-                </div>
-            </div>
-            <div class="row">
-                <div>
-                    <label for="room-password">Room Password</label>
-                    <input type="text" id="room-password" placeholder="Open (no password)" autocomplete="off" spellcheck="false">
-                </div>
-                <div>
-                    <label>Stream Key</label>
-                    <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
-                </div>
-            </div>
             </div>
         </div>
     </div>
@@ -470,6 +190,10 @@
             <button onclick="chatModCmd('/slow 5')">Slow 5s</button>
             <button onclick="chatModCmd('/slow 0')">Slow Off</button>
             <button onclick="chatModCmd('/subscribers')">Sub Mode</button>
+            <button onclick="toggleDonationHistory()" style="background:#2a2000;color:#ffb300;">Donations</button>
+        </div>
+        <div id="donation-history" style="display:none;max-height:120px;overflow-y:auto;padding:0.3rem 0.4rem;border-top:1px solid #1a1a1a;font-size:0.7rem;color:#888;scrollbar-width:thin;scrollbar-color:#333 transparent;">
+            <div id="donation-history-list"></div>
         </div>
         <div class="chat-input-area">
             <div class="chat-send" id="chat-send">
@@ -479,473 +203,24 @@
         </div>
     </div>
 
+    <script src="/js/broadcast-core.js"></script>
+    <script src="/js/broadcast-chat.js"></script>
+    <script src="/js/broadcast-donations.js"></script>
     <script>
-        var preview = document.getElementById('preview');
-        var btnStart = document.getElementById('btn-start');
-        var btnStop = document.getElementById('btn-stop');
-        var statusEl = document.getElementById('status');
-        var statsEl = document.getElementById('stats');
-        var liveBadge = document.getElementById('live-badge');
-        var streamKeyInput = document.getElementById('stream-key');
-        var resolutionSelect = document.getElementById('resolution');
-        var cameraSelect = document.getElementById('camera-select');
-        var micSelect = document.getElementById('mic-select');
-        var maxViewersInput = document.getElementById('max-viewers');
-        var viewerCountEl = document.getElementById('viewer-count');
-        var roomPasswordInput = document.getElementById('room-password');
-
-        function toggleSettings() {
-            var overlay = document.getElementById('settings-overlay');
-            var tog = document.getElementById('settings-toggle');
-            overlay.classList.toggle('visible');
-            tog.classList.toggle('open');
-        }
-
-        function closeSettings() {
-            document.getElementById('settings-overlay').classList.remove('visible');
-            document.getElementById('settings-toggle').classList.remove('open');
-        }
-
-        var pc = null;
-        var localStream = null;
-        var statsInterval = null;
-        var viewerPollInterval = null;
-        var activeStreamKey = null;
-        var authenticatedKey = '';
-
-        (async function initSession() {
+        (async function init() {
             try {
                 var resp = await fetch('/api/auth/broadcast');
-                if (!resp.ok) {
-                    window.location.reload();
-                    return;
-                }
+                if (!resp.ok) { window.location.reload(); return; }
                 var data = await resp.json();
                 authenticatedKey = data.stream_key;
                 streamKeyInput.value = data.stream_key;
                 chatConnect();
                 enumerateDevices();
+                loadDonationConfig();
             } catch (e) {
                 window.location.reload();
             }
         })();
-
-        async function enumerateDevices() {
-            try {
-                await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
-            } catch (e) {
-                statusEl.textContent = 'Camera/mic permission denied';
-                statusEl.classList.add('error');
-                btnStart.disabled = true;
-                return;
-            }
-
-            const devices = await navigator.mediaDevices.enumerateDevices();
-
-            cameraSelect.innerHTML = '';
-            micSelect.innerHTML = '';
-
-            const cameras = devices.filter(d => d.kind === 'videoinput');
-            const mics = devices.filter(d => d.kind === 'audioinput');
-
-            if (cameras.length === 0) {
-                cameraSelect.innerHTML = '<option value="">No camera found</option>';
-            } else {
-                cameras.forEach((cam, i) => {
-                    const opt = document.createElement('option');
-                    opt.value = cam.deviceId;
-                    opt.textContent = cam.label || ('Camera ' + (i + 1));
-                    cameraSelect.appendChild(opt);
-                });
-            }
-
-            if (mics.length === 0) {
-                micSelect.innerHTML = '<option value="">No microphone found</option>';
-            } else {
-                mics.forEach((mic, i) => {
-                    const opt = document.createElement('option');
-                    opt.value = mic.deviceId;
-                    opt.textContent = mic.label || ('Mic ' + (i + 1));
-                    micSelect.appendChild(opt);
-                });
-            }
-
-            await startPreview();
-        }
-
-        async function startPreview() {
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-            }
-
-            const [w, h] = resolutionSelect.value.split('x').map(Number);
-            const constraints = {
-                video: {
-                    deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-                    width: { ideal: w },
-                    height: { ideal: h },
-                    frameRate: { ideal: 30 }
-                },
-                audio: {
-                    deviceId: micSelect.value ? { exact: micSelect.value } : undefined,
-                    channelCount: 1,
-                    sampleRate: 48000,
-                    echoCancellation: false,
-                    noiseSuppression: false,
-                    autoGainControl: false
-                }
-            };
-
-            try {
-                localStream = await navigator.mediaDevices.getUserMedia(constraints);
-                preview.srcObject = localStream;
-            } catch (e) {
-                statusEl.textContent = 'Failed to access camera: ' + e.message;
-                statusEl.classList.add('error');
-            }
-        }
-
-        cameraSelect.onchange = startPreview;
-        micSelect.onchange = startPreview;
-        resolutionSelect.onchange = startPreview;
-
-        preview.addEventListener('resize', function() {
-            if (preview.videoWidth && preview.videoHeight) {
-                preview.style.aspectRatio = preview.videoWidth + '/' + preview.videoHeight;
-            }
-        });
-
-        async function setViewerLimit(streamKey, max) {
-            try {
-                await fetch('/api/viewer_limit/' + streamKey, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ max_viewers: parseInt(max, 10) || 0 })
-                });
-            } catch (e) {
-                console.warn('Failed to set viewer limit:', e);
-            }
-        }
-
-        async function setRoomPassword(streamKey, password) {
-            try {
-                await fetch('/api/room_password/' + streamKey, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password: password || '' })
-                });
-            } catch (e) {
-                console.warn('Failed to set room password:', e);
-            }
-        }
-
-        async function pollViewerCount() {
-            if (!activeStreamKey) return;
-            try {
-                const resp = await fetch('/api/room_info/' + activeStreamKey);
-                if (resp.ok) {
-                    const info = await resp.json();
-                    viewerCountEl.textContent = info.viewer_count + ' watching' + (info.max_viewers > 0 ? ' / ' + info.max_viewers + ' max' : '');
-                }
-            } catch (e) {
-                /* ignore */
-            }
-        }
-
-        maxViewersInput.onchange = () => {
-            if (activeStreamKey) {
-                setViewerLimit(activeStreamKey, maxViewersInput.value);
-            }
-        };
-
-        let passwordDebounce = null;
-        roomPasswordInput.oninput = function () {
-            clearTimeout(passwordDebounce);
-            passwordDebounce = setTimeout(function () {
-                if (activeStreamKey) {
-                    setRoomPassword(activeStreamKey, roomPasswordInput.value.trim());
-                }
-            }, 500);
-        };
-
-        async function fetchICEConfig() {
-            try {
-                const resp = await fetch('/api/config');
-                if (!resp.ok) return {};
-                return await resp.json();
-            } catch (e) {
-                return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
-            }
-        }
-
-        btnStart.onclick = async function () {
-            var streamKey = authenticatedKey;
-            if (!streamKey) {
-                statusEl.textContent = 'Not authenticated';
-                statusEl.classList.add('error');
-                return;
-            }
-            if (!localStream) {
-                statusEl.textContent = 'No camera stream available';
-                statusEl.classList.add('error');
-                return;
-            }
-
-            statusEl.textContent = 'Connecting...';
-            statusEl.classList.remove('error', 'connected');
-            btnStart.style.display = 'none';
-            btnStop.style.display = 'inline-block';
-
-            const config = await fetchICEConfig();
-
-            pc = new RTCPeerConnection({
-                iceServers: config.iceServers || []
-            });
-
-            localStream.getTracks().forEach(function(track) {
-                pc.addTrack(track, localStream);
-            });
-
-            pc.oniceconnectionstatechange = () => {
-                const state = pc.iceConnectionState;
-                if (state === 'connected' || state === 'completed') {
-                    statusEl.textContent = 'Live';
-                    statusEl.classList.add('connected');
-                    statusEl.classList.remove('error');
-                    liveBadge.classList.add('visible');
-                    startStats();
-                    activeStreamKey = streamKey;
-                    setViewerLimit(streamKey, maxViewersInput.value);
-                    setRoomPassword(streamKey, roomPasswordInput.value.trim());
-                    pollViewerCount();
-                    viewerPollInterval = setInterval(pollViewerCount, 3000);
-                } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-                    stopBroadcast();
-                    statusEl.textContent = 'Disconnected';
-                    statusEl.classList.add('error');
-                }
-            };
-
-            try {
-                const offer = await pc.createOffer();
-                await pc.setLocalDescription(offer);
-
-                const response = await fetch('/api/whip/' + streamKey, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/sdp' },
-                    body: pc.localDescription.sdp
-                });
-
-                if (!response.ok) {
-                    const errText = await response.text();
-                    throw new Error(errText || ('Server returned ' + response.status));
-                }
-
-                const answerSdp = await response.text();
-                await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
-
-            } catch (err) {
-                console.error('WHIP broadcast failed:', err);
-                statusEl.textContent = 'Failed: ' + err.message;
-                statusEl.classList.add('error');
-                btnStart.style.display = '';
-                btnStart.disabled = false;
-                btnStop.style.display = 'none';
-                if (pc) { pc.close(); pc = null; }
-            }
-        };
-
-        btnStop.onclick = function () {
-            stopBroadcast();
-            statusEl.textContent = 'Stopped';
-            statusEl.classList.remove('connected', 'error');
-        };
-
-        function stopBroadcast() {
-            if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
-            if (viewerPollInterval) { clearInterval(viewerPollInterval); viewerPollInterval = null; }
-            if (pc) { pc.close(); pc = null; }
-            activeStreamKey = null;
-            liveBadge.classList.remove('visible');
-            btnStart.style.display = '';
-            btnStart.disabled = false;
-            btnStop.style.display = 'none';
-            statsEl.textContent = '';
-            viewerCountEl.textContent = '';
-        }
-
-        function startStats() {
-            if (statsInterval) clearInterval(statsInterval);
-            let prevBytesSent = 0;
-            let prevTimestamp = 0;
-            statsInterval = setInterval(async () => {
-                if (!pc) return;
-                const stats = await pc.getStats();
-                let videoBitrate = '';
-                let audioBitrate = '';
-                let resolution = '';
-                let fps = '';
-
-                stats.forEach(report => {
-                    if (report.type === 'outbound-rtp' && report.kind === 'video') {
-                        if (prevTimestamp > 0) {
-                            const dt = (report.timestamp - prevTimestamp) / 1000;
-                            const db = (report.bytesSent - prevBytesSent) * 8;
-                            videoBitrate = (db / dt / 1000).toFixed(0) + ' kbps';
-                        }
-                        prevBytesSent = report.bytesSent;
-                        prevTimestamp = report.timestamp;
-                        if (report.frameWidth) {
-                            resolution = report.frameWidth + 'x' + report.frameHeight;
-                        }
-                        if (report.framesPerSecond) {
-                            fps = report.framesPerSecond + ' fps';
-                        }
-                    }
-                    if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-                        // Audio bitrate is always low; skip for display
-                    }
-                });
-
-                const parts = [resolution, fps, videoBitrate].filter(Boolean);
-                statsEl.textContent = parts.length > 0 ? parts.join(' · ') : '';
-            }, 2000);
-        }
-
-        /* ── Chat ──────────────────────────────────────────────── */
-
-        var chatWs = null;
-        var chatNick = 'Broadcaster';
-        var chatConnected = false;
-        var chatReconnectTimer = null;
-        var chatErrorReceived = false;
-        var chatMessagesEl = document.getElementById('chat-messages');
-        var chatStatusEl = document.getElementById('chat-status');
-        var chatSendEl = document.getElementById('chat-send');
-        var chatInput = document.getElementById('chat-input');
-        var btnChatSend = document.getElementById('btn-chat-send');
-
-        function chatConnect() {
-            var roomId = authenticatedKey;
-            if (!roomId || !chatNick) return;
-            if (chatWs) { chatWs.close(); chatWs = null; }
-
-            var proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            var url = proto + '//' + location.host + '/api/chat/' + roomId + '?nick=' + encodeURIComponent(chatNick);
-            chatWs = new WebSocket(url);
-            chatStatusEl.textContent = 'Connecting...';
-            chatStatusEl.className = 'chat-status';
-
-            chatErrorReceived = false;
-            chatWs.onopen = function () {
-                chatConnected = true;
-                chatStatusEl.textContent = 'Connected';
-                chatStatusEl.className = 'chat-status connected';
-            };
-
-            chatWs.onclose = function () {
-                chatConnected = false;
-                chatStatusEl.textContent = 'Disconnected';
-                chatStatusEl.className = 'chat-status';
-                if (!chatErrorReceived) {
-                    chatReconnectTimer = setTimeout(function () {
-                        if (authenticatedKey) chatConnect();
-                    }, 3000);
-                }
-            };
-
-            chatWs.onerror = function () {
-                chatConnected = false;
-            };
-
-            chatWs.onmessage = function (ev) {
-                try {
-                    var msg = JSON.parse(ev.data);
-                    handleChatMsg(msg);
-                } catch (e) { /* ignore */ }
-            };
-        }
-
-        function chatDisconnect() {
-            if (chatReconnectTimer) { clearTimeout(chatReconnectTimer); chatReconnectTimer = null; }
-            if (chatWs) { chatWs.close(); chatWs = null; }
-            chatConnected = false;
-            chatStatusEl.textContent = 'Disconnected';
-            chatStatusEl.className = 'chat-status';
-        }
-
-        function handleChatMsg(msg) {
-            switch (msg.type) {
-                case 'msg':
-                    appendChatMessage(msg.nick, msg.text, msg.role);
-                    break;
-                case 'system':
-                    appendChatSystem(msg.text);
-                    break;
-                case 'clear':
-                    chatMessagesEl.innerHTML = '';
-                    appendChatSystem('Chat has been cleared.');
-                    break;
-                case 'ban':
-                    appendChatSystem(msg.nick + ' has been banned.');
-                    break;
-                case 'error':
-                    appendChatSystem(msg.text);
-                    chatErrorReceived = true;
-                    break;
-                default:
-                    break;
-            }
-        }
-
-        function appendChatMessage(nick, text, role) {
-            var el = document.createElement('div');
-            el.className = 'chat-msg';
-            var nickSpan = document.createElement('span');
-            nickSpan.className = 'nick ' + (role || 'viewer');
-            nickSpan.textContent = nick + ':';
-            el.appendChild(nickSpan);
-            el.appendChild(document.createTextNode(' ' + text));
-            chatMessagesEl.appendChild(el);
-            autoScrollChat();
-        }
-
-        function appendChatSystem(text) {
-            var el = document.createElement('div');
-            el.className = 'chat-msg system';
-            el.textContent = text;
-            chatMessagesEl.appendChild(el);
-            autoScrollChat();
-        }
-
-        function autoScrollChat() {
-            var el = chatMessagesEl;
-            var atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
-            if (atBottom) {
-                el.scrollTop = el.scrollHeight;
-            }
-        }
-
-        function chatSendMessage() {
-            if (!chatWs || !chatConnected) return;
-            var text = chatInput.value.trim();
-            if (!text) return;
-            var type = text[0] === '/' ? 'cmd' : 'msg';
-            chatWs.send(JSON.stringify({ type: type, text: text }));
-            chatInput.value = '';
-        }
-
-        function chatModCmd(cmd) {
-            if (!chatWs || !chatConnected) return;
-            chatWs.send(JSON.stringify({ type: 'cmd', text: cmd }));
-        }
-
-        btnChatSend.onclick = chatSendMessage;
-
-        chatInput.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter') chatSendMessage();
-        });
-
     </script>
 </body>
 </html>

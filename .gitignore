@@ -22,6 +22,9 @@ Thumbs.db
 # VOD archive recordings (runtime data, not source)
 rust-core/archive/
 
+# HLS segments (ephemeral, generated at runtime)
+hls/
+
 deploy/
 build-plan-story.md
 Build-plan.md
@@ -31,3 +34,6 @@ td.md
 !rust-core/vendor/**/.vscode/
 .cursorignore
 ckpt/*
+ckpt/
+old/
+old/*

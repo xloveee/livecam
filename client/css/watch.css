@@ -14,7 +14,7 @@ body {
     min-height: 0;
 }
 
-/* ── Site header (above stream + chat, not in stream column) ─ */
+/* ── Site header (title + viewer count + stream status / quality) ─ */
 
 .site-header {
     flex-shrink: 0;
@@ -23,10 +23,20 @@ body {
     border-bottom: 1px solid #1a1a1a;
     background: #0a0a0a;
 }
+.site-header-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    width: 100%;
+}
 .header-left {
     display: flex;
     flex-direction: column;
     gap: 0.15rem;
+    flex: 1 1 12rem;
+    min-width: 0;
 }
 .site-header h1 {
     font-size: 1.05rem;
@@ -38,6 +48,14 @@ body {
     text-decoration: none;
 }
 .site-header h1 a:hover { text-decoration: underline; }
+
+.site-header .stream-toolbar {
+    flex: 0 1 auto;
+    align-self: center;
+    min-width: 0;
+    max-width: 100%;
+    padding-bottom: 0;
+}
 
 /* ── Stream + chat row (50 / 50) ────────────── */
 
@@ -168,14 +186,6 @@ main.stream-column {
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-}
-
-/* ── Stream toolbar (quality / status only) ─── */
-
-.stream-toolbar {
-    flex-shrink: 0;
-    width: 100%;
-    padding-bottom: 0.35rem;
 }
 
 /* ── Video Player ─────────────────────────────
@@ -813,7 +823,17 @@ button:disabled { background: #555; cursor: default; }
         padding: 0.45rem 0.65rem;
     }
     .site-header h1 { font-size: 0.9rem; }
-    .stream-controls { width: 100%; justify-content: space-between; }
+    .site-header-inner {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.45rem;
+    }
+    .site-header .stream-toolbar {
+        flex: 1 1 auto;
+        width: 100%;
+        align-self: stretch;
+    }
+    .site-header .stream-controls { width: 100%; justify-content: space-between; }
     .stream-viewport {
         display: flex;
         flex-direction: column;

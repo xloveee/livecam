@@ -10,19 +10,14 @@
 <body>
 
     <header class="site-header">
-        <div class="header-left">
-            <h1>
-                Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
-            </h1>
-            <div class="viewer-count" id="viewer-count"></div>
-            <span id="offline-text" style="display:none;"></span>
-        </div>
-    </header>
-
-    <div class="watch-row">
-    <main class="stream-column">
-        <div class="stream-snap-page stream-snap-page--playback">
-        <div class="stream-viewport">
+        <div class="site-header-inner">
+            <div class="header-left">
+                <h1>
+                    Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
+                </h1>
+                <div class="viewer-count" id="viewer-count"></div>
+                <span id="offline-text" style="display:none;"></span>
+            </div>
             <div class="stream-toolbar" id="controls">
                 <div class="stream-controls">
                     <span class="stream-status-cluster">
@@ -39,7 +34,13 @@
                     </select>
                 </div>
             </div>
+        </div>
+    </header>
 
+    <div class="watch-row">
+    <main class="stream-column">
+        <div class="stream-snap-page stream-snap-page--playback">
+        <div class="stream-viewport">
             <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
             <video id="player" playsinline webkit-playsinline controls></video>
 

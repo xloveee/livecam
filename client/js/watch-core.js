@@ -53,24 +53,14 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
+        if (event.streams && event.streams[0]) {
+            video.srcObject = event.streams[0];
+        } else {
+            var existing = video.srcObject instanceof MediaStream ? video.srcObject : new MediaStream();
+            existing.addTrack(event.track);
+            video.srcObject = existing;
+        }
         return event.track.kind;
-    },
-
-    attachReceivers: function () {
-        if (!pc) return;
-        var tracks = pc.getReceivers().map(function (r) { return r.track; })
-            .filter(function (t) { return t; });
-        if (tracks.length === 0) return;
-        video.srcObject = new MediaStream(tracks);
-        video.play().catch(function () {});
-    },
-
-    play: function () {
-        return video.play().then(function () {
-            return { ok: true, error: '' };
-        }).catch(function (e) {
-            return { ok: false, error: e.name || 'blocked' };
-        });
     },
 
     teardownVideo: function () {
@@ -132,6 +122,46 @@ video.addEventListener('playing', function () {
     debugPlayResult = 'ok';
     hideUnmuteUI();
 });
+
+var kickPlayTimer = null;
+function kickPlay() {
+    if (kickPlayTimer) { clearTimeout(kickPlayTimer); kickPlayTimer = null; }
+
+    video.muted = true;
+    var p = video.play();
+    if (p && typeof p.then === 'function') {
+        p.then(function () {
+            debugPlayResult = 'ok';
+            debugEvent('play:ok');
+            showUnmuteUI();
+        }).catch(function () {
+            debugPlayResult = 'blocked';
+            debugEvent('play:blocked');
+            showUnmuteUI();
+        });
+    }
+
+    kickPlayTimer = setTimeout(function () {
+        kickPlayTimer = null;
+        if (video.readyState === 0 && viewerState === 'live' && video.srcObject) {
+            debugEvent('play:kick-retry');
+            video.load();
+            video.muted = true;
+            var p2 = video.play();
+            if (p2 && typeof p2.then === 'function') {
+                p2.then(function () {
+                    debugPlayResult = 'ok-retry';
+                    debugEvent('play:ok-retry');
+                    showUnmuteUI();
+                }).catch(function () {
+                    debugPlayResult = 'blocked-retry';
+                    debugEvent('play:blocked-retry');
+                    showUnmuteUI();
+                });
+            }
+        }
+    }, 3000);
+}
 
 /* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
 function resetWatchStreamColumnToTop() {
@@ -311,6 +341,7 @@ function teardownConnection() {
     debugPlayResult = '';
     clearPollTimer();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+    if (kickPlayTimer) { clearTimeout(kickPlayTimer); kickPlayTimer = null; }
     stopStatsLoop();
     if (pc) {
         if (sessionId && roomId) {
@@ -340,10 +371,9 @@ function onPeerStateChange() {
     debugEvent('ice:' + s);
     if (s === 'connected' || s === 'completed') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
-        watchAdapter.attachReceivers();
         setState('live');
         startStatsLoop();
-        if (video.muted) showUnmuteUI();
+        kickPlay();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -367,7 +397,8 @@ async function connectWHEP() {
     pc = watchAdapter.createPC(config.iceServers || []);
 
     pc.ontrack = function (event) {
-        debugEvent('track:' + event.track.kind + ' ' + event.track.readyState);
+        var kind = watchAdapter.onTrack(event);
+        debugEvent('track:' + kind + ' ' + event.track.readyState);
     };
 
     pc.oniceconnectionstatechange = onPeerStateChange;

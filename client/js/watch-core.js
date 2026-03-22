@@ -53,12 +53,14 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        var stream = video.srcObject;
-        if (!(stream instanceof MediaStream)) {
-            stream = new MediaStream();
+        if (event.streams && event.streams[0]) {
+            video.srcObject = event.streams[0];
+        } else {
+            var stream = video.srcObject instanceof MediaStream
+                ? video.srcObject : new MediaStream();
+            stream.addTrack(event.track);
             video.srcObject = stream;
         }
-        stream.addTrack(event.track);
         return event.track.kind;
     },
 
@@ -334,6 +336,10 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
+        watchAdapter.play().then(function (result) {
+            debugPlayResult = result.ok ? 'ok' : result.error;
+            debugEvent('play:' + debugPlayResult);
+        });
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');

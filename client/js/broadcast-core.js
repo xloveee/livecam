@@ -120,6 +120,8 @@ async function startPreview() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         preview.srcObject = localStream;
+        preview.playsInline = true;
+        preview.play().catch(function () {});
     } catch (e) {
         statusEl.textContent = 'Failed to access camera: ' + e.message;
         statusEl.classList.add('error');
@@ -218,6 +220,52 @@ async function fetchICEConfig() {
     }
 }
 
+/** Baseline (0x42) before Main (0x4D) before High (0x64) — WebKit mobile decode. */
+function h264ProfileRank(codec) {
+    var line = codec.sdpFmtpLine || '';
+    var m = /profile-level-id=([0-9a-fA-F]{6})/i.exec(line);
+    if (!m) return 50;
+    var p = parseInt(m[1].substring(0, 2), 16);
+    if (p === 0x42) return 0;
+    if (p === 0x4D) return 1;
+    if (p === 0x64) return 2;
+    return 25;
+}
+
+function sortH264ForCompat(codecs) {
+    return codecs.slice().sort(function (a, b) {
+        return h264ProfileRank(a) - h264ProfileRank(b);
+    });
+}
+
+/** VP8-only when available — desktop otherwise negotiates H.264 Main/High; iPhone viewers often cannot decode it. */
+function applyBroadcastVideoCodecPreferences(pc) {
+    try {
+        if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
+        var caps = RTCRtpSender.getCapabilities('video');
+        var h264 = sortH264ForCompat(caps.codecs.filter(function (c) {
+            return c.mimeType.toLowerCase() === 'video/h264';
+        }));
+        var vp8 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/vp8'; });
+        var rest = caps.codecs.filter(function (c) {
+            var m = c.mimeType.toLowerCase();
+            return m !== 'video/h264' && m !== 'video/vp8';
+        });
+        var transceivers = pc.getTransceivers();
+        for (var i = 0; i < transceivers.length; i++) {
+            var tr = transceivers[i];
+            if (tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
+                if (vp8.length) {
+                    tr.setCodecPreferences(vp8.concat(rest));
+                } else if (h264.length) {
+                    tr.setCodecPreferences(h264.concat(rest));
+                }
+                break;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
 btnStart.onclick = async function () {
     var streamKey = authenticatedKey;
     if (!streamKey) {
@@ -239,7 +287,9 @@ btnStart.onclick = async function () {
     var config = await fetchICEConfig();
 
     pc = new RTCPeerConnection({
-        iceServers: config.iceServers || []
+        iceServers: config.iceServers || [],
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
     });
 
     localStream.getTracks().forEach(function (track) {
@@ -256,6 +306,8 @@ btnStart.onclick = async function () {
             pc.addTrack(track, localStream);
         }
     });
+
+    applyBroadcastVideoCodecPreferences(pc);
 
     pc.oniceconnectionstatechange = function () {
         var state = pc.iceConnectionState;

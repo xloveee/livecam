@@ -366,6 +366,26 @@ button:disabled { background: #555; cursor: default; }
     margin-top: 0.8rem;
 }
 
+/* ── Decoder stall (WebRTC H.264 profile) ───────────────── */
+
+#decode-banner {
+    display: none;
+    width: 100%;
+    max-width: none;
+    padding: 0.65rem 0.85rem;
+    margin-top: 0.45rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #ffcdd2;
+    background: #3e2723;
+    border: 1px solid #c62828;
+    border-radius: 4px;
+    text-align: left;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+#decode-banner strong { color: #fff; }
+
 /* ── Connection Quality Banner ───────────────── */
 
 #degrade-banner {

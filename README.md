@@ -55,7 +55,52 @@ livecam/
 - **Rust** (1.83+ stable) — `rustup update stable`
 - **Go** (1.21+) — with CGo enabled (default)
 - **OBS Studio** (30+) — with WHIP output support
-- **Browser** — Chromium-based browsers only (Chrome, Edge, Brave, etc.). Firefox is not supported yet. Other browsers are TBD.
+- **Browser** — Any modern browser with WebRTC (see **Browser and device support** below).
+
+### Browser and device support
+
+The SFU negotiates **H.264** and **VP8** for video (plus **Opus** for audio). **Everyone in a room receives the same video codec the live publisher is sending** — viewers must be able to decode that codec. See **[Video codec policy](#video-codec-policy)** for how publisher vs viewer preferences are set and how to extend codecs later.
+
+| Client | Typical experience |
+|--------|-------------------|
+| **Chrome / Edge / Brave / Opera** (desktop & Android) | Primary targets; full WHIP/WHEP. |
+| **Firefox** (desktop & Android) | Supported; VP8 path is reliable if H.264 hardware decode is unavailable. |
+| **Safari** (macOS, iPadOS) | Supported; use **H.264 Baseline / Constrained Baseline** from OBS when using OBS. |
+| **Safari / WebKit** (iPhone) | Supported; **encoder profile** matters for **H.264** — see [iPhone / WebKit](#iphone--webkit-rtp-arrives-but-no-picture-framesdecoded0-video-0×0). |
+
+**TLS:** Production viewing and camera/mic access require **HTTPS** (see **TLS + nginx**). **iOS** often blocks mixed content and requires a **secure context** for `getUserMedia`.
+
+### Video codec policy
+
+WebRTC end-to-end rules recorded here so **desktop → mobile** and **mobile → mobile** stay compatible, and so new codecs can be added in a predictable way.
+
+#### What was wrong and what we changed (browser `/broadcast`)
+
+- **Symptom:** **Desktop → iPhone** failed (RTP arrived, **`framesDecoded=0`**, video **0×0**) while **phone → phone** and **phone → desktop** worked.
+- **Cause:** Desktop browsers often negotiated **H.264** **Main/High** for `getUserMedia` → WHIP. **iPhone Safari** frequently will not decode that profile in WebRTC, while **VP8** decodes reliably.
+- **Fix (saved in `client/js/broadcast-core.js`, loaded by `broadcast.html`):** After adding transceivers/tracks, call `RTCRtpSender.getCapabilities('video')` and **`setCodecPreferences`** with **VP8-only** when **VP8** is listed: **`video/VP8` codecs first, then all other codecs except `video/H264` and `video/VP8`** (keeps **RTX** / FEC-related entries aligned). **H.264 is omitted** from the preference list so the offer does not steer the encoder toward Main/High. **If VP8 is not advertised**, fall back to **H.264** entries sorted by **`profile-level-id`**: **Baseline (0x42)** before **Main (0x4D)** before **High (0x64)** (`sortH264ForCompat` / `h264ProfileRank`).
+- **OBS / hardware WHIP** does not use the broadcast page; iPhone viewers still need a **decodable H.264 profile** from OBS (see [iPhone / WebKit](#iphone--webkit-rtp-arrives-but-no-picture-framesdecoded0-video-0×0)).
+
+#### Policy table (current)
+
+| Role | File | Preference order | Purpose |
+|------|------|-------------------|---------|
+| **Publisher (browser)** | `client/js/broadcast-core.js` | **VP8 + rest (no H.264 in list)** if VP8 exists; else **H.264 sorted** + rest | Maximize **phone viewer** compatibility for browser-origin streams. |
+| **Publisher (OBS)** | *(not applicable)* | Encoder settings in OBS | Typically **H.264**; profile must be mobile-safe for iPhone. |
+| **Viewer** | `client/js/watch-core.js` | **H.264**, then **VP8**, then remainder | Match **OBS**-heavy rooms; still accept VP8 publishers. |
+| **SFU (WHIP/WHEP)** | `rust-core/src/api.rs` | `RtcConfig`: **H.264** + **VP8** + **Opus** enabled | Single media plane; **no transcoding** — forward RTP for the negotiated codec. |
+
+#### Adding support for more codecs later
+
+1. **Rust / str0m:** In `rust-core/src/api.rs`, on both WHIP and WHEP `RtcConfig` builders, call the matching **`enable_<codec>(true)`** (and keep **`clear_codecs()`** ordering consistent with project conventions). str0m’s `RtcConfig` API is the gate — only enabled codecs participate in SDP.
+2. **Publisher (`broadcast-core.js`):** Extend the `getCapabilities('video')` filters: add e.g. `video/VP9` or `video/AV1` to the ordered list with a **clear policy** (e.g. prefer a chain **AV1 → VP9 → VP8 → H.264** once all are enabled and tested).
+3. **Viewers (`watch-core.js`):** Mirror the same **mimeType** ordering for **`RTCRtpReceiver`** so WHEP offers list codecs the SFU can match to the publisher.
+4. **End-to-end:** The SFU **forwards** RTP; publisher and every subscriber must still **negotiate the same** video codec. **Simulcast / RID** behavior in `rust-core/src/sfu/` may need review if a new codec changes layering.
+5. **Safari / mobile:** Re-test **iPhone** after any change — hardware decode paths differ per codec.
+
+### Profiling note (H.264)
+
+When **H.264** must be used (OBS or VP8-unavailable browsers), **profile-level-id** in SDP `fmtp` matters for **WebKit**. The broadcast page’s **H.264** branch sorts by **RFC 6184** profile byte (**42** = Baseline family, **4D** = Main, **64** = High). **OBS** users should still set **Baseline / Constrained Baseline** and a **mobile-friendly level** (e.g. **3.0–3.1**) where the encoder allows it.
 
 ## Getting Started (Local Development)
 
@@ -106,7 +151,7 @@ Drag the **resize bar** between stream and chat to change the split (vertical ba
 4. Choose your camera, mic, and resolution from the dropdowns.
 5. Click **Start Broadcast**.
 
-Both options use the same WHIP endpoint and produce the same stream format. The stream key doubles as the room ID. Viewers at `/watch/{stream-key}` will receive the broadcast.
+Both options use the same WHIP endpoint. **Video codec** follows whatever the publisher negotiates (browser `/broadcast` is usually **VP8** when the browser supports it; **OBS** is usually **H.264**). The stream key doubles as the room ID. Viewers at `/watch/{stream-key}` will receive the broadcast.
 
 ## Production Deployment
 
@@ -185,6 +230,18 @@ broadcast.yourdomain.com {
 
 - **STUN** is sufficient when your server has a public IP and clients are on typical home/office NATs.
 - **TURN** (relay) is needed for clients behind symmetric NATs or restrictive firewalls. Self-host with [coturn](https://github.com/coturn/coturn) or use a managed service.
+
+### iPhone / WebKit: RTP arrives but no picture (`framesDecoded=0`, video `0×0`)
+
+If diagnostics show **`ice=connected`**, **`inbound-rtp` `bytesReceived` increasing**, **`track` `live`**, but **`framesDecoded=0`** and the `<video>` stays **`0×0` / `readyState=0`**, packets are reaching the phone but the **decoder is not outputting frames**. This is **not** explained by missing TURN alone. The watch page shows a **“Picture stuck?”** banner after a few seconds when it detects this pattern.
+
+**Typical cause:** **H.264** in a **profile/level** that **desktop Chrome** decodes but **iOS Safari WebRTC** does not (often **Main/High** vs **Baseline** on device decoders). This shows up most often with **OBS** WHIP defaults, or with **browser `/broadcast`** only when the browser **does not** offer **VP8** and falls back to **H.264** (see **[Video codec policy](#video-codec-policy)**).
+
+**What to change (OBS):** In the **encoder** (advanced / x264 or hardware encoder options), force **H.264 Baseline** or **Constrained Baseline** and a **mobile-friendly level** (e.g. **3.0–3.1**). Restart the stream after changing.
+
+**OBS (WHIP) in practice:** See the official [WHIP streaming guide](https://obsproject.com/kb/whip-streaming-guide). For **x264**, prefer **Profile: Baseline**, **Tune: zerolatency**, **Keyframe interval: 1 s**, and in **x264 Options** add **`bframes=0`**. For **NVENC / QSV / Apple VT**, open the encoder’s **advanced** settings and set the **H.264 profile** to **baseline** or **constrained baseline** if the UI offers it.
+
+**Cross-check:** Publish with **`/broadcast`** from a desktop or phone (VP8-only when available) and watch from the iPhone — if the picture appears, the pipeline is fine and the remaining issue is **H.264 profile** from **OBS** (or a browser that had to fall back to **H.264** only). See **[Video codec policy](#video-codec-policy)**.
 
 ## Real-time Chat
 

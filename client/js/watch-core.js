@@ -36,6 +36,10 @@ var webrtcFailCount = 0;
 var connectTimeout = null;
 var viewerState = 'init';
 
+var decodeBanner = document.getElementById('decode-banner');
+var decodeCheckInterval = null;
+var decodeStallTicks = 0;
+
 /* ── Media Adapter ─────────────────────────────────────── */
 
 var nativeHLS = !!video.canPlayType('application/vnd.apple.mpegurl');
@@ -65,7 +69,12 @@ var watchAdapter = {
     },
 
     createPC: function (iceServers) {
-        return new RTCPeerConnection({ iceServers: iceServers });
+        return new RTCPeerConnection({
+            iceServers: iceServers || [],
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require',
+            iceCandidatePoolSize: 10
+        });
     },
 
     setupTransceivers: function (pc) {
@@ -307,12 +316,74 @@ async function setQuality(rid) {
 
 qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); };
 
+/* ── WHEP receiver codec prefs (match OBS + VP8 publishers) ───────────────── */
+
+function applyViewerVideoCodecPreferences(pc) {
+    try {
+        if (typeof RTCRtpReceiver === 'undefined' || !RTCRtpReceiver.getCapabilities) return;
+        var caps = RTCRtpReceiver.getCapabilities('video');
+        var h264 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/h264'; });
+        var vp8 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/vp8'; });
+        var rest = caps.codecs.filter(function (c) {
+            var m = c.mimeType.toLowerCase();
+            return m !== 'video/h264' && m !== 'video/vp8';
+        });
+        var vtr = pc.getTransceivers()[0];
+        if (vtr) {
+            if (h264.length) {
+                vtr.setCodecPreferences(h264.concat(vp8).concat(rest));
+            } else if (vp8.length) {
+                vtr.setCodecPreferences(vp8.concat(rest));
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
+function clearDecodeCheck() {
+    if (decodeCheckInterval) { clearInterval(decodeCheckInterval); decodeCheckInterval = null; }
+    decodeStallTicks = 0;
+    if (decodeBanner) decodeBanner.style.display = 'none';
+}
+
+/** RTP arrives but WebKit does not decode (e.g. H.264 profile) — see README Video codec policy. */
+function startDecodeCheck() {
+    clearDecodeCheck();
+    if (!decodeBanner) return;
+    decodeCheckInterval = setInterval(function () {
+        if (!pc || viewerState !== 'live') {
+            clearDecodeCheck();
+            return;
+        }
+        pc.getStats(null).then(function (stats) {
+            var inbound = null;
+            stats.forEach(function (r) {
+                if (r.type !== 'inbound-rtp') return;
+                var isVid = r.kind === 'video' || r.mediaType === 'video';
+                if (!isVid && r.mimeType && String(r.mimeType).indexOf('video') === 0) isVid = true;
+                if (isVid) inbound = r;
+            });
+            if (!inbound) return;
+            var bytes = inbound.bytesReceived || 0;
+            var fd = inbound.framesDecoded;
+            var frames = fd === undefined ? 0 : fd;
+            if (bytes > 80000 && frames === 0) {
+                decodeStallTicks++;
+                if (decodeStallTicks >= 3) decodeBanner.style.display = 'block';
+            } else {
+                decodeStallTicks = 0;
+                if (frames > 0) decodeBanner.style.display = 'none';
+            }
+        }).catch(function () {});
+    }, 2000);
+}
+
 /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
 function teardownConnection() {
     debugEvent('teardown');
     debugPlayResult = '';
     clearPollTimer();
+    clearDecodeCheck();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
     stopStatsLoop();
     if (pc) {
@@ -339,11 +410,13 @@ function teardownConnection() {
 function onPeerStateChange() {
     if (!pc) return;
     var s = pc.iceConnectionState;
+    var conn = pc.connectionState;
     debugEvent('ice:' + s);
-    if (s === 'connected' || s === 'completed') {
+    if (s === 'connected' || s === 'completed' || conn === 'connected') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
+        startDecodeCheck();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -397,6 +470,7 @@ async function connectWHEP() {
     pc.onconnectionstatechange = onPeerStateChange;
 
     watchAdapter.setupTransceivers(pc);
+    applyViewerVideoCodecPreferences(pc);
 
     try {
         var offer = await pc.createOffer();

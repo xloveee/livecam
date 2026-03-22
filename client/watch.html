@@ -41,7 +41,12 @@
             </div>
 
             <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
-            <video id="player" playsinline controls></video>
+            <video id="player" playsinline webkit-playsinline controls></video>
+
+            <div id="decode-banner" role="status">
+                <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).
+                Use <strong>Baseline</strong> / <strong>Constrained Baseline</strong> in OBS, or publish from <strong>/broadcast</strong> (VP8 when available).
+            </div>
 
             <div id="degrade-banner">
                 <span class="degrade-icon">&#9888;</span>

@@ -73,7 +73,6 @@ var watchAdapter = {
     teardownVideo: function () {
         watchAdapter.stopHLS();
         video.srcObject = null;
-        video.removeAttribute('src');
     },
 
     startHLS: function (url) {

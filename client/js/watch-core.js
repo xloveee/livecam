@@ -53,14 +53,12 @@ var watchAdapter = {
     },
 
     onTrack: function (event) {
-        if (event.streams && event.streams[0]) {
-            video.srcObject = event.streams[0];
-        } else {
-            var stream = video.srcObject instanceof MediaStream
-                ? video.srcObject : new MediaStream();
-            stream.addTrack(event.track);
-            video.srcObject = stream;
+        var stream = video.srcObject;
+        if (!(stream instanceof MediaStream)) {
+            stream = new MediaStream();
         }
+        stream.addTrack(event.track);
+        video.srcObject = stream;
         return event.track.kind;
     },
 
@@ -336,10 +334,6 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
-        watchAdapter.play().then(function (result) {
-            debugPlayResult = result.ok ? 'ok' : result.error;
-            debugEvent('play:' + debugPlayResult);
-        });
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -368,6 +362,9 @@ async function connectWHEP() {
         watchAdapter.play().then(function (result) {
             debugPlayResult = result.ok ? 'ok' : result.error;
             debugEvent('play:' + debugPlayResult);
+            if (!result.ok) {
+                showUnmuteUI();
+            }
         });
         if (kind === 'audio' && video.muted) {
             showUnmuteUI();
@@ -476,6 +473,7 @@ function hideUnmuteUI() {
 
 function userUnmute() {
     video.muted = false;
+    video.play().catch(function () {});
     hideUnmuteUI();
 }
 

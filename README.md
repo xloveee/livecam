@@ -83,6 +83,8 @@ The Go proxy listens on `:8443` by default.
 
 Navigate to `http://localhost:8443/watch/my-room` to load the viewer page.
 
+**Playback:** The viewer uses the browser’s native `<video>` controls (no JS autoplay). Tap or click **play** on the video to start WebRTC or HLS — required on iOS and many mobile WebViews for a user gesture.
+
 Drag the **resize bar** between stream and chat to change the split (vertical bar on wide screens, horizontal bar when stacked on phone). **Left / up** gives more space to chat; **right / down** gives less. Sizes are stored in `localStorage` (`livecamWatchChatWidthPx`, `livecamWatchChatHeightPx`). Double-click the bar to reset to roughly half for the current layout.
 
 ### 4. Broadcast

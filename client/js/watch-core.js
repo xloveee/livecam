@@ -3,7 +3,10 @@
  * The Rust SFU enforces the codec whitelist (H.264 + VP8 + Opus) via
  * RtcConfig::clear_codecs(). The SFU drives quality adaptation via
  * MediaEgressStats. Room state is pushed over the chat WebSocket.
- * This file is the thin client that wires browser APIs to server signals.
+ *
+ * Playback: assign remote tracks to video.srcObject in onTrack (one MediaStream).
+ * Do not call video.play() from JS — the page uses native <video controls> so the
+ * user starts playback with an explicit gesture (required on iOS / many WebViews).
  */
 
 var video       = document.getElementById('player');
@@ -23,7 +26,6 @@ var sessionId = null;
 var roomPassword = '';
 var pc = null;
 var pollInterval = null;
-var unmuteOverlay = document.getElementById('unmute-overlay');
 var lastBytesReceived = 0;
 var stallCount = 0;
 var webrtcFailCount = 0;
@@ -67,7 +69,6 @@ var watchAdapter = {
     startHLS: function (url) {
         if (nativeHLS) {
             video.src = url;
-            video.play().catch(function () {});
             watchAdapter.hlsActive = true;
             return true;
         }
@@ -75,9 +76,6 @@ var watchAdapter = {
             watchAdapter.hlsPlayer = new Hls({ enableWorker: true, lowLatencyMode: true });
             watchAdapter.hlsPlayer.loadSource(url);
             watchAdapter.hlsPlayer.attachMedia(video);
-            watchAdapter.hlsPlayer.on(Hls.Events.MANIFEST_PARSED, function () {
-                video.play().catch(function () {});
-            });
             watchAdapter.hlsActive = true;
             return true;
         }
@@ -116,23 +114,8 @@ video.addEventListener('resize', function() {
 
 video.addEventListener('playing', function () {
     debugPlayResult = 'ok';
-    hideUnmuteUI();
+    debugEvent('play:ok');
 });
-
-function tryAutoplay() {
-    video.muted = true;
-    var p = video.play();
-    if (p && typeof p.then === 'function') {
-        p.then(function () {
-            debugPlayResult = 'ok';
-            debugEvent('play:ok');
-        }).catch(function () {
-            debugPlayResult = 'needs-gesture';
-            debugEvent('play:needs-gesture');
-        });
-    }
-    showUnmuteUI();
-}
 
 /* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
 function resetWatchStreamColumnToTop() {
@@ -328,7 +311,6 @@ function teardownConnection() {
     }
     watchAdapter.teardownVideo();
     video.style.aspectRatio = '';
-    hideUnmuteUI();
     sessionId = null;
     lastBytesReceived = 0;
     stallCount = 0;
@@ -343,7 +325,6 @@ function onPeerStateChange() {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
-        tryAutoplay();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -459,39 +440,6 @@ btnPasswordSubmit.onclick = function () {
 
 passwordInput.addEventListener('keydown', function (e) {
     if (e.key === 'Enter') btnPasswordSubmit.click();
-});
-
-/* ── Unmute UI ──────────────────────────────────────────── */
-
-function showUnmuteUI() {
-    if (unmuteOverlay) unmuteOverlay.style.display = 'flex';
-}
-
-function hideUnmuteUI() {
-    if (unmuteOverlay) unmuteOverlay.style.display = 'none';
-}
-
-function userUnmute() {
-    video.muted = false;
-    var p = video.play();
-    if (p && typeof p.then === 'function') {
-        p.then(function () {
-            debugPlayResult = 'ok';
-            debugEvent('play:ok');
-        }).catch(function () {
-            debugPlayResult = 'gesture-failed';
-            debugEvent('play:gesture-failed');
-        });
-    }
-    hideUnmuteUI();
-}
-
-if (unmuteOverlay) {
-    unmuteOverlay.addEventListener('click', userUnmute);
-}
-
-video.addEventListener('volumechange', function () {
-    if (!video.muted) hideUnmuteUI();
 });
 
 /* ── Room State Push (via chat WebSocket) ──────────────── */
@@ -770,7 +718,6 @@ function onHLSPlaying() {
         degradeText.textContent = 'Switched to stable playback (HLS). Latency is higher (~5s).';
         if (hlsBanner) hlsBanner.style.display = 'none';
     }
-    if (video.muted) showUnmuteUI();
 }
 
 function switchToWebRTC() {

@@ -40,11 +40,8 @@
                 </div>
             </div>
 
-            <video id="player" muted controls playsinline></video>
-            <button type="button" id="unmute-overlay" style="display:none" aria-label="Tap to play">
-                <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                Tap to play
-            </button>
+            <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
+            <video id="player" playsinline controls></video>
 
             <div id="degrade-banner">
                 <span class="degrade-icon">&#9888;</span>

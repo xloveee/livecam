@@ -173,6 +173,15 @@
             roomId = getRoomIdFromURL();
             if (roomId) roomIdFromURL = true;
             await pollActive();
+            /* If pollActive bailed early (e.g. room_info failed), we still go offline — fetch banner once so overlay image URL is set. */
+            if (viewerState === 'init' && roomIdFromURL && roomId) {
+                try {
+                    var br = await fetch('/api/room_info/' + roomId);
+                    if (br.ok) {
+                        applyOfflineBannerFromInfo(await br.json());
+                    }
+                } catch (e) { /* ignore */ }
+            }
             if (viewerState === 'init') setState('offline');
         })();
     </script>

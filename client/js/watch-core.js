@@ -235,13 +235,13 @@ function setState(next) {
 }
 
 function applyOfflineBannerFromInfo(info) {
-    if (info && typeof info.offline_banner === 'string') {
-        offlineBannerCustom = info.offline_banner;
+    if (!info) return;
+    /* room_info uses omitempty — when a field is absent, do not clear cached values (would remove image on every poll). */
+    if (Object.prototype.hasOwnProperty.call(info, 'offline_banner')) {
+        offlineBannerCustom = typeof info.offline_banner === 'string' ? info.offline_banner : '';
     }
-    if (info && typeof info.offline_banner_image === 'string') {
-        offlineBannerImageUrl = info.offline_banner_image;
-    } else {
-        offlineBannerImageUrl = '';
+    if (Object.prototype.hasOwnProperty.call(info, 'offline_banner_image')) {
+        offlineBannerImageUrl = typeof info.offline_banner_image === 'string' ? info.offline_banner_image : '';
     }
 }
 

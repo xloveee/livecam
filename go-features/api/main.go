@@ -86,9 +86,7 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
-	// Upload: explicit POST routes (reliable on Go 1.22+ mux) + prefix fallbacks for odd proxies.
-	mux.HandleFunc("POST /api/offline_banner_upload/{streamKey}", offlineBannerUploadHandler)
-	mux.HandleFunc("POST /offline_banner_upload/{streamKey}", offlineBannerUploadHandler)
+	// Upload: prefix routes only (work on any Go version). Avoid "POST /path/{var}" patterns — they require Go 1.22+ mux and can shadow the prefix or 404 if matching fails.
 	mux.HandleFunc("/api/offline_banner_upload/", offlineBannerUploadHandler)
 	mux.HandleFunc("/offline_banner_upload/", offlineBannerUploadHandler)
 	mux.HandleFunc("/offline_banner_media/", offlineBannerMediaHandler)
@@ -362,6 +360,20 @@ func watchHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {
+	// Fallback when ServeMux does not match these prefixes (some deployments / mux edge cases).
+	// Without this, requests fall through to "/" and return 404 for any path other than "/".
+	if strings.HasPrefix(r.URL.Path, "/api/offline_banner_upload/") {
+		offlineBannerUploadHandler(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/offline_banner_upload/") {
+		offlineBannerUploadHandler(w, r)
+		return
+	}
+	if strings.HasPrefix(r.URL.Path, "/offline_banner_media/") {
+		offlineBannerMediaHandler(w, r)
+		return
+	}
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
@@ -625,15 +637,11 @@ func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	roomID := r.PathValue("streamKey")
-	if roomID == "" {
-		var okPath bool
-		roomID, okPath = offlineBannerUploadRoomFromPath(r.URL.Path)
-		if !okPath {
-			log.Printf("[offline_banner_upload] 404 path=%q method=%s", r.URL.Path, r.Method)
-			http.NotFound(w, r)
-			return
-		}
+	roomID, okPath := offlineBannerUploadRoomFromPath(r.URL.Path)
+	if !okPath {
+		log.Printf("[offline_banner_upload] 404 path=%q method=%s", r.URL.Path, r.Method)
+		http.NotFound(w, r)
+		return
 	}
 	if roomID != streamKey {
 		http.Error(w, "Forbidden", http.StatusForbidden)
@@ -758,8 +766,8 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		HasPassword   bool   `json:"has_password"`
 		IsLive        bool   `json:"is_live"`
 		OfflineBanner string `json:"offline_banner"`
-		// Optional image: https URL or same-origin path /offline_banner_media/{roomId} for uploads.
-		OfflineBannerImage string `json:"offline_banner_image,omitempty"`
+		// Always include (no omitempty) so clients can clear when broadcaster removes image/text.
+		OfflineBannerImage string `json:"offline_banner_image"`
 	}{
 		ViewerCount:        info.ViewerCount,
 		MaxViewers:         info.MaxViewers,

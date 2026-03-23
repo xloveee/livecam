@@ -120,6 +120,9 @@ function fetchDonateMethods() {
                     if (col.scrollTop > thresh) {
                         col.scrollTop = 0;
                     }
+                    if (typeof window.livecamSyncMobileChatFromPlayer === 'function') {
+                        window.livecamSyncMobileChatFromPlayer();
+                    }
                 });
             });
         })

@@ -153,6 +153,11 @@ function syncVideoAspectAndStreamLayout() {
             });
         }
     }
+    requestAnimationFrame(function () {
+        if (typeof window.livecamSyncMobileChatFromPlayer === 'function') {
+            window.livecamSyncMobileChatFromPlayer();
+        }
+    });
 }
 
 video.addEventListener('resize', syncVideoAspectAndStreamLayout);

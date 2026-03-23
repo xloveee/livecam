@@ -59,8 +59,20 @@ function shouldPreferHlsViewer() {
     return nativeHLS && isIosLikeDevice();
 }
 
+/** Desktop/mobile Firefox (not Chrome). Used for WebRTC interop workarounds. */
+function isFirefoxBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+    var ua = navigator.userAgent || '';
+    if (/Firefox\//.test(ua) || /FxiOS\//.test(ua)) {
+        return true;
+    }
+    return false;
+}
+
 var watchAdapter = {
-    name: nativeHLS ? 'native-hls' : 'chromium',
+    name: nativeHLS ? 'native-hls' : (isFirefoxBrowser() ? 'firefox' : 'chromium'),
     hlsPlayer: null,
     hlsActive: false,
 
@@ -69,12 +81,21 @@ var watchAdapter = {
     },
 
     createPC: function (iceServers) {
-        return new RTCPeerConnection({
+        var base = {
             iceServers: iceServers || [],
             bundlePolicy: 'max-bundle',
-            rtcpMuxPolicy: 'require',
-            iceCandidatePoolSize: 10
-        });
+            rtcpMuxPolicy: 'require'
+        };
+        /* Pool size can throw or behave oddly on some Firefox builds; fall back without it. */
+        try {
+            return new RTCPeerConnection(Object.assign({}, base, { iceCandidatePoolSize: 10 }));
+        } catch (e) {
+            try {
+                return new RTCPeerConnection(base);
+            } catch (e2) {
+                throw e2;
+            }
+        }
     },
 
     setupTransceivers: function (pc) {
@@ -346,7 +367,25 @@ qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); 
 
 /* ── WHEP receiver codec prefs (match OBS + VP8 publishers) ───────────────── */
 
+function getRecvonlyVideoTransceiver(pc) {
+    var trs = pc.getTransceivers();
+    var i;
+    for (i = 0; i < trs.length; i++) {
+        var tr = trs[i];
+        if (tr && tr.receiver && tr.receiver.track && tr.receiver.track.kind === 'video') {
+            return tr;
+        }
+    }
+    /* Before remote tracks arrive, recvonly order matches addTransceiver order (video first). */
+    return trs.length ? trs[0] : null;
+}
+
 function applyViewerVideoCodecPreferences(pc) {
+    /* Firefox: setCodecPreferences often breaks WHEP offer/answer pairing with SFUs; use default codec order. */
+    if (isFirefoxBrowser()) {
+        debugEvent('codec-prefs:skipped-firefox');
+        return;
+    }
     try {
         if (typeof RTCRtpReceiver === 'undefined' || !RTCRtpReceiver.getCapabilities) return;
         var caps = RTCRtpReceiver.getCapabilities('video');
@@ -356,7 +395,7 @@ function applyViewerVideoCodecPreferences(pc) {
             var m = c.mimeType.toLowerCase();
             return m !== 'video/h264' && m !== 'video/vp8';
         });
-        var vtr = pc.getTransceivers()[0];
+        var vtr = getRecvonlyVideoTransceiver(pc);
         if (vtr) {
             if (h264.length) {
                 vtr.setCodecPreferences(h264.concat(vp8).concat(rest));
@@ -364,7 +403,9 @@ function applyViewerVideoCodecPreferences(pc) {
                 vtr.setCodecPreferences(vp8.concat(rest));
             }
         }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+        debugEvent('codec-prefs:error');
+    }
 }
 
 function clearDecodeCheck() {

@@ -290,6 +290,61 @@ if (offlineBannerImage) {
     offlineBannerImage.oninput = scheduleOfflineBannerSave;
 }
 
+var offlineBannerUpload = document.getElementById('offline-banner-upload');
+var maxOfflineBannerUploadBytes = 2 * 1024 * 1024;
+if (offlineBannerUpload) {
+    offlineBannerUpload.addEventListener('change', function () {
+        var f = offlineBannerUpload.files && offlineBannerUpload.files[0];
+        if (!f) {
+            offlineBannerUpload.value = '';
+            return;
+        }
+        if (!authenticatedKey) {
+            offlineBannerUpload.value = '';
+            return;
+        }
+        if (f.size > maxOfflineBannerUploadBytes) {
+            setOfflineBannerStatus('Image too large (max 2 MB)', true);
+            offlineBannerUpload.value = '';
+            return;
+        }
+        var fd = new FormData();
+        fd.append('file', f);
+        var upUrl = '/api/offline_banner_upload/' + encodeURIComponent(authenticatedKey);
+        fetch(upUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) {
+                if (r.ok) {
+                    return r.json();
+                }
+                if (r.status === 503) {
+                    setOfflineBannerStatus('Uploads disabled on server', true);
+                } else if (r.status === 401) {
+                    setOfflineBannerStatus('Not authenticated — refresh the page', true);
+                } else if (r.status === 400) {
+                    setOfflineBannerStatus('Not an image or file too large', true);
+                } else {
+                    setOfflineBannerStatus('Upload failed (' + r.status + ')', true);
+                }
+                return null;
+            })
+            .then(function (data) {
+                if (data && data.image_url && offlineBannerImage) {
+                    offlineBannerImage.value = data.image_url;
+                }
+                if (data && data.status === 'ok') {
+                    setOfflineBannerStatus('Image uploaded (replaces previous)', false);
+                    setTimeout(function () { setOfflineBannerStatus('', false); }, 3000);
+                }
+            })
+            .catch(function () {
+                setOfflineBannerStatus('Upload failed (network)', true);
+            })
+            .then(function () {
+                offlineBannerUpload.value = '';
+            });
+    });
+}
+
 /* ── ICE & WebRTC Publish ────────────────────────────────── */
 
 async function fetchICEConfig() {

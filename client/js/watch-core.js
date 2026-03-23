@@ -258,6 +258,9 @@ function showOfflineOverlay() {
         if (/^https?:\/\//i.test(u)) {
             offlineOverlayImg.src = u;
             offlineOverlayImg.style.display = 'block';
+        } else if (u.indexOf('/') === 0) {
+            offlineOverlayImg.src = location.origin + u;
+            offlineOverlayImg.style.display = 'block';
         } else {
             offlineOverlayImg.removeAttribute('src');
             offlineOverlayImg.style.display = 'none';

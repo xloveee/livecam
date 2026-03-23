@@ -121,7 +121,9 @@
                                 <textarea id="offline-banner-text" rows="3" maxlength="512" placeholder="Optional message for viewers on /watch — e.g. schedule or “Back soon”" autocomplete="off"></textarea>
                                 <label for="offline-banner-image" style="margin-top:0.5rem;">Banner image URL (optional)</label>
                                 <input type="url" id="offline-banner-image" maxlength="2048" placeholder="https://example.com/banner.png" autocomplete="off" spellcheck="false">
-                                <div class="field-hint">Shown over the video area when offline (same persistence as panels). Paste HTTPS image URL; leave empty for text only.</div>
+                                <label for="offline-banner-upload" style="margin-top:0.5rem;">Or upload image (max 2 MB)</label>
+                                <input type="file" id="offline-banner-upload" accept="image/png,image/jpeg,image/gif,image/webp">
+                                <div class="field-hint">Upload overwrites the previous image for this room. Shown on /watch over the video when offline. You can paste a URL instead, or leave both empty for text only.</div>
                                 <div id="offline-banner-status" class="field-hint" style="min-height:1.1rem;"></div>
                             </div>
                         </div>

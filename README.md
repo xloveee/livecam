@@ -21,7 +21,7 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
-| **Offline banner (broadcaster)** | Same SQLite path as panels: `GET/POST https://yourdomain.com/api/donations/setup` with `provider: "offline_banner"` and `config_data` JSON `{"text":"…","image_url":"https://…"}`. Shown on `/watch` when not live (overlay on `#player`). Public `GET /api/room_info/{roomId}` includes `offline_banner` (text) and optional `offline_banner_image` (https URL). Legacy `GET/POST …/api/donations/offline_banner` still accepts plain text. |
+| **Offline banner (broadcaster)** | Text + optional image: `POST /api/donations/setup` with `provider: "offline_banner"` and JSON `config_data` `{"text":"…","image_url":"https://…"}` or `image_url` `/offline_banner_media/{roomId}` after upload. **Upload (overwrites previous file per room):** `POST /api/offline_banner_upload/{streamKey}` multipart field `file` (PNG/JPEG/GIF/WebP, max 2 MB). Served at `GET /offline_banner_media/{roomId}`. Public `GET /api/room_info/{roomId}` includes `offline_banner` and `offline_banner_image`. |
 | **Chat (WebSocket)** | `wss://yourdomain.com/api/chat/{roomId}?nick=Name` |
 
 ## Architecture Highlights
@@ -181,6 +181,7 @@ Both options use the same WHIP endpoint. **Video codec** follows whatever the pu
 | `TURN_CREDENTIAL` | *(none)* | TURN credential password |
 | `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |
 | `BROADCAST_PASSWORD` | *(none — open mode)* | Page-level password required to access `/broadcast` |
+| `OFFLINE_BANNER_UPLOAD_DIR` | `{CLIENT_DIR}/../data/offline_banners` | Writable directory for uploaded offline banner images (one file per room; each upload replaces the previous). |
 
 ### TLS + nginx (Required for production WebRTC)
 
@@ -210,6 +211,7 @@ server {
 
     # Everything else (HTTP API, static files, WHIP/WHEP)
     location / {
+        client_max_body_size 3m;  # offline banner uploads (max 2 MB)
         proxy_pass http://127.0.0.1:8443;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

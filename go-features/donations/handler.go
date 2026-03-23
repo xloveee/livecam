@@ -123,6 +123,10 @@ func (h *Handler) handleSetupPost(w http.ResponseWriter, r *http.Request, stream
 		return
 	}
 
+	if req.Provider == "offline_banner" {
+		h.db.SyncOfflineBannerUploadFile(streamKey, req.ConfigData)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

@@ -1,15 +1,23 @@
 package donations
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 )
+
+// OfflineBannerUploadDir is the directory for uploaded offline banner binaries (set from main).
+// When empty, uploads are disabled and Sync does not remove files.
+var OfflineBannerUploadDir string
 
 type DB struct {
 	mu sync.Mutex
@@ -232,7 +240,16 @@ func (d *DB) GetOfflineBannerText(streamKey string) string {
 	return raw
 }
 
-// GetOfflineBannerImageURL returns an optional banner image URL (https only), or empty.
+// OfflineBannerUploadPath returns the on-disk path for this stream's uploaded banner, or "" if uploads disabled.
+func OfflineBannerUploadPath(streamKey string) string {
+	if OfflineBannerUploadDir == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(streamKey))
+	return filepath.Join(OfflineBannerUploadDir, fmt.Sprintf("%x", sum[:])+".bin")
+}
+
+// GetOfflineBannerImageURL returns an optional image URL: https, http, or same-origin path /offline_banner_media/…
 func (d *DB) GetOfflineBannerImageURL(streamKey string) string {
 	raw := d.getOfflineBannerRaw(streamKey)
 	trimmed := strings.TrimSpace(raw)
@@ -246,10 +263,40 @@ func (d *DB) GetOfflineBannerImageURL(streamKey string) string {
 		return ""
 	}
 	u := strings.TrimSpace(cfg.ImageURL)
+	if strings.HasPrefix(u, "/offline_banner_media/") {
+		return u
+	}
 	if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
 		return u
 	}
 	return ""
+}
+
+// SyncOfflineBannerUploadFile removes the on-disk upload when config no longer references it (or uses an external URL).
+func (d *DB) SyncOfflineBannerUploadFile(streamKey string, configData string) {
+	path := OfflineBannerUploadPath(streamKey)
+	if path == "" {
+		return
+	}
+	trimmed := strings.TrimSpace(configData)
+	if !strings.HasPrefix(trimmed, "{") {
+		return
+	}
+	var cfg struct {
+		ImageURL string `json:"image_url"`
+	}
+	if err := json.Unmarshal([]byte(configData), &cfg); err != nil {
+		return
+	}
+	u := strings.TrimSpace(cfg.ImageURL)
+	if u == "" {
+		_ = os.Remove(path)
+		return
+	}
+	if strings.HasPrefix(u, "http://") || strings.HasPrefix(u, "https://") {
+		_ = os.Remove(path)
+		return
+	}
 }
 
 // GetOfflineBanner is an alias for GetOfflineBannerText (room_info JSON field offline_banner).

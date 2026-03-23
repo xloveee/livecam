@@ -13,7 +13,9 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 	"unsafe"
@@ -84,6 +86,8 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
+	mux.HandleFunc("/api/offline_banner_upload/", offlineBannerUploadHandler)
+	mux.HandleFunc("/offline_banner_media/", offlineBannerMediaHandler)
 	mux.HandleFunc("/api/auth/broadcast", authBroadcastHandler)
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
@@ -186,6 +190,18 @@ func initConfig() {
 	log.Printf("Client dir: %s", clientDir)
 	log.Printf("Rust Core URL: %s", rustCoreURL)
 	log.Printf("ICE servers configured: %d entries", len(iceServers))
+
+	uploadDir := os.Getenv("OFFLINE_BANNER_UPLOAD_DIR")
+	if uploadDir == "" {
+		uploadDir = filepath.Join(clientDir, "..", "data", "offline_banners")
+	}
+	if err := os.MkdirAll(uploadDir, 0750); err != nil {
+		log.Printf("WARNING: offline banner upload dir not usable (%s): %v — uploads disabled", uploadDir, err)
+		donations.OfflineBannerUploadDir = ""
+	} else {
+		donations.OfflineBannerUploadDir = uploadDir
+		log.Printf("Offline banner uploads: %s", uploadDir)
+	}
 }
 
 func isSecureRequest(r *http.Request) bool {
@@ -573,6 +589,116 @@ func fetchRoomInfo(roomID string) roomInfoResult {
 	return info
 }
 
+const maxOfflineBannerUploadBytes = 2 << 20
+
+func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if sharedDonoDB == nil || donations.OfflineBannerUploadDir == "" {
+		http.Error(w, "Offline banner uploads disabled", http.StatusServiceUnavailable)
+		return
+	}
+	streamKey, ok := requireBroadcasterAuth(w, r)
+	if !ok {
+		return
+	}
+	rawUp := strings.TrimPrefix(r.URL.Path, "/api/offline_banner_upload/")
+	rawUp = strings.TrimSuffix(rawUp, "/")
+	roomID, err := url.PathUnescape(rawUp)
+	if err != nil || roomID == "" || roomID != streamKey {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	if err := r.ParseMultipartForm(maxOfflineBannerUploadBytes); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(io.LimitReader(file, maxOfflineBannerUploadBytes+1))
+	if err != nil || len(data) > maxOfflineBannerUploadBytes {
+		http.Error(w, "File too large", http.StatusBadRequest)
+		return
+	}
+	ct := http.DetectContentType(data)
+	if !strings.HasPrefix(ct, "image/png") && !strings.HasPrefix(ct, "image/jpeg") && !strings.HasPrefix(ct, "image/gif") && !strings.HasPrefix(ct, "image/webp") {
+		http.Error(w, "Not an allowed image type", http.StatusBadRequest)
+		return
+	}
+	path := donations.OfflineBannerUploadPath(streamKey)
+	if err := os.WriteFile(path, data, 0644); err != nil {
+		log.Printf("offline banner upload write: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	text := sharedDonoDB.GetOfflineBannerText(streamKey)
+	rel := "/offline_banner_media/" + url.PathEscape(roomID)
+	cfg := map[string]string{"text": text, "image_url": rel}
+	raw, err := json.Marshal(cfg)
+	if err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := sharedDonoDB.SaveConfig(streamKey, "offline_banner", string(raw), true); err != nil {
+		log.Printf("offline banner upload db: %v", err)
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok", "image_url": rel})
+}
+
+func offlineBannerMediaHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	if donations.OfflineBannerUploadDir == "" {
+		http.NotFound(w, r)
+		return
+	}
+	raw := strings.TrimPrefix(r.URL.Path, "/offline_banner_media/")
+	raw = strings.TrimSuffix(raw, "/")
+	roomID, err := url.PathUnescape(raw)
+	if err != nil || roomID == "" {
+		http.NotFound(w, r)
+		return
+	}
+	path := donations.OfflineBannerUploadPath(roomID)
+	if path == "" {
+		http.NotFound(w, r)
+		return
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, _ := f.Read(buf)
+	ct := http.DetectContentType(buf[:n])
+	w.Header().Set("Content-Type", ct)
+	w.Header().Set("Cache-Control", "public, max-age=60")
+	if _, err := f.Seek(0, 0); err != nil {
+		http.Error(w, "Internal error", http.StatusInternalServerError)
+		return
+	}
+	if _, err := io.Copy(w, f); err != nil {
+		return
+	}
+}
+
 func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -588,6 +714,13 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	offlineBannerImg := ""
 	if sharedDonoDB != nil {
 		offlineBanner = sharedDonoDB.GetOfflineBannerText(roomID)
+	}
+	if p := donations.OfflineBannerUploadPath(roomID); p != "" {
+		if _, err := os.Stat(p); err == nil {
+			offlineBannerImg = "/offline_banner_media/" + url.PathEscape(roomID)
+		}
+	}
+	if offlineBannerImg == "" && sharedDonoDB != nil {
 		offlineBannerImg = sharedDonoDB.GetOfflineBannerImageURL(roomID)
 	}
 
@@ -597,7 +730,7 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		HasPassword   bool   `json:"has_password"`
 		IsLive        bool   `json:"is_live"`
 		OfflineBanner string `json:"offline_banner"`
-		// Optional image URL (https) shown on the offline overlay on /watch.
+		// Optional image: https URL or same-origin path /offline_banner_media/{roomId} for uploads.
 		OfflineBannerImage string `json:"offline_banner_image,omitempty"`
 	}{
 		ViewerCount:        info.ViewerCount,

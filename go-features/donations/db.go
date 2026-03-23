@@ -304,6 +304,23 @@ func (d *DB) GetOfflineBanner(streamKey string) string {
 	return d.GetOfflineBannerText(streamKey)
 }
 
+// GetDefaultOfflineBannerStreamKey returns the stream_key of the single offline_banner row,
+// or "" when no banner has been configured. For single-streamer deployments this lets
+// /api/room_info/ (no room ID) resolve the correct banner.
+func (d *DB) GetDefaultOfflineBannerStreamKey() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var key string
+	err := d.db.QueryRow(
+		`SELECT stream_key FROM streamer_config WHERE provider = 'offline_banner' LIMIT 1`,
+	).Scan(&key)
+	if err != nil {
+		return ""
+	}
+	return key
+}
+
 func (d *DB) GetHistory(streamKey string, limit int) ([]DonationRecord, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

@@ -744,6 +744,12 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Path[len("/api/room_info/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
 
+	// Single-streamer shortcut: GET /api/room_info/ (no room ID) resolves
+	// the offline banner from the only configured streamer.
+	if roomID == "" && sharedDonoDB != nil {
+		roomID = sharedDonoDB.GetDefaultOfflineBannerStreamKey()
+	}
+
 	info := fetchRoomInfo(roomID)
 
 	offlineBanner := ""

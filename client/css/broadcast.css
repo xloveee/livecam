@@ -15,6 +15,14 @@ body {
     min-height: 100vh;
     min-height: 100dvh;
 }
+/* Wraps preview + chat so the sponsor footer is not a third flex column on desktop. */
+.broadcast-layout {
+    display: flex;
+    flex-direction: column;
+    flex: 1 1 0;
+    min-height: 0;
+    min-width: 0;
+}
 .main-content {
     flex: 1 1 0;
     min-height: 0;
@@ -570,7 +578,7 @@ textarea:focus {
 
 /* ── Desktop: side-by-side ───────────────────────── */
 @media (min-width: 901px) {
-    body { flex-direction: row; }
+    .broadcast-layout { flex-direction: row; }
     h1 {
         display: block;
         font-size: 1.2rem;

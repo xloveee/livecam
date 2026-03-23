@@ -236,18 +236,30 @@ function setState(next) {
 
 function applyOfflineBannerFromInfo(info) {
     if (!info) return;
-    /* room_info uses omitempty — when a field is absent, do not clear cached values (would remove image on every poll). */
-    if (Object.prototype.hasOwnProperty.call(info, 'offline_banner')) {
-        offlineBannerCustom = typeof info.offline_banner === 'string' ? info.offline_banner : '';
+    if (typeof info.offline_banner === 'string') {
+        offlineBannerCustom = info.offline_banner;
     }
-    if (Object.prototype.hasOwnProperty.call(info, 'offline_banner_image')) {
-        offlineBannerImageUrl = typeof info.offline_banner_image === 'string' ? info.offline_banner_image : '';
+    if (typeof info.offline_banner_image === 'string') {
+        offlineBannerImageUrl = info.offline_banner_image;
     }
 }
 
 function offlineBannerDisplayLine() {
     var t = (offlineBannerCustom || '').trim();
-    return t.length ? t : 'No broadcast right now';
+    if (t.length) return t;
+    if ((offlineBannerImageUrl || '').trim().length) return '';
+    return 'No broadcast right now';
+}
+
+function livecamApiRoot() {
+    var m = document.querySelector('meta[name="livecam-api-root"]');
+    if (!m) return '';
+    return (m.getAttribute('content') || '').trim().replace(/\/$/, '');
+}
+
+function roomInfoFetchUrl(id) {
+    if (!id) return '';
+    return livecamApiRoot() + '/api/room_info/' + encodeURIComponent(id);
 }
 
 function showOfflineOverlay() {
@@ -345,7 +357,7 @@ function managePoll() {
 async function pollActive() {
     try {
         if (roomIdFromURL && roomId) {
-            var infoResp = await fetch('/api/room_info/' + roomId);
+            var infoResp = await fetch(roomInfoFetchUrl(roomId), { cache: 'no-store' });
             if (!infoResp.ok) return;
             var info = await infoResp.json();
             applyOfflineBannerFromInfo(info);
@@ -386,8 +398,13 @@ async function pollActive() {
 
 function getRoomIdFromURL() {
     var parts = window.location.pathname.split('/').filter(Boolean);
-    if (parts.length >= 2 && parts[0] === 'watch') {
-        return parts[1];
+    var i = parts.indexOf('watch');
+    if (i >= 0 && i + 1 < parts.length) {
+        try {
+            return decodeURIComponent(parts[i + 1]);
+        } catch (e) {
+            return parts[i + 1];
+        }
     }
     return null;
 }
@@ -686,7 +703,7 @@ window.onRoomState = function (state) {
     if (state.is_live === false) {
         teardownConnection();
         if (roomId) {
-            fetch('/api/room_info/' + roomId)
+            fetch(roomInfoFetchUrl(roomId), { cache: 'no-store' })
                 .then(function (r) { return r.ok ? r.json() : null; })
                 .then(function (info) {
                     if (info) applyOfflineBannerFromInfo(info);

@@ -235,13 +235,10 @@ function setState(next) {
 }
 
 function applyOfflineBannerFromInfo(info) {
-    if (!info) return;
-    if (typeof info.offline_banner === 'string') {
-        offlineBannerCustom = info.offline_banner;
-    }
-    if (typeof info.offline_banner_image === 'string') {
-        offlineBannerImageUrl = info.offline_banner_image;
-    }
+    if (!info || typeof info !== 'object') return;
+    /* Replace from each room_info response so empty strings clear; ignore non-strings (e.g. null). */
+    offlineBannerCustom = typeof info.offline_banner === 'string' ? info.offline_banner : '';
+    offlineBannerImageUrl = typeof info.offline_banner_image === 'string' ? info.offline_banner_image : '';
 }
 
 function offlineBannerDisplayLine() {
@@ -262,16 +259,28 @@ function roomInfoFetchUrl(id) {
     return livecamApiRoot() + '/api/room_info/' + encodeURIComponent(id);
 }
 
+/** Same-origin paths from room_info must include livecam-api-root when the app is under a path prefix. */
+function resolveOfflineBannerImageSrc(u) {
+    u = (u || '').trim();
+    if (!u) return '';
+    if (/^https?:\/\//i.test(u)) return u;
+    if (u.indexOf('//') === 0) {
+        return (location.protocol || 'https:') + u;
+    }
+    if (u.charAt(0) === '/') {
+        return location.origin + livecamApiRoot() + u;
+    }
+    return u;
+}
+
 function showOfflineOverlay() {
     var line = offlineBannerDisplayLine();
     if (offlineOverlayText) offlineOverlayText.textContent = line;
     if (offlineOverlayImg) {
         var u = (offlineBannerImageUrl || '').trim();
-        if (/^https?:\/\//i.test(u)) {
-            offlineOverlayImg.src = u;
-            offlineOverlayImg.style.display = 'block';
-        } else if (u.indexOf('/') === 0) {
-            offlineOverlayImg.src = location.origin + u;
+        var src = resolveOfflineBannerImageSrc(u);
+        if (src) {
+            offlineOverlayImg.src = src;
             offlineOverlayImg.style.display = 'block';
         } else {
             offlineOverlayImg.removeAttribute('src');

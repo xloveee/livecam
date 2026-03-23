@@ -151,6 +151,15 @@ h1 { display: none; }
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex: 1 1 8rem;
+    min-width: 0;
+}
+/* Long error lines (e.g. ICE / TURN) — avoid "…" mid-sentence; hover still has full title */
+#status.error {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.35;
 }
 .error { color: #ef5350; }
 .connected { color: #4caf50; }

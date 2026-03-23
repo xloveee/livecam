@@ -4,6 +4,12 @@ var preview = document.getElementById('preview');
 var btnStart = document.getElementById('btn-start');
 var btnStop = document.getElementById('btn-stop');
 var statusEl = document.getElementById('status');
+
+function clearStatusTitle() {
+    if (statusEl) {
+        statusEl.removeAttribute('title');
+    }
+}
 var statsEl = document.getElementById('stats');
 var liveBadge = document.getElementById('live-badge');
 var streamKeyInput = document.getElementById('stream-key');
@@ -316,6 +322,7 @@ btnStart.onclick = async function () {
         return;
     }
 
+    clearStatusTitle();
     statusEl.textContent = 'Connecting...';
     statusEl.classList.remove('error', 'connected');
     btnStart.style.display = 'none';
@@ -360,6 +367,7 @@ btnStart.onclick = async function () {
             clearIceDisconnectTimer();
             if (!broadcastLiveStarted) {
                 broadcastLiveStarted = true;
+                clearStatusTitle();
                 statusEl.textContent = 'Live';
                 statusEl.classList.add('connected');
                 statusEl.classList.remove('error');
@@ -376,10 +384,14 @@ btnStart.onclick = async function () {
             clearIceDisconnectTimer();
             var iceFailed = (ice === 'failed' || conn === 'failed');
             stopBroadcast();
-            /* Firefox often logs "ICE failed, add a TURN server" — STUN-only is not enough on some networks. */
-            statusEl.textContent = iceFailed
-                ? 'Disconnected — ICE failed. This network likely needs TURN (relay). Set TURN_URL + TURN_USERNAME + TURN_CREDENTIAL on the Go proxy and open UDP/TCP to coturn.'
-                : 'Disconnected';
+            /* Firefox logs "ICE failed, add a TURN server" — STUN does not relay media. Full hint in title (CSS may ellipsize #status). */
+            if (iceFailed) {
+                statusEl.textContent = 'ICE failed — add TURN on the server (coturn + TURN_* env).';
+                statusEl.title = 'This network needs a TURN relay. Set TURN_URL, TURN_USERNAME, TURN_CREDENTIAL on the Go proxy and restart. Open firewall for coturn (e.g. 3478 UDP/TCP). See README — STUN/TURN.';
+            } else {
+                clearStatusTitle();
+                statusEl.textContent = 'Disconnected';
+            }
             statusEl.classList.add('error');
             return;
         }
@@ -399,6 +411,7 @@ btnStart.onclick = async function () {
                     return;
                 }
                 stopBroadcast();
+                clearStatusTitle();
                 statusEl.textContent = 'Disconnected';
                 statusEl.classList.add('error');
             }, 5000);
@@ -429,6 +442,7 @@ btnStart.onclick = async function () {
     } catch (err) {
         broadcastLiveStarted = false;
         clearIceDisconnectTimer();
+        clearStatusTitle();
         statusEl.textContent = 'Failed: ' + err.message;
         statusEl.classList.add('error');
         btnStart.style.display = '';
@@ -440,6 +454,7 @@ btnStart.onclick = async function () {
 
 btnStop.onclick = function () {
     stopBroadcast();
+    clearStatusTitle();
     statusEl.textContent = 'Stopped';
     statusEl.classList.remove('connected', 'error');
 };

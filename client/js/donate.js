@@ -105,7 +105,7 @@ function fetchDonateMethods() {
                     scrollHint.style.display = 'flex';
                 }
             }
-            /* After banners mount, correct bad initial scroll-snap (phone) without clobbering user scroll */
+            /* After banners mount, correct bad initial scroll position on narrow viewports without clobbering user scroll */
             requestAnimationFrame(function () {
                 requestAnimationFrame(function () {
                     if (!window.matchMedia('(max-width: 900px)').matches) {

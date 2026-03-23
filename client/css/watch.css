@@ -1072,8 +1072,10 @@ body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
-        /* scroll-snap can fight native <video> controls on iOS — off on phone */
-        scroll-snap-type: none;
+        /* Match desktop: two-page snap (playback / panels). Proximity is softer than mandatory and reduces fights with <video> taps. */
+        scroll-snap-type: y proximity;
+        scroll-behavior: smooth;
+        overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }

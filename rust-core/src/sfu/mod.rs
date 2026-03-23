@@ -72,6 +72,8 @@ pub struct RoomInfo {
     pub max_viewers: u32,
     pub password: Option<String>,
     pub is_live: bool,
+    /// Shown on the watch page when the room is not live (broadcaster-set).
+    pub offline_banner: String,
 }
 
 impl Default for RoomInfo {
@@ -81,6 +83,7 @@ impl Default for RoomInfo {
             max_viewers: 0,
             password: None,
             is_live: false,
+            offline_banner: String::new(),
         }
     }
 }

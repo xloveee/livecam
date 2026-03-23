@@ -19,6 +19,7 @@ var micSelect = document.getElementById('mic-select');
 var maxViewersInput = document.getElementById('max-viewers');
 var viewerCountEl = document.getElementById('viewer-count');
 var roomPasswordInput = document.getElementById('room-password');
+var offlineBannerText = document.getElementById('offline-banner-text');
 var bitrateSelect = document.getElementById('bitrate');
 
 var pc = null;
@@ -213,6 +214,28 @@ async function setRoomPassword(streamKey, password) {
     } catch (e) { /* ignore */ }
 }
 
+async function setOfflineBanner(streamKey, text) {
+    try {
+        await fetch('/api/offline_banner/' + streamKey, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ offline_banner: text || '' })
+        });
+    } catch (e) { /* ignore */ }
+}
+
+async function loadOfflineBannerFromRoom() {
+    if (!authenticatedKey || !offlineBannerText) return;
+    try {
+        var resp = await fetch('/api/room_info/' + authenticatedKey);
+        if (!resp.ok) return;
+        var info = await resp.json();
+        if (typeof info.offline_banner === 'string') {
+            offlineBannerText.value = info.offline_banner;
+        }
+    } catch (e) { /* ignore */ }
+}
+
 window.onRoomState = function (state) {
     if (!activeStreamKey) return;
     if (state.viewer_count !== undefined && state.viewer_count !== null) {
@@ -232,6 +255,16 @@ roomPasswordInput.oninput = function () {
         if (activeStreamKey) setRoomPassword(activeStreamKey, roomPasswordInput.value.trim());
     }, 500);
 };
+
+var offlineBannerDebounce = null;
+if (offlineBannerText) {
+    offlineBannerText.oninput = function () {
+        clearTimeout(offlineBannerDebounce);
+        offlineBannerDebounce = setTimeout(function () {
+            if (authenticatedKey) setOfflineBanner(authenticatedKey, offlineBannerText.value);
+        }, 600);
+    };
+}
 
 /* ── ICE & WebRTC Publish ────────────────────────────────── */
 

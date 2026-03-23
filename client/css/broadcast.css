@@ -241,6 +241,31 @@ input:focus, select:focus {
     grid-template-columns: 1fr 1fr;
     gap: 0.4rem;
 }
+.row-full {
+    grid-template-columns: 1fr;
+}
+textarea {
+    background: #1a1a1a;
+    color: #e0e0e0;
+    border: 1px solid #282828;
+    padding: 0.45rem 0.55rem;
+    font-size: 0.85rem;
+    border-radius: 4px;
+    width: 100%;
+    resize: vertical;
+    min-height: 3.5rem;
+    line-height: 1.35;
+}
+textarea:focus {
+    outline: none;
+    border-color: #d32f2f;
+}
+.field-hint {
+    font-size: 0.65rem;
+    color: #666;
+    margin-top: 0.28rem;
+    line-height: 1.35;
+}
 .row-info {
     padding: 0.35rem 0;
     font-size: 0.8rem;

@@ -115,6 +115,13 @@
                                 <input type="text" id="room-password" placeholder="Open (no password)" autocomplete="off" spellcheck="false">
                             </div>
                         </div>
+                        <div class="row row-full" style="margin-top:0.5rem;">
+                            <div>
+                                <label for="offline-banner-text">Offline banner (when not live)</label>
+                                <textarea id="offline-banner-text" rows="3" maxlength="512" placeholder="Optional message for viewers on /watch — e.g. schedule or “Back soon”" autocomplete="off"></textarea>
+                                <div class="field-hint">Shown under the header when you are not broadcasting. Leave empty for the default line.</div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="settings-page" id="settings-donations">
@@ -219,6 +226,7 @@
                 chatConnect();
                 enumerateDevices();
                 loadDonationConfig();
+                loadOfflineBannerFromRoom();
             } catch (e) {
                 window.location.reload();
             }

@@ -36,6 +36,9 @@ var webrtcFailCount = 0;
 var connectTimeout = null;
 var viewerState = 'init';
 
+/** Custom line from broadcaster (GET /api/room_info → offline_banner); empty → default copy */
+var offlineBannerCustom = '';
+
 var decodeBanner = document.getElementById('decode-banner');
 var decodeCheckInterval = null;
 var decodeStallTicks = 0;
@@ -227,14 +230,27 @@ function setState(next) {
     managePoll();
 }
 
+function applyOfflineBannerFromInfo(info) {
+    if (info && typeof info.offline_banner === 'string') {
+        offlineBannerCustom = info.offline_banner;
+    }
+}
+
+function offlineBannerDisplayLine() {
+    var t = (offlineBannerCustom || '').trim();
+    return t.length ? t : 'No broadcast right now';
+}
+
 function renderState() {
     passwordPrompt.style.display = 'none';
     statusEl.classList.remove('error');
+    document.body.classList.remove('watch-header-offline-msg');
 
     switch (viewerState) {
         case 'offline':
             offlineBanner.classList.remove('live');
-            offlineText.textContent = 'No broadcast right now';
+            offlineText.textContent = offlineBannerDisplayLine();
+            document.body.classList.add('watch-header-offline-msg');
             statusEl.textContent = 'Offline';
             viewerCountEl.textContent = '';
             qualitySelect.disabled = true;
@@ -261,6 +277,7 @@ function renderState() {
         case 'room_full':
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'Room is full — retrying...';
+            document.body.classList.add('watch-header-offline-msg');
             statusEl.textContent = 'Waiting';
             qualitySelect.disabled = true;
             disableChat();
@@ -268,6 +285,7 @@ function renderState() {
         case 'rate_limited':
             offlineBanner.classList.remove('live');
             offlineText.textContent = 'Too many requests — retrying...';
+            document.body.classList.add('watch-header-offline-msg');
             statusEl.textContent = 'Waiting';
             qualitySelect.disabled = true;
             disableChat();
@@ -296,6 +314,7 @@ async function pollActive() {
             var infoResp = await fetch('/api/room_info/' + roomId);
             if (!infoResp.ok) return;
             var info = await infoResp.json();
+            applyOfflineBannerFromInfo(info);
 
             if (!info.is_live) {
                 setState('offline');
@@ -632,7 +651,17 @@ window.onRoomState = function (state) {
     if (viewerState !== 'live') return;
     if (state.is_live === false) {
         teardownConnection();
-        setState('offline');
+        if (roomId) {
+            fetch('/api/room_info/' + roomId)
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .then(function (info) {
+                    if (info) applyOfflineBannerFromInfo(info);
+                    setState('offline');
+                })
+                .catch(function () { setState('offline'); });
+        } else {
+            setState('offline');
+        }
         return;
     }
     if (state.has_password === true && !roomPassword) {

@@ -82,6 +82,7 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
+	mux.HandleFunc("/api/offline_banner/", offlineBannerProxyHandler)
 	mux.HandleFunc("/api/auth/broadcast", authBroadcastHandler)
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
@@ -549,11 +550,12 @@ func whepDeleteHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 type roomInfoResult struct {
-	ViewerCount int32  `json:"viewer_count"`
-	MaxViewers  int32  `json:"max_viewers"`
-	HasPassword bool   `json:"has_password"`
-	IsLive      bool   `json:"is_live"`
-	Password    string `json:"password,omitempty"`
+	ViewerCount    int32  `json:"viewer_count"`
+	MaxViewers     int32  `json:"max_viewers"`
+	HasPassword    bool   `json:"has_password"`
+	IsLive         bool   `json:"is_live"`
+	OfflineBanner  string `json:"offline_banner"`
+	Password       string `json:"password,omitempty"`
 }
 
 func fetchRoomInfo(roomID string) roomInfoResult {
@@ -583,15 +585,17 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	info := fetchRoomInfo(roomID)
 
 	publicResp := struct {
-		ViewerCount int32 `json:"viewer_count"`
-		MaxViewers  int32 `json:"max_viewers"`
-		HasPassword bool  `json:"has_password"`
-		IsLive      bool  `json:"is_live"`
+		ViewerCount   int32  `json:"viewer_count"`
+		MaxViewers    int32  `json:"max_viewers"`
+		HasPassword   bool   `json:"has_password"`
+		IsLive        bool   `json:"is_live"`
+		OfflineBanner string `json:"offline_banner"`
 	}{
-		ViewerCount: info.ViewerCount,
-		MaxViewers:  info.MaxViewers,
-		HasPassword: info.HasPassword,
-		IsLive:      info.IsLive,
+		ViewerCount:   info.ViewerCount,
+		MaxViewers:    info.MaxViewers,
+		HasPassword:   info.HasPassword,
+		IsLive:        info.IsLive,
+		OfflineBanner: info.OfflineBanner,
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -664,6 +668,52 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/room_password/%s", rustCoreURL, roomID)
+	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	if err != nil {
+		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, "Failed to read response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
+}
+
+func offlineBannerProxyHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, ok := requireBroadcasterAuth(w, r)
+	if !ok {
+		return
+	}
+
+	roomID := r.URL.Path[len("/api/offline_banner/"):]
+	roomID = strings.TrimSuffix(roomID, "/")
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	rustURL := fmt.Sprintf("%s/offline_banner/%s", rustCoreURL, roomID)
 	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)

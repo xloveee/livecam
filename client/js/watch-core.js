@@ -25,7 +25,6 @@ var btnPasswordSubmit = document.getElementById('btn-password-submit');
 var passwordError  = document.getElementById('password-error');
 
 var roomId = null;
-var roomIdFromURL = false;
 var sessionId = null;
 var roomPassword = '';
 var pc = null;
@@ -365,7 +364,8 @@ function managePoll() {
 
 async function pollActive() {
     try {
-        if (roomIdFromURL && roomId) {
+        /* Room id from /watch/{id} or livecam-default-room meta: always use room_info (banner works before any broadcast). */
+        if (hasKnownRoomTarget() && roomId) {
             var infoResp = await fetch(roomInfoFetchUrl(roomId), { cache: 'no-store' });
             if (!infoResp.ok) return;
             var info = await infoResp.json();
@@ -388,6 +388,15 @@ async function pollActive() {
         var data = await resp.json();
 
         if (!data.room_id) {
+            /* Learned roomId from a previous live session on this page: still load offline banner from Go/SQLite. */
+            if (roomId) {
+                try {
+                    var bannerResp = await fetch(roomInfoFetchUrl(roomId), { cache: 'no-store' });
+                    if (bannerResp.ok) {
+                        applyOfflineBannerFromInfo(await bannerResp.json());
+                    }
+                } catch (e) { /* ignore */ }
+            }
             setState('offline');
             return;
         }
@@ -416,6 +425,18 @@ function getRoomIdFromURL() {
         }
     }
     return null;
+}
+
+/** Single-tenant: <meta name="livecam-default-room" content="streamKey"> when the URL has no /watch/{id} (e.g. homepage). Same id as WHIP/stream key. */
+function getDefaultRoomIdFromMeta() {
+    var m = document.querySelector('meta[name="livecam-default-room"]');
+    if (!m) return null;
+    var s = (m.getAttribute('content') || '').trim();
+    return s.length ? s : null;
+}
+
+function hasKnownRoomTarget() {
+    return !!getRoomIdFromURL() || !!getDefaultRoomIdFromMeta();
 }
 
 async function fetchICEConfig() {

@@ -19,6 +19,7 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 | **Publish (Browser)** | `https://yourdomain.com/broadcast` |
 | **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` |
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
+| **Watch (single room, no `/watch/…` in URL)** | Optional `<meta name="livecam-default-room" content="{streamKey}">` on `watch.html` (same key as WHIP). Needed so offline banner and chat resolve the room before any broadcast — `GET /api/active` only returns a `room_id` while someone is live. |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
 | **Offline banner (broadcaster)** | Text + optional image: `POST /api/donations/setup` with `provider: "offline_banner"` and JSON `config_data` `{"text":"…","image_url":"https://…"}` or `image_url` `/offline_banner_media/{roomId}` after upload. **Upload (overwrites previous file per room):** `POST /api/offline_banner_upload/{streamKey}` multipart field `file` (PNG/JPEG/GIF/WebP, max 2 MB). Served at `GET /offline_banner_media/{roomId}`. Public `GET /api/room_info/{roomId}` includes `offline_banner` and `offline_banner_image`. |

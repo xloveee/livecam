@@ -6,6 +6,8 @@
     <meta name="description" content="Watch live — independent broadcasting platform powered by WebRTC.">
     <!-- If the app lives under a path prefix, set content="/prefix" so API paths resolve (same as /broadcast). -->
     <meta name="livecam-api-root" content="">
+    <!-- Single-tenant: your stream key when the page URL has no /watch/{streamKey} (e.g. /). Loads offline banner before any broadcast. -->
+    <meta name="livecam-default-room" content="">
     <title>Live Stream — livecam</title>
     <link rel="stylesheet" href="/css/watch.css">
 </head>
@@ -172,11 +174,10 @@
     <script src="/js/watch-header.js"></script>
     <script>
         (async function init() {
-            roomId = getRoomIdFromURL();
-            if (roomId) roomIdFromURL = true;
+            roomId = getRoomIdFromURL() || getDefaultRoomIdFromMeta();
             await pollActive();
             /* If pollActive bailed early (e.g. room_info failed), we still go offline — fetch banner once so overlay image URL is set. */
-            if (viewerState === 'init' && roomIdFromURL && roomId) {
+            if (viewerState === 'init' && hasKnownRoomTarget() && roomId) {
                 try {
                     var br = await fetch(roomInfoFetchUrl(roomId), { cache: 'no-store' });
                     if (br.ok) {

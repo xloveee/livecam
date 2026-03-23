@@ -158,6 +158,8 @@ Both options use the same WHIP endpoint. **Video codec** follows whatever the pu
 
 ### Environment Variables
 
+A commented template lives at **`deploy/.env.example`**. Copy it to **`deploy/.env`**, set secrets and IPs, and keep **`.env`** out of version control.
+
 **Rust Core** (`rust-core`):
 
 | Variable | Default | Description |

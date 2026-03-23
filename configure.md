@@ -137,6 +137,17 @@ nginx only handles HTTPS signaling. WebRTC UDP media goes directly to the Rust S
 
 ## Step 10: Create Environment File
 
+You can start from the repository template:
+
+```bash
+sudo cp /opt/livecam/deploy/.env.example /opt/livecam/deploy/.env
+sudo chown root:www-data /opt/livecam/deploy/.env
+sudo chmod 640 /opt/livecam/deploy/.env
+sudo nano /opt/livecam/deploy/.env
+```
+
+Or create the file from scratch:
+
 ```bash
 cat > /opt/livecam/deploy/.env <<'EOF'
 # Rust Core

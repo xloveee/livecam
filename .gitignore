@@ -25,7 +25,8 @@ rust-core/archive/
 # HLS segments (ephemeral, generated at runtime)
 hls/
 
-deploy/
+
+info/
 build-plan-story.md
 Build-plan.md
 td.md

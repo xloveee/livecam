@@ -374,8 +374,12 @@ btnStart.onclick = async function () {
         }
         if (ice === 'failed' || ice === 'closed' || conn === 'failed' || conn === 'closed') {
             clearIceDisconnectTimer();
+            var iceFailed = (ice === 'failed' || conn === 'failed');
             stopBroadcast();
-            statusEl.textContent = 'Disconnected';
+            /* Firefox often logs "ICE failed, add a TURN server" — STUN-only is not enough on some networks. */
+            statusEl.textContent = iceFailed
+                ? 'Disconnected — ICE failed. This network likely needs TURN (relay). Set TURN_URL + TURN_USERNAME + TURN_CREDENTIAL on the Go proxy and open UDP/TCP to coturn.'
+                : 'Disconnected';
             statusEl.classList.add('error');
             return;
         }

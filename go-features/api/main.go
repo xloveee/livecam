@@ -166,8 +166,16 @@ func initConfig() {
 	turnUser := os.Getenv("TURN_USERNAME")
 	turnCred := os.Getenv("TURN_CREDENTIAL")
 	if turnURL != "" && turnUser != "" && turnCred != "" {
+		turnParts := strings.Split(turnURL, ",")
+		for i := range turnParts {
+			turnParts[i] = strings.TrimSpace(turnParts[i])
+		}
+		var turnURLs interface{} = turnParts[0]
+		if len(turnParts) > 1 {
+			turnURLs = turnParts
+		}
 		iceServers = append(iceServers, map[string]interface{}{
-			"urls":       turnURL,
+			"urls":       turnURLs,
 			"username":   turnUser,
 			"credential": turnCred,
 		})

@@ -175,7 +175,7 @@ Both options use the same WHIP endpoint. **Video codec** follows whatever the pu
 |---|---|---|
 | `GO_LISTEN_PORT` | `8443` | HTTP listen port |
 | `STUN_URL` | `stun:stun.l.google.com:19302` | STUN server URL for browser ICE |
-| `TURN_URL` | *(none)* | Optional TURN relay URL |
+| `TURN_URL` | *(none)* | Optional TURN relay URL(s); comma-separated for UDP+TCP (e.g. `turn:host:3478?transport=udp,turn:host:3478?transport=tcp`) |
 | `TURN_USERNAME` | *(none)* | TURN credential username |
 | `TURN_CREDENTIAL` | *(none)* | TURN credential password |
 | `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |

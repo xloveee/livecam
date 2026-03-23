@@ -7,11 +7,20 @@
     var SPLITTER = 6;
     /* Desktop: keep chat wide enough for input + Send without crunching */
     var CHAT_MIN_W = 240;
-    var STREAM_MIN_W = 160;
-    /* Mobile: room for header + input + a sliver of messages; stream stays usable */
+    /* Reserve enough width for video so chat cannot dominate the row */
+    var STREAM_MIN_W = 300;
+    /* Mobile: reserve vertical space for the stream (phone broadcasters are often 9:16) */
     var CHAT_MIN_H = 176;
-    var STREAM_MIN_H = 120;
-    var CHAT_MAX_FRAC = 0.72;
+    var STREAM_MIN_H = 240;
+    /* Chat cannot take more than this fraction of row — stream gets the rest first */
+    var CHAT_MAX_FRAC = 0.40;
+    /* Default chat size as fraction of row (stream gets ~1 − this, minus splitter) */
+    var DEFAULT_CHAT_FRAC = 0.28;
+    /* Phone (vertical stack): clamp only; default height follows #player (+ delimiter) */
+    var CHAT_MAX_FRAC_MOBILE = 0.5;
+    var DEFAULT_CHAT_FRAC_MOBILE = 0.5;
+    /* Slack below video + delimiter pill so chat aligns with the visible stream block */
+    var PLAYER_TO_CHAT_EXTRA_PX = 12;
 
     var row = document.querySelector('.watch-row');
     var splitter = document.getElementById('watch-splitter');
@@ -26,6 +35,8 @@
     var startX = 0;
     var startY = 0;
     var startSize = 0;
+    /* When true, mobile chat height comes from splitter / stored prefs, not from #player */
+    var userAdjustedMobileChat = false;
 
     function isDesktopLayout() {
         return mqDesktop.matches;
@@ -50,7 +61,7 @@
 
     function clampChatHeight(h, rowH) {
         var maxC = rowH - SPLITTER - STREAM_MIN_H;
-        maxC = Math.min(maxC, Math.floor(rowH * CHAT_MAX_FRAC));
+        maxC = Math.min(maxC, Math.floor(rowH * CHAT_MAX_FRAC_MOBILE));
         if (maxC < 1) {
             maxC = 1;
         }
@@ -115,12 +126,40 @@
 
     function defaultHalfWidth() {
         var rw = row.getBoundingClientRect().width;
-        return clampChatWidth(Math.round((rw - SPLITTER) / 2), rw);
+        return clampChatWidth(Math.round((rw - SPLITTER) * DEFAULT_CHAT_FRAC), rw);
     }
 
     function defaultHalfHeight() {
         var rh = row.getBoundingClientRect().height;
-        return clampChatHeight(Math.round((rh - SPLITTER) / 2), rh);
+        return clampChatHeight(Math.round((rh - SPLITTER) * DEFAULT_CHAT_FRAC_MOBILE), rh);
+    }
+
+    /* Phone: chat height ≈ #player height + scroll-hint (if visible) + PLAYER_TO_CHAT_EXTRA_PX, clamped to row */
+    function syncMobileChatFromPlayer() {
+        if (mqDesktop.matches) {
+            return;
+        }
+        if (document.body.classList.contains('watch-chat-hidden')) {
+            return;
+        }
+        var rh = row.getBoundingClientRect().height;
+        var playerEl = document.getElementById('player');
+        var ph = playerEl ? playerEl.offsetHeight : 0;
+        if (ph < 1) {
+            var fb = defaultHalfHeight();
+            applyMobile(fb);
+            updateAria(fb, rh, false);
+            return;
+        }
+        var hint = document.getElementById('scroll-hint');
+        var hintH = 0;
+        if (hint && hint.offsetHeight > 0) {
+            hintH = hint.offsetHeight;
+        }
+        var target = Math.round(ph + hintH + PLAYER_TO_CHAT_EXTRA_PX);
+        target = clampChatHeight(target, rh);
+        applyMobile(target);
+        updateAria(target, rh, false);
     }
 
     function updateAria(size, total, desktop) {
@@ -158,10 +197,14 @@
             row.classList.remove('watch-row--resize-desktop');
             row.classList.add('watch-row--resize-mobile');
             var rh = row.getBoundingClientRect().height;
-            var storedH = readStoredHeight();
-            var py = storedH !== null ? clampChatHeight(storedH, rh) : defaultHalfHeight();
-            applyMobile(py);
-            updateAria(py, rh, false);
+            if (userAdjustedMobileChat) {
+                var storedH = readStoredHeight();
+                var py = storedH !== null ? clampChatHeight(storedH, rh) : defaultHalfHeight();
+                applyMobile(py);
+                updateAria(py, rh, false);
+            } else {
+                syncMobileChatFromPlayer();
+            }
         }
     }
 
@@ -209,6 +252,12 @@
             return;
         }
         dragging = false;
+        if (!isDesktopLayout()) {
+            var chNow = chat.getBoundingClientRect().height;
+            if (Math.round(chNow) !== Math.round(startSize)) {
+                userAdjustedMobileChat = true;
+            }
+        }
         document.body.classList.remove('watch-split-dragging', 'watch-split-dragging--col', 'watch-split-dragging--row');
         try {
             splitter.releasePointerCapture(e.pointerId);
@@ -228,12 +277,16 @@
             updateAria(c, rw, true);
         } else {
             var rh = row.getBoundingClientRect().height;
-            var ch = chat.getBoundingClientRect().height;
-            var h = clampChatHeight(ch, rh);
-            if (h !== ch) {
-                applyMobile(h);
+            if (userAdjustedMobileChat) {
+                var ch = chat.getBoundingClientRect().height;
+                var h = clampChatHeight(ch, rh);
+                if (h !== ch) {
+                    applyMobile(h);
+                }
+                updateAria(h, rh, false);
+            } else {
+                syncMobileChatFromPlayer();
             }
-            updateAria(h, rh, false);
         }
     }
 
@@ -273,21 +326,25 @@
                 nh = clampChatHeight(ch + step, rh);
                 applyMobile(nh);
                 updateAria(nh, rh, false);
+                userAdjustedMobileChat = true;
             } else if (e.key === 'ArrowDown') {
                 e.preventDefault();
                 nh = clampChatHeight(ch - step, rh);
                 applyMobile(nh);
                 updateAria(nh, rh, false);
+                userAdjustedMobileChat = true;
             } else if (e.key === 'Home') {
                 e.preventDefault();
                 nh = clampChatHeight(rh - SPLITTER - STREAM_MIN_H, rh);
                 applyMobile(nh);
                 updateAria(nh, rh, false);
+                userAdjustedMobileChat = true;
             } else if (e.key === 'End') {
                 e.preventDefault();
                 nh = clampChatHeight(CHAT_MIN_H, rh);
                 applyMobile(nh);
                 updateAria(nh, rh, false);
+                userAdjustedMobileChat = true;
             }
         }
     }
@@ -300,10 +357,13 @@
             applyDesktop(half);
             updateAria(half, rw, true);
         } else {
-            var rh = row.getBoundingClientRect().height;
-            var halfH = defaultHalfHeight();
-            applyMobile(halfH);
-            updateAria(halfH, rh, false);
+            userAdjustedMobileChat = false;
+            try {
+                localStorage.removeItem(STORAGE_H);
+            } catch (err) {
+                /* ignore */
+            }
+            syncMobileChatFromPlayer();
         }
     }
 
@@ -340,4 +400,10 @@
     } else {
         sync();
     }
+
+    window.livecamSyncMobileChatFromPlayer = function () {
+        if (!mqDesktop.matches && !userAdjustedMobileChat) {
+            syncMobileChatFromPlayer();
+        }
+    };
 })();

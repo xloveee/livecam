@@ -43,11 +43,16 @@ type InboundMsg struct {
 }
 
 type OutboundMsg struct {
-	Type string `json:"type"`
-	Nick string `json:"nick,omitempty"`
-	Text string `json:"text,omitempty"`
-	Role string `json:"role,omitempty"`
-	Ts   int64  `json:"ts,omitempty"`
+	Type        string `json:"type"`
+	Nick        string `json:"nick,omitempty"`
+	Text        string `json:"text,omitempty"`
+	Role        string `json:"role,omitempty"`
+	Ts          int64  `json:"ts,omitempty"`
+	Amount      int64  `json:"amount,omitempty"`
+	Currency    string `json:"currency,omitempty"`
+	IsLive      *bool  `json:"is_live,omitempty"`
+	ViewerCount *int32 `json:"viewer_count,omitempty"`
+	HasPassword *bool  `json:"has_password,omitempty"`
 }
 
 func newClient(hub *Hub, conn *websocket.Conn, roomID, nick, role, ip string) *Client {

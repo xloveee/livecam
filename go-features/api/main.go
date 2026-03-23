@@ -15,9 +15,11 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 	"unsafe"
 
 	"livecam/chat"
+	"livecam/donations"
 )
 
 var (
@@ -44,9 +46,36 @@ func main() {
 		return C.GoString(&outKey[0]), true
 	})
 
+	donationDBPath := os.Getenv("DONATION_DB_PATH")
+	if donationDBPath == "" {
+		donationDBPath = "/opt/livecam/data/donations.db"
+	}
+
+	var donationDB *donations.DB
+	donationDB, err := donations.OpenDB(donationDBPath)
+	if err != nil {
+		log.Printf("WARNING: Donations disabled — could not open database at %s: %v", donationDBPath, err)
+	} else {
+		defer donationDB.Close()
+		log.Printf("Donations database: %s", donationDBPath)
+
+		stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
+		if stripeWebhookSecret != "" {
+			donations.SetStripeWebhookSecret(stripeWebhookSecret)
+			log.Printf("Stripe webhook signature verification: enabled")
+		}
+	}
+
+	donationHandler := donations.NewHandler(
+		donationDB,
+		chatHub,
+		donations.AuthFunc(requireBroadcasterAuth),
+	)
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth))
+	mux.Handle("/api/donations/", donationHandler)
 	mux.HandleFunc("/api/whip/", whipProxyHandler)
 	mux.HandleFunc("/api/whep/", whepProxyHandler)
 	mux.HandleFunc("/api/quality/", qualityProxyHandler)
@@ -57,6 +86,16 @@ func main() {
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
+	staticFS := http.FileServer(http.Dir(clientDir))
+	mux.Handle("/css/", staticFS)
+	mux.Handle("/js/", staticFS)
+
+	hlsDir := os.Getenv("HLS_DIR")
+	if hlsDir == "" {
+		hlsDir = "hls"
+	}
+	hlsFS := http.StripPrefix("/hls/", http.FileServer(http.Dir(hlsDir)))
+	mux.Handle("/hls/", setCORSAndCache(hlsFS))
 	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/watch/", watchHandler)
@@ -66,6 +105,8 @@ func main() {
 	if port == "" {
 		port = "8443"
 	}
+
+	go startRoomStatePoller(chatHub)
 
 	fmt.Printf("Go proxy running on :%s\n", port)
 	log.Fatal(http.ListenAndServe(":"+port, mux))
@@ -125,8 +166,16 @@ func initConfig() {
 	turnUser := os.Getenv("TURN_USERNAME")
 	turnCred := os.Getenv("TURN_CREDENTIAL")
 	if turnURL != "" && turnUser != "" && turnCred != "" {
+		turnParts := strings.Split(turnURL, ",")
+		for i := range turnParts {
+			turnParts[i] = strings.TrimSpace(turnParts[i])
+		}
+		var turnURLs interface{} = turnParts[0]
+		if len(turnParts) > 1 {
+			turnURLs = turnParts
+		}
 		iceServers = append(iceServers, map[string]interface{}{
-			"urls":       turnURL,
+			"urls":       turnURLs,
 			"username":   turnUser,
 			"credential": turnCred,
 		})
@@ -639,6 +688,68 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
 	w.WriteHeader(resp.StatusCode)
 	w.Write(respBody)
+}
+
+func setCORSAndCache(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		if strings.HasSuffix(r.URL.Path, ".m3u8") {
+			w.Header().Set("Cache-Control", "no-cache, no-store")
+			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
+		} else if strings.HasSuffix(r.URL.Path, ".ts") {
+			w.Header().Set("Cache-Control", "public, max-age=30")
+			w.Header().Set("Content-Type", "video/mp2t")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+type cachedRoomState struct {
+	isLive      bool
+	viewerCount int32
+	hasPassword bool
+}
+
+func startRoomStatePoller(hub *chat.Hub) {
+	cache := make(map[string]cachedRoomState)
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		roomIDs := hub.RoomIDs()
+		seen := make(map[string]bool, len(roomIDs))
+
+		for _, roomID := range roomIDs {
+			seen[roomID] = true
+			info := fetchRoomInfo(roomID)
+			prev, exists := cache[roomID]
+
+			changed := !exists ||
+				prev.isLive != info.IsLive ||
+				prev.viewerCount != info.ViewerCount ||
+				prev.hasPassword != info.HasPassword
+
+			if changed {
+				cache[roomID] = cachedRoomState{
+					isLive:      info.IsLive,
+					viewerCount: info.ViewerCount,
+					hasPassword: info.HasPassword,
+				}
+				hub.BroadcastRoomState(roomID, chat.OutboundMsg{
+					Type:        "room_state",
+					IsLive:      &info.IsLive,
+					ViewerCount: &info.ViewerCount,
+					HasPassword: &info.HasPassword,
+				})
+			}
+		}
+
+		for roomID := range cache {
+			if !seen[roomID] {
+				delete(cache, roomID)
+			}
+		}
+	}
 }
 
 func qualityProxyHandler(w http.ResponseWriter, r *http.Request) {

@@ -48,7 +48,12 @@ pub async fn whip_handler(
     };
 
     let mut rtc = RtcConfig::new()
+        .set_ice_lite(true)
         .set_reordering_size_audio(0)
+        .clear_codecs()
+        .enable_h264(true)
+        .enable_vp8(true)
+        .enable_opus(true)
         .build(Instant::now());
 
     let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {
@@ -139,7 +144,14 @@ pub async fn whep_handler(
     };
 
     let mut rtc = RtcConfig::new()
+        .set_ice_lite(true)
         .set_reordering_size_audio(0)
+        .set_send_buffer_video(500)
+        .set_stats_interval(Some(std::time::Duration::from_secs(2)))
+        .clear_codecs()
+        .enable_h264(true)
+        .enable_vp8(true)
+        .enable_opus(true)
         .build(Instant::now());
 
     let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {

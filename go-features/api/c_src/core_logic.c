@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <string.h>
+#include <time.h>
 
 static char  g_whitelist[MAX_ALLOWED_KEYS][STREAM_KEY_EXACT_LEN + 1];
 static int32_t g_whitelist_count = 0;
@@ -109,13 +110,39 @@ int32_t validate_stream_key(const char *key)
     return matched;
 }
 
+/* ── Token-bucket rate limiter ────────────────────────────── */
+
+#define RATE_TABLE_SIZE     4096
+#define RATE_MAX_TOKENS     3
+#define RATE_REFILL_SEC     2
+#define RATE_ENTRY_TTL_SEC  60
+
+typedef struct {
+    uint32_t ip_hash;
+    int32_t  tokens;
+    int64_t  last_refill_sec;
+    int32_t  occupied;
+} rate_entry_t;
+
+static rate_entry_t g_rate_table[RATE_TABLE_SIZE];
+
+static uint32_t fnv1a_hash(const char *data, size_t len)
+{
+    uint32_t h = 2166136261u;
+    for (size_t i = 0; i < len; i++) {
+        h ^= (uint8_t)data[i];
+        h *= 16777619u;
+    }
+    return h;
+}
+
 /*
  * Check whether a viewer IP is allowed to connect.
  * Returns 1 if allowed, 0 if rate-limited or invalid.
  *
- * Current implementation: validates IP format length only.
- * Production: replace with a token-bucket over a static array of
- * per-IP counters (no heap allocation, fixed table size).
+ * Token-bucket: each IP gets RATE_MAX_TOKENS tokens, refilling
+ * 1 token per RATE_REFILL_SEC. Entries expire after RATE_ENTRY_TTL_SEC.
+ * 4096-slot static table (~80 KB), hash collisions evict stale entries.
  */
 int32_t check_viewer_rate_limit(const char *ip_address)
 {
@@ -129,7 +156,39 @@ int32_t check_viewer_rate_limit(const char *ip_address)
         return 0;
     }
 
-    return 1;
+    const uint32_t h = fnv1a_hash(ip_address, len);
+    const uint32_t idx = h % RATE_TABLE_SIZE;
+    const int64_t now = (int64_t)time(NULL);
+
+    rate_entry_t *const entry = &g_rate_table[idx];
+
+    if (entry->occupied == 0 || entry->ip_hash != h ||
+        (now - entry->last_refill_sec) > RATE_ENTRY_TTL_SEC) {
+        entry->ip_hash = h;
+        entry->tokens = RATE_MAX_TOKENS - 1;
+        entry->last_refill_sec = now;
+        entry->occupied = 1;
+        return 1;
+    }
+
+    const int64_t elapsed = now - entry->last_refill_sec;
+    if (elapsed > 0) {
+        const int32_t refill = (int32_t)(elapsed / RATE_REFILL_SEC);
+        if (refill > 0) {
+            entry->tokens += refill;
+            if (entry->tokens > RATE_MAX_TOKENS) {
+                entry->tokens = RATE_MAX_TOKENS;
+            }
+            entry->last_refill_sec = now;
+        }
+    }
+
+    if (entry->tokens > 0) {
+        entry->tokens--;
+        return 1;
+    }
+
+    return 0;
 }
 
 /*

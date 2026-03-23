@@ -36,6 +36,10 @@ var webrtcFailCount = 0;
 var connectTimeout = null;
 var viewerState = 'init';
 
+var decodeBanner = document.getElementById('decode-banner');
+var decodeCheckInterval = null;
+var decodeStallTicks = 0;
+
 /* ── Media Adapter ─────────────────────────────────────── */
 
 var nativeHLS = !!video.canPlayType('application/vnd.apple.mpegurl');
@@ -55,8 +59,20 @@ function shouldPreferHlsViewer() {
     return nativeHLS && isIosLikeDevice();
 }
 
+/** Desktop/mobile Firefox (not Chrome). Used for WebRTC interop workarounds. */
+function isFirefoxBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+    var ua = navigator.userAgent || '';
+    if (/Firefox\//.test(ua) || /FxiOS\//.test(ua)) {
+        return true;
+    }
+    return false;
+}
+
 var watchAdapter = {
-    name: nativeHLS ? 'native-hls' : 'chromium',
+    name: nativeHLS ? 'native-hls' : (isFirefoxBrowser() ? 'firefox' : 'chromium'),
     hlsPlayer: null,
     hlsActive: false,
 
@@ -65,7 +81,21 @@ var watchAdapter = {
     },
 
     createPC: function (iceServers) {
-        return new RTCPeerConnection({ iceServers: iceServers });
+        var base = {
+            iceServers: iceServers || [],
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        };
+        /* Pool size can throw or behave oddly on some Firefox builds; fall back without it. */
+        try {
+            return new RTCPeerConnection(Object.assign({}, base, { iceCandidatePoolSize: 10 }));
+        } catch (e) {
+            try {
+                return new RTCPeerConnection(base);
+            } catch (e2) {
+                throw e2;
+            }
+        }
     },
 
     setupTransceivers: function (pc) {
@@ -125,10 +155,38 @@ var watchAdapter = {
     }
 };
 
-video.addEventListener('resize', function() {
+/** Match letterboxing to frame; set portrait/landscape for CSS that prioritizes stream area. */
+var lastStreamLayoutSig = '';
+function syncVideoAspectAndStreamLayout() {
     if (video.videoWidth && video.videoHeight) {
         video.style.aspectRatio = video.videoWidth + '/' + video.videoHeight;
     }
+    var w = video.videoWidth;
+    var h = video.videoHeight;
+    if (w && h) {
+        document.body.classList.toggle('watch-stream-portrait', h > w);
+        document.body.classList.toggle('watch-stream-landscape', h <= w);
+        var sig = w + 'x' + h;
+        if (sig !== lastStreamLayoutSig) {
+            lastStreamLayoutSig = sig;
+            requestAnimationFrame(function () {
+                window.dispatchEvent(new Event('resize'));
+            });
+        }
+    }
+    requestAnimationFrame(function () {
+        if (typeof window.livecamSyncMobileChatFromPlayer === 'function') {
+            window.livecamSyncMobileChatFromPlayer();
+        }
+    });
+}
+
+video.addEventListener('resize', syncVideoAspectAndStreamLayout);
+video.addEventListener('loadedmetadata', syncVideoAspectAndStreamLayout);
+video.addEventListener('emptied', function () {
+    lastStreamLayoutSig = '';
+    document.body.classList.remove('watch-stream-portrait', 'watch-stream-landscape');
+    video.style.aspectRatio = '';
 });
 
 video.addEventListener('playing', function () {
@@ -307,12 +365,94 @@ async function setQuality(rid) {
 
 qualitySelect.onchange = function () { setQuality(qualitySelect.value || null); };
 
+/* ── WHEP receiver codec prefs (match OBS + VP8 publishers) ───────────────── */
+
+function getRecvonlyVideoTransceiver(pc) {
+    var trs = pc.getTransceivers();
+    var i;
+    for (i = 0; i < trs.length; i++) {
+        var tr = trs[i];
+        if (tr && tr.receiver && tr.receiver.track && tr.receiver.track.kind === 'video') {
+            return tr;
+        }
+    }
+    /* Before remote tracks arrive, recvonly order matches addTransceiver order (video first). */
+    return trs.length ? trs[0] : null;
+}
+
+function applyViewerVideoCodecPreferences(pc) {
+    /* Firefox: setCodecPreferences often breaks WHEP offer/answer pairing with SFUs; use default codec order. */
+    if (isFirefoxBrowser()) {
+        debugEvent('codec-prefs:skipped-firefox');
+        return;
+    }
+    try {
+        if (typeof RTCRtpReceiver === 'undefined' || !RTCRtpReceiver.getCapabilities) return;
+        var caps = RTCRtpReceiver.getCapabilities('video');
+        var h264 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/h264'; });
+        var vp8 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/vp8'; });
+        var rest = caps.codecs.filter(function (c) {
+            var m = c.mimeType.toLowerCase();
+            return m !== 'video/h264' && m !== 'video/vp8';
+        });
+        var vtr = getRecvonlyVideoTransceiver(pc);
+        if (vtr) {
+            if (h264.length) {
+                vtr.setCodecPreferences(h264.concat(vp8).concat(rest));
+            } else if (vp8.length) {
+                vtr.setCodecPreferences(vp8.concat(rest));
+            }
+        }
+    } catch (e) {
+        debugEvent('codec-prefs:error');
+    }
+}
+
+function clearDecodeCheck() {
+    if (decodeCheckInterval) { clearInterval(decodeCheckInterval); decodeCheckInterval = null; }
+    decodeStallTicks = 0;
+    if (decodeBanner) decodeBanner.style.display = 'none';
+}
+
+/** RTP arrives but WebKit does not decode (e.g. H.264 profile) — see README Video codec policy. */
+function startDecodeCheck() {
+    clearDecodeCheck();
+    if (!decodeBanner) return;
+    decodeCheckInterval = setInterval(function () {
+        if (!pc || viewerState !== 'live') {
+            clearDecodeCheck();
+            return;
+        }
+        pc.getStats(null).then(function (stats) {
+            var inbound = null;
+            stats.forEach(function (r) {
+                if (r.type !== 'inbound-rtp') return;
+                var isVid = r.kind === 'video' || r.mediaType === 'video';
+                if (!isVid && r.mimeType && String(r.mimeType).indexOf('video') === 0) isVid = true;
+                if (isVid) inbound = r;
+            });
+            if (!inbound) return;
+            var bytes = inbound.bytesReceived || 0;
+            var fd = inbound.framesDecoded;
+            var frames = fd === undefined ? 0 : fd;
+            if (bytes > 80000 && frames === 0) {
+                decodeStallTicks++;
+                if (decodeStallTicks >= 3) decodeBanner.style.display = 'block';
+            } else {
+                decodeStallTicks = 0;
+                if (frames > 0) decodeBanner.style.display = 'none';
+            }
+        }).catch(function () {});
+    }, 2000);
+}
+
 /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
 function teardownConnection() {
     debugEvent('teardown');
     debugPlayResult = '';
     clearPollTimer();
+    clearDecodeCheck();
     if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
     stopStatsLoop();
     if (pc) {
@@ -339,11 +479,13 @@ function teardownConnection() {
 function onPeerStateChange() {
     if (!pc) return;
     var s = pc.iceConnectionState;
+    var conn = pc.connectionState;
     debugEvent('ice:' + s);
-    if (s === 'connected' || s === 'completed') {
+    if (s === 'connected' || s === 'completed' || conn === 'connected') {
         if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
         setState('live');
         startStatsLoop();
+        startDecodeCheck();
     } else if (s === 'disconnected' || s === 'failed' || s === 'closed') {
         teardownConnection();
         setState('offline');
@@ -397,6 +539,7 @@ async function connectWHEP() {
     pc.onconnectionstatechange = onPeerStateChange;
 
     watchAdapter.setupTransceivers(pc);
+    applyViewerVideoCodecPreferences(pc);
 
     try {
         var offer = await pc.createOffer();

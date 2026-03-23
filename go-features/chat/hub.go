@@ -102,10 +102,12 @@ func (h *Hub) Join(c *Client) error {
 		c.role = RoleMod
 	}
 
-	broadcastToRoom(room, OutboundMsg{
-		Type: "system",
-		Text: c.nick + " joined the chat",
-	}, nil)
+	if len(room.clients) <= 20 {
+		broadcastToRoom(room, OutboundMsg{
+			Type: "system",
+			Text: c.nick + " joined the chat",
+		}, nil)
+	}
 
 	return nil
 }
@@ -129,7 +131,7 @@ func (h *Hub) Leave(c *Client) {
 		room.broadcaster = nil
 	}
 	empty := len(room.clients) == 0
-	if wasRegistered {
+	if wasRegistered && len(room.clients) <= 20 {
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: c.nick + " left the chat",
@@ -296,6 +298,41 @@ func sendToClient(c *Client, msg OutboundMsg) {
 	case c.send <- data:
 	default:
 	}
+}
+
+func (h *Hub) RoomIDs() []string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	ids := make([]string, 0, len(h.rooms))
+	for id := range h.rooms {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
+func (h *Hub) BroadcastRoomState(roomID string, msg OutboundMsg) {
+	h.mu.Lock()
+	room, ok := h.rooms[roomID]
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+	room.mu.Lock()
+	broadcastToRoom(room, msg, nil)
+	room.mu.Unlock()
+}
+
+func (h *Hub) BroadcastDonation(roomID string, msg OutboundMsg) {
+	h.mu.Lock()
+	room, ok := h.rooms[roomID]
+	h.mu.Unlock()
+	if !ok {
+		return
+	}
+
+	room.mu.Lock()
+	broadcastToRoom(room, msg, nil)
+	room.mu.Unlock()
 }
 
 func itoa(n int) string {

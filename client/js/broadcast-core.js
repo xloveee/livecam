@@ -4,6 +4,12 @@ var preview = document.getElementById('preview');
 var btnStart = document.getElementById('btn-start');
 var btnStop = document.getElementById('btn-stop');
 var statusEl = document.getElementById('status');
+
+function clearStatusTitle() {
+    if (statusEl) {
+        statusEl.removeAttribute('title');
+    }
+}
 var statsEl = document.getElementById('stats');
 var liveBadge = document.getElementById('live-badge');
 var streamKeyInput = document.getElementById('stream-key');
@@ -21,6 +27,25 @@ var statsInterval = null;
 
 var activeStreamKey = null;
 var authenticatedKey = '';
+
+/** Firefox: recoverable `disconnected` ICE; publish path uses addTrack + VP8 prefs instead of simulcast transceiver. */
+function isFirefoxBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+    var ua = navigator.userAgent || '';
+    return /Firefox\//.test(ua) || /FxiOS\//.test(ua);
+}
+
+var broadcastLiveStarted = false;
+var iceDisconnectTimer = null;
+
+function clearIceDisconnectTimer() {
+    if (iceDisconnectTimer) {
+        clearTimeout(iceDisconnectTimer);
+        iceDisconnectTimer = null;
+    }
+}
 
 /* ── Settings UI ─────────────────────────────────────────── */
 
@@ -120,6 +145,8 @@ async function startPreview() {
     try {
         localStream = await navigator.mediaDevices.getUserMedia(constraints);
         preview.srcObject = localStream;
+        preview.playsInline = true;
+        preview.play().catch(function () {});
     } catch (e) {
         statusEl.textContent = 'Failed to access camera: ' + e.message;
         statusEl.classList.add('error');
@@ -218,6 +245,70 @@ async function fetchICEConfig() {
     }
 }
 
+/** Match watch-core: pre-gather ICE before offer; Firefox can fail without pool on some networks. */
+function createBroadcastPeerConnection(iceServers) {
+    var base = {
+        iceServers: iceServers || [],
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+    };
+    try {
+        return new RTCPeerConnection(Object.assign({}, base, { iceCandidatePoolSize: 10 }));
+    } catch (e) {
+        try {
+            return new RTCPeerConnection(base);
+        } catch (e2) {
+            throw e2;
+        }
+    }
+}
+
+/** Baseline (0x42) before Main (0x4D) before High (0x64) — WebKit mobile decode. */
+function h264ProfileRank(codec) {
+    var line = codec.sdpFmtpLine || '';
+    var m = /profile-level-id=([0-9a-fA-F]{6})/i.exec(line);
+    if (!m) return 50;
+    var p = parseInt(m[1].substring(0, 2), 16);
+    if (p === 0x42) return 0;
+    if (p === 0x4D) return 1;
+    if (p === 0x64) return 2;
+    return 25;
+}
+
+function sortH264ForCompat(codecs) {
+    return codecs.slice().sort(function (a, b) {
+        return h264ProfileRank(a) - h264ProfileRank(b);
+    });
+}
+
+/** VP8-only when available — desktop otherwise negotiates H.264 Main/High; iPhone viewers often cannot decode it. */
+function applyBroadcastVideoCodecPreferences(pc) {
+    try {
+        if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
+        var caps = RTCRtpSender.getCapabilities('video');
+        var h264 = sortH264ForCompat(caps.codecs.filter(function (c) {
+            return c.mimeType.toLowerCase() === 'video/h264';
+        }));
+        var vp8 = caps.codecs.filter(function (c) { return c.mimeType.toLowerCase() === 'video/vp8'; });
+        var rest = caps.codecs.filter(function (c) {
+            var m = c.mimeType.toLowerCase();
+            return m !== 'video/h264' && m !== 'video/vp8';
+        });
+        var transceivers = pc.getTransceivers();
+        for (var i = 0; i < transceivers.length; i++) {
+            var tr = transceivers[i];
+            if (tr.sender && tr.sender.track && tr.sender.track.kind === 'video') {
+                if (vp8.length) {
+                    tr.setCodecPreferences(vp8.concat(rest));
+                } else if (h264.length) {
+                    tr.setCodecPreferences(h264.concat(rest));
+                }
+                break;
+            }
+        }
+    } catch (e) { /* ignore */ }
+}
+
 btnStart.onclick = async function () {
     var streamKey = authenticatedKey;
     if (!streamKey) {
@@ -231,50 +322,104 @@ btnStart.onclick = async function () {
         return;
     }
 
+    clearStatusTitle();
     statusEl.textContent = 'Connecting...';
     statusEl.classList.remove('error', 'connected');
     btnStart.style.display = 'none';
     btnStop.style.display = 'inline-block';
 
+    broadcastLiveStarted = false;
+    clearIceDisconnectTimer();
+
     var config = await fetchICEConfig();
 
-    pc = new RTCPeerConnection({
-        iceServers: config.iceServers || []
-    });
+    pc = createBroadcastPeerConnection(config.iceServers || []);
 
     localStream.getTracks().forEach(function (track) {
         if (track.kind === 'video') {
-            pc.addTransceiver(track, {
-                direction: 'sendonly',
-                sendEncodings: [
-                    { rid: 'h', maxBitrate: 2500000 },
-                    { rid: 'm', maxBitrate: 1000000, scaleResolutionDownBy: 2.0 },
-                    { rid: 'l', maxBitrate: 400000, scaleResolutionDownBy: 4.0 }
-                ]
-            });
+            /* Firefox: addTransceiver+sendEncodings caused ICE/SDP churn with WHIP; same MediaStream as audio. */
+            if (isFirefoxBrowser()) {
+                pc.addTrack(track, localStream);
+            } else {
+                pc.addTransceiver(track, {
+                    direction: 'sendonly',
+                    sendEncodings: [
+                        { rid: 'h', maxBitrate: 2500000 },
+                        { rid: 'm', maxBitrate: 1000000, scaleResolutionDownBy: 2.0 },
+                        { rid: 'l', maxBitrate: 400000, scaleResolutionDownBy: 4.0 }
+                    ]
+                });
+            }
         } else {
             pc.addTrack(track, localStream);
         }
     });
 
-    pc.oniceconnectionstatechange = function () {
-        var state = pc.iceConnectionState;
-        if (state === 'connected' || state === 'completed') {
-            statusEl.textContent = 'Live';
-            statusEl.classList.add('connected');
-            statusEl.classList.remove('error');
-            liveBadge.classList.add('visible');
-            startStats();
-            applyBitrateCap();
-            activeStreamKey = streamKey;
-            setViewerLimit(streamKey, maxViewersInput.value);
-            setRoomPassword(streamKey, roomPasswordInput.value.trim());
-        } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
-            stopBroadcast();
-            statusEl.textContent = 'Disconnected';
-            statusEl.classList.add('error');
+    applyBroadcastVideoCodecPreferences(pc);
+
+    function onBroadcastPcStateChange() {
+        if (!pc) {
+            return;
         }
-    };
+        var ice = pc.iceConnectionState;
+        var conn = pc.connectionState;
+        if (ice === 'connected' || ice === 'completed' || conn === 'connected') {
+            clearIceDisconnectTimer();
+            if (!broadcastLiveStarted) {
+                broadcastLiveStarted = true;
+                clearStatusTitle();
+                statusEl.textContent = 'Live';
+                statusEl.classList.add('connected');
+                statusEl.classList.remove('error');
+                liveBadge.classList.add('visible');
+                startStats();
+                applyBitrateCap();
+                activeStreamKey = streamKey;
+                setViewerLimit(streamKey, maxViewersInput.value);
+                setRoomPassword(streamKey, roomPasswordInput.value.trim());
+            }
+            return;
+        }
+        if (ice === 'failed' || ice === 'closed' || conn === 'failed' || conn === 'closed') {
+            clearIceDisconnectTimer();
+            var iceFailed = (ice === 'failed' || conn === 'failed');
+            stopBroadcast();
+            /* Firefox logs "ICE failed, add a TURN server" — STUN does not relay media. Full hint in title (CSS may ellipsize #status). */
+            if (iceFailed) {
+                statusEl.textContent = 'ICE failed — TURN on server, or Firefox UDP blocked locally.';
+                statusEl.title = 'Server: TURN_URL + TURN_USERNAME + TURN_CREDENTIAL (coturn) if relay is needed. Firefox + sendto -5961 to STUN and SFU: local UDP blocked — fully quit Firefox (⌘Q) after firewall changes; check macOS Firewall, VPN, Little Snitch/LuLu/antivirus; compare Chrome on same URL. Full checklist: README → STUN/TURN. TURNS (TLS :443) if UDP cannot be used.';
+            } else {
+                clearStatusTitle();
+                statusEl.textContent = 'Disconnected';
+            }
+            statusEl.classList.add('error');
+            return;
+        }
+        /* disconnected is often transient (esp. Firefox); only tear down if it persists */
+        if (ice === 'disconnected') {
+            clearIceDisconnectTimer();
+            iceDisconnectTimer = setTimeout(function () {
+                if (!pc) {
+                    return;
+                }
+                var i2 = pc.iceConnectionState;
+                var c2 = pc.connectionState;
+                if (i2 !== 'disconnected') {
+                    return;
+                }
+                if (c2 === 'connected' || c2 === 'connecting') {
+                    return;
+                }
+                stopBroadcast();
+                clearStatusTitle();
+                statusEl.textContent = 'Disconnected';
+                statusEl.classList.add('error');
+            }, 5000);
+        }
+    }
+
+    pc.oniceconnectionstatechange = onBroadcastPcStateChange;
+    pc.onconnectionstatechange = onBroadcastPcStateChange;
 
     try {
         var offer = await pc.createOffer();
@@ -295,6 +440,9 @@ btnStart.onclick = async function () {
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
     } catch (err) {
+        broadcastLiveStarted = false;
+        clearIceDisconnectTimer();
+        clearStatusTitle();
         statusEl.textContent = 'Failed: ' + err.message;
         statusEl.classList.add('error');
         btnStart.style.display = '';
@@ -306,11 +454,14 @@ btnStart.onclick = async function () {
 
 btnStop.onclick = function () {
     stopBroadcast();
+    clearStatusTitle();
     statusEl.textContent = 'Stopped';
     statusEl.classList.remove('connected', 'error');
 };
 
 function stopBroadcast() {
+    clearIceDisconnectTimer();
+    broadcastLiveStarted = false;
     if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
     if (pc) { pc.close(); pc = null; }
     activeStreamKey = null;

@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="description" content="Watch live — independent broadcasting platform powered by WebRTC.">
     <title>Live Stream — livecam</title>
     <link rel="stylesheet" href="/css/watch.css">
@@ -10,97 +10,112 @@
 <body>
 
     <header class="site-header">
-        <div class="header-left">
-            <h1>
-                Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
-            </h1>
-            <div class="viewer-count" id="viewer-count"></div>
-            <span id="offline-text" style="display:none;"></span>
+        <div class="site-header-inner">
+            <div class="header-left">
+                <h1>
+                    Independent Broadcasting &mdash; <a href="https://github.com/xloveee/livecam" rel="follow">github.com/xloveee/livecam</a>
+                </h1>
+                <div class="viewer-count" id="viewer-count"></div>
+                <span id="offline-text" style="display:none;"></span>
+            </div>
+            <div class="site-header-tools" id="controls">
+                <span class="stream-status-cluster">
+                    <span id="offline-banner" title="Stream status">
+                        <span class="dot"></span>
+                    </span>
+                    <span id="status">Checking stream...</span>
+                </span>
+                <select id="quality-select" disabled title="Simulcast layer">
+                    <option value="">Auto</option>
+                    <option value="h">1080p</option>
+                    <option value="m">720p</option>
+                    <option value="l">360p</option>
+                </select>
+            </div>
         </div>
     </header>
 
     <div class="watch-row">
-    <main class="stream-column">
-        <div class="stream-snap-page stream-snap-page--playback">
-        <div class="stream-viewport">
-            <div class="stream-toolbar" id="controls">
-                <div class="stream-controls">
-                    <span class="stream-status-cluster">
-                        <span id="offline-banner" title="Stream status">
-                            <span class="dot"></span>
-                        </span>
-                        <span id="status">Checking stream...</span>
-                    </span>
-                    <select id="quality-select" disabled>
-                        <option value="">Auto</option>
-                        <option value="h">High (1080p)</option>
-                        <option value="m">Medium (720p)</option>
-                        <option value="l">Low (360p)</option>
-                    </select>
+        <main class="stream-column">
+            <div class="stream-snap-page stream-snap-page--playback">
+                <div class="stream-viewport">
+                    <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
+                    <video id="player" playsinline webkit-playsinline controls></video>
+
+                    <div id="decode-banner" role="status">
+                        <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).
+                        Use <strong>Baseline</strong> / <strong>Constrained Baseline</strong> in OBS, or publish from <strong>/broadcast</strong> (VP8 when available).
+                    </div>
+
+                    <div id="degrade-banner">
+                        <span class="degrade-icon">&#9888;</span>
+                        <span id="degrade-text"></span>
+                        <div id="hls-banner">
+                            <button onclick="switchToHLS()">Switch to stable playback</button>
+                            <button class="degrade-back" onclick="switchToWebRTC()">Back to real-time</button>
+                        </div>
+                    </div>
+
+                    <button type="button" id="scroll-hint" class="panels-below-delimiter" style="display:none;" aria-label="Scroll to panels below" onclick="document.getElementById('panels-section').scrollIntoView({behavior: 'smooth', block: 'start'})">
+                        <span class="panels-below-delimiter-line" aria-hidden="true"></span>
+                    </button>
                 </div>
             </div>
 
-            <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
-            <video id="player" playsinline controls></video>
+            <section class="panels-section stream-snap-page stream-snap-page--panels" id="panels-section">
+                <div class="panel-card panel-donate" id="panel-donate" style="display:none">
+                    <div class="panel-donate-body">
+                        <h3>Support the Stream</h3>
+                        <p>Send a donation — your message will appear highlighted in chat.</p>
+                    </div>
+                    <button class="btn-donate" onclick="openDonateModal()">Donate</button>
+                </div>
+                <div class="panels-grid" id="panels-grid" hidden></div>
+            </section>
+        </main>
 
-            <div id="degrade-banner">
-                <span class="degrade-icon">&#9888;</span>
-                <span id="degrade-text"></span>
-                <div id="hls-banner">
-                    <button onclick="switchToHLS()">Switch to stable playback</button>
-                    <button class="degrade-back" onclick="switchToWebRTC()">Back to real-time</button>
+        <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag: move left or up for more chat; right or down for less. Double-click resets to half." tabindex="-1" hidden></div>
+
+        <aside class="chat-panel" id="watch-chat-panel" aria-label="Chat">
+            <div class="chat-header">
+                <div class="chat-header-meta">
+                    <span class="chat-header-label">Chat</span>
+                    <span class="chat-status" id="chat-status"></span>
+                </div>
+                <div class="chat-header-actions">
+                    <button type="button" id="btn-toggle-chat" class="chat-header-btn chat-header-btn--toggle" aria-label="Hide chat" aria-expanded="true" aria-controls="watch-chat-panel" title="Hide chat">
+                        <svg class="chat-header-svg-open" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        <svg class="chat-header-svg-closed" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </button>
+                    <button type="button" id="btn-header-donate" class="chat-header-btn chat-header-btn--donate" aria-label="Donate" title="Support the stream">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                    </button>
                 </div>
             </div>
-
-            <button type="button" id="scroll-hint" class="panels-below-delimiter" style="display:none;" aria-label="Scroll to panels below" onclick="document.getElementById('panels-section').scrollIntoView({behavior: 'smooth'})">
-                <span class="panels-below-delimiter-line" aria-hidden="true"></span>
-            </button>
-        </div>
-        </div>
-
-        <section class="panels-section stream-snap-page stream-snap-page--panels" id="panels-section">
-            <div class="panel-card panel-donate" id="panel-donate" style="display:none">
-                <div class="panel-donate-body">
-                    <h3>Support the Stream</h3>
-                    <p>Send a donation — your message will appear highlighted in chat.</p>
+            <div class="chat-messages" id="chat-messages"></div>
+            <div class="chat-input-area">
+                <div class="chat-nick-prompt" id="chat-nick-prompt">
+                    <label>Choose a nickname to start chatting</label>
+                    <div class="nick-row">
+                        <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
+                        <button id="btn-chat-join">Join</button>
+                    </div>
+                    <div class="nick-error" id="nick-error"></div>
+                    <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
                 </div>
-                <button class="btn-donate" onclick="openDonateModal()">Donate</button>
-            </div>
-            <div class="panels-grid" id="panels-grid" hidden></div>
-        </section>
-    </main>
-
-    <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag: move left or up for more chat; right or down for less. Double-click resets to half." tabindex="-1" hidden></div>
-
-    <aside class="chat-panel" aria-label="Chat">
-        <div class="chat-header">
-            <span>Chat</span>
-            <span class="chat-status" id="chat-status"></span>
-        </div>
-        <div class="chat-messages" id="chat-messages"></div>
-        <div class="chat-input-area">
-            <div class="chat-nick-prompt" id="chat-nick-prompt">
-                <label>Choose a nickname to start chatting</label>
-                <div class="nick-row">
-                    <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
-                    <button id="btn-chat-join">Join</button>
+                <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()" style="pointer-events:none;opacity:0.25">
+                    <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
+                    <button disabled>Send</button>
                 </div>
-                <div class="nick-error" id="nick-error"></div>
-                <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
-            </div>
-            <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()" style="pointer-events:none;opacity:0.25">
-                <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
-                <button disabled>Send</button>
-            </div>
-            <div id="chat-send" style="display:none">
-                <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
-                <div class="chat-send">
-                    <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
-                    <button id="btn-chat-send">Send</button>
+                <div id="chat-send" style="display:none">
+                    <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
+                    <div class="chat-send">
+                        <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
+                        <button id="btn-chat-send">Send</button>
+                    </div>
                 </div>
             </div>
-        </div>
-    </aside>
+        </aside>
     </div>
 
     <!-- Body-level: fixed overlay must not sit inside main.stream-column (overflow scroll traps stacking on phone) -->
@@ -144,6 +159,7 @@
     <script src="/js/chat.js"></script>
     <script src="/js/donate.js"></script>
     <script src="/js/watch-split.js"></script>
+    <script src="/js/watch-header.js"></script>
     <script>
         (async function init() {
             roomId = getRoomIdFromURL();

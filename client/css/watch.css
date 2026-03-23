@@ -14,24 +14,44 @@ body {
     min-height: 0;
 }
 
-/* ── Site header (above stream + chat, not in stream column) ─ */
+/* ── Site header (single thin row: title · viewers · status · quality) ─ */
 
 .site-header {
     flex-shrink: 0;
     width: 100%;
-    padding: 0.55rem 1rem;
+    padding: 0.12rem 0.45rem;
     border-bottom: 1px solid #1a1a1a;
     background: #0a0a0a;
 }
+.site-header-inner {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 0.35rem;
+    width: 100%;
+    min-height: 0;
+    max-width: 100%;
+}
 .header-left {
     display: flex;
-    flex-direction: column;
-    gap: 0.15rem;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.35rem;
+    flex: 1 1 0;
+    min-width: 0;
 }
 .site-header h1 {
-    font-size: 1.05rem;
+    font-size: 0.65rem;
     font-weight: 600;
+    line-height: 1.15;
     color: #fff;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .site-header h1 a {
     color: #1e88e5;
@@ -39,7 +59,99 @@ body {
 }
 .site-header h1 a:hover { text-decoration: underline; }
 
-/* ── Stream + chat row (50 / 50) ────────────── */
+.site-header .viewer-count {
+    font-size: 0.58rem;
+    line-height: 1.1;
+    color: #777;
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.site-header-tools {
+    display: flex;
+    align-items: center;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+    margin-left: auto;
+}
+.site-header .stream-status-cluster {
+    flex-shrink: 0;
+    gap: 0.15rem;
+}
+.site-header #status {
+    font-size: 0.6rem;
+    line-height: 1.1;
+    white-space: nowrap;
+}
+.site-header select {
+    padding: 0.08rem 0.28rem;
+    font-size: 0.6rem;
+    line-height: 1.2;
+    border-radius: 2px;
+    max-width: 7.5rem;
+}
+.site-header #offline-banner .dot {
+    width: 5px;
+    height: 5px;
+    border-width: 1px;
+}
+.site-header #offline-banner.live .dot {
+    box-shadow: 0 0 3px rgba(211,47,47,0.5);
+}
+
+/* Chat collapsed: messages hidden; chat bar stays for toggle + donate (minimal chrome) */
+body.watch-chat-hidden .chat-messages,
+body.watch-chat-hidden .chat-input-area {
+    display: none !important;
+}
+body.watch-chat-hidden #watch-splitter {
+    display: none !important;
+}
+body.watch-chat-hidden main.stream-column {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    border-right: none !important;
+}
+body.watch-chat-hidden .chat-panel {
+    flex: 0 0 auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: 0;
+    overflow: visible;
+}
+body.watch-chat-hidden .chat-header-meta {
+    display: none;
+}
+body.watch-chat-hidden .chat-header {
+    justify-content: flex-end;
+}
+@media (min-width: 901px) {
+    body.watch-chat-hidden .chat-panel {
+        width: auto !important;
+        max-width: 2.65rem !important;
+        min-width: 2.5rem;
+        border-left: 1px solid #1a1a1a;
+    }
+    body.watch-chat-hidden .chat-header {
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.5rem;
+        padding: 0.45rem 0.2rem;
+        border-bottom: none;
+    }
+    body.watch-chat-hidden .chat-header-actions {
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+}
+
+/* ── Stream + chat row ──────────────────────── */
 
 .watch-row {
     flex: 1;
@@ -110,7 +222,7 @@ body {
     }
     .watch-row.watch-row--resize-mobile main.stream-column {
         border-bottom: none;
-        min-height: 120px;
+        min-height: min(42vh, 320px);
     }
     .watch-row.watch-row--resize-mobile .chat-panel {
         border-top: none;
@@ -134,13 +246,11 @@ body.watch-split-dragging.watch-split-dragging--row * {
     cursor: row-resize !important;
 }
 
-/* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
- * scroll-snap-type y proximity — gentle snap toward each section when scrolling ends.
- * scroll-snap-align start on each .stream-snap-page — panels sit below full playback view.
- * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
+/* ── Stream column (scroll-snap: playback “page” + panels “page” in this column only) ─
+ * Snap lives on main — donations/banners stay under the video column, not under chat. */
 
 main.stream-column {
-    flex: 1 1 0;
+    flex: 1.85 1 0;
     min-height: 0;
     min-width: 0;
     width: 0;
@@ -155,6 +265,8 @@ main.stream-column {
     overscroll-behavior-x: none;
     -webkit-overflow-scrolling: touch;
     border-right: 1px solid #1a1a1a;
+    display: flex;
+    flex-direction: column;
 }
 
 .stream-snap-page {
@@ -162,20 +274,12 @@ main.stream-column {
     scroll-snap-stop: normal;
 }
 
-/* First snap region: at least one full column viewport tall so panels stay off-screen until scroll */
+/* At least one full column viewport tall so panels stay off-screen until scroll */
 .stream-snap-page--playback {
     min-height: 100%;
     display: flex;
     flex-direction: column;
     box-sizing: border-box;
-}
-
-/* ── Stream toolbar (quality / status only) ─── */
-
-.stream-toolbar {
-    flex-shrink: 0;
-    width: 100%;
-    padding-bottom: 0.35rem;
 }
 
 /* ── Video Player ─────────────────────────────
@@ -194,6 +298,13 @@ main.stream-column {
     position: relative;
     z-index: 1;
     touch-action: manipulation;
+}
+
+@media (min-width: 901px) {
+    /* Vertical / phone-style frame: reserve height so chat split does not crush the picture */
+    body.watch-stream-portrait #player {
+        min-height: min(72vh, 90vw);
+    }
 }
 
 /* ── Stream Controls ────────────────────────── */
@@ -247,12 +358,16 @@ button:disabled { background: #555; cursor: default; }
 
 .stream-viewport {
     position: relative;
+    z-index: 2;
     width: 100%;
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 .panels-below-delimiter {
@@ -273,9 +388,19 @@ button:disabled { background: #555; cursor: default; }
     -webkit-tap-highlight-color: transparent;
 }
 .panels-below-delimiter:focus-visible {
-    outline: 1px solid #555;
-    outline-offset: 3px;
+    outline: 1px solid rgba(255, 255, 255, 0.22);
+    outline-offset: 2px;
     border-radius: 2px;
+}
+/* Override global `button:hover` red — keep hit area invisible, hint only on the pill */
+button.panels-below-delimiter:hover {
+    background: transparent;
+}
+.panels-below-delimiter:hover .panels-below-delimiter-line {
+    background-color: rgba(255, 255, 255, 0.38);
+    box-shadow:
+        0 0 0 0.5px rgba(255, 255, 255, 0.1),
+        0 1px 2px rgba(0, 0, 0, 0.45);
 }
 /* iOS-style home-indicator pill: short rounded bar, not a full-width hairline */
 .panels-below-delimiter-line {
@@ -289,9 +414,10 @@ button:disabled { background: #555; cursor: default; }
     box-shadow:
         0 0 0 0.5px rgba(255, 255, 255, 0.08),
         0 1px 2px rgba(0, 0, 0, 0.45);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .panels-below-delimiter:active .panels-below-delimiter-line {
-    background-color: rgba(255, 255, 255, 0.4);
+    background-color: rgba(255, 255, 255, 0.45);
 }
 
 /* ── Offline Banner (Header Dot) ────────────── */
@@ -320,7 +446,7 @@ button:disabled { background: #555; cursor: default; }
 
 /* ── Password Prompt ────────────────────────── */
 
-/* Full-viewport overlay: keep markup under <body> (not inside overflow:auto stream column) so z-index wins over chat on iOS */
+/* Full-viewport overlay: keep markup under <body> (not inside main.stream-column overflow) so z-index wins over chat on iOS */
 #password-prompt {
     display: none;
     position: fixed;
@@ -365,6 +491,26 @@ button:disabled { background: #555; cursor: default; }
     font-size: 0.85rem;
     margin-top: 0.8rem;
 }
+
+/* ── Decoder stall (WebRTC H.264 profile) ───────────────── */
+
+#decode-banner {
+    display: none;
+    width: 100%;
+    max-width: none;
+    padding: 0.65rem 0.85rem;
+    margin-top: 0.45rem;
+    font-size: 0.82rem;
+    line-height: 1.45;
+    color: #ffcdd2;
+    background: #3e2723;
+    border: 1px solid #c62828;
+    border-radius: 4px;
+    text-align: left;
+    flex-shrink: 0;
+    box-sizing: border-box;
+}
+#decode-banner strong { color: #fff; }
 
 /* ── Connection Quality Banner ───────────────── */
 
@@ -418,7 +564,7 @@ button:disabled { background: #555; cursor: default; }
 .panels-section {
     width: 100%;
     max-width: none;
-    padding: 0.8rem 0 1rem;
+    padding: 0.8rem 0.75rem 1rem;
     flex-shrink: 0;
     box-sizing: border-box;
     display: flex;
@@ -507,7 +653,7 @@ button:disabled { background: #555; cursor: default; }
 /* ── Chat Panel ─────────────────────────────── */
 
 .chat-panel {
-    flex: 1 1 0;
+    flex: 0.7 1 0;
     min-width: 0;
     width: 0;
     min-height: 0;
@@ -518,15 +664,81 @@ button:disabled { background: #555; cursor: default; }
     background: #0d0d0d;
 }
 .chat-header {
-    padding: 0.8rem 1rem;
-    font-size: 0.9rem;
-    font-weight: 600;
-    color: #fff;
+    padding: 0.35rem 0.45rem;
+    font-size: 0.72rem;
+    font-weight: 500;
+    color: rgba(255, 255, 255, 0.88);
     border-bottom: 1px solid #1a1a1a;
     display: flex;
     align-items: center;
     justify-content: space-between;
+    gap: 0.4rem;
     flex-shrink: 0;
+}
+.chat-header-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    min-width: 0;
+}
+.chat-header-label {
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.55);
+}
+.chat-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.15rem;
+    flex-shrink: 0;
+}
+.chat-header-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    margin: 0;
+    border: none;
+    border-radius: 3px;
+    background: transparent;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+}
+.chat-header-btn:focus-visible {
+    outline: 1px solid rgba(30, 136, 229, 0.7);
+    outline-offset: 1px;
+}
+.chat-header-btn svg {
+    display: block;
+    flex-shrink: 0;
+}
+/* Toggle: neutral line icon; donate: amber accent only (no filled CTA block) */
+.chat-header-btn--toggle {
+    color: rgba(255, 255, 255, 0.38);
+}
+.chat-header-btn--toggle:hover {
+    color: rgba(255, 255, 255, 0.75);
+    background: rgba(255, 255, 255, 0.04);
+}
+.chat-header-btn--toggle .chat-header-svg-closed {
+    display: none;
+}
+body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-open {
+    display: none;
+}
+body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
+    display: block;
+}
+.chat-header-btn--donate {
+    color: #ffb300;
+}
+.chat-header-btn--donate:hover {
+    color: #ffc940;
+    background: rgba(255, 179, 0, 0.07);
 }
 .chat-status {
     font-size: 0.7rem;
@@ -750,10 +962,17 @@ button:disabled { background: #555; cursor: default; }
 /* ── Mobile: stack vertically ───────────────── */
 
 @media (max-width: 900px) {
+    /* Phone declination: notch / home-indicator safe areas, one outer scroll (main), touch affordances */
+    html {
+        background-color: #0a0a0a;
+    }
     body {
         overflow: hidden;
-        min-height: 100%;
+        min-height: 100svh;
         min-height: 100dvh;
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        box-sizing: border-box;
     }
     .watch-row {
         flex: 1;
@@ -772,26 +991,52 @@ button:disabled { background: #555; cursor: default; }
         padding: 0.45rem 0.55rem;
         overflow-y: auto;
         overflow-x: hidden;
-        /* scroll-snap fights native <video> controls on iOS — off on phone */
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
+        /* scroll-snap can fight native <video> controls on iOS — off on phone */
         scroll-snap-type: none;
-        overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
+    /* Fill the stream column’s flex height so panels stay below the fold until main is scrolled */
     .stream-snap-page--playback {
-        min-height: auto;
+        min-height: 100%;
     }
     .site-header {
-        padding: 0.45rem 0.65rem;
+        padding: 0.1rem 0.4rem;
+        padding-left: max(0.4rem, env(safe-area-inset-left, 0px));
+        padding-right: max(0.4rem, env(safe-area-inset-right, 0px));
+        padding-top: max(0.1rem, env(safe-area-inset-top, 0px));
     }
-    .site-header h1 { font-size: 0.9rem; }
-    .stream-controls { width: 100%; justify-content: space-between; }
+    .site-header h1 { font-size: 0.62rem; }
+    .site-header .viewer-count { font-size: 0.55rem; }
+    .site-header #status { font-size: 0.58rem; }
+    .site-header select {
+        font-size: 0.58rem;
+        max-width: 6.5rem;
+        padding: 0.06rem 0.22rem;
+    }
+    /* Keep one row; title ellipsizes on narrow phones */
+    .site-header-inner {
+        flex-wrap: nowrap;
+    }
+    .header-left {
+        flex-direction: row;
+    }
+    .site-header-tools {
+        margin-left: auto;
+        width: auto;
+        flex-shrink: 0;
+    }
+    /* Single vertical scroll on main — avoid nested scroll fighting the video */
     .stream-viewport {
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
+        overflow-y: visible;
+        overscroll-behavior-y: auto;
     }
     /* Readable touch target: no max-height trap, no flex-shrink-to-zero */
     #player {
@@ -802,7 +1047,11 @@ button:disabled { background: #555; cursor: default; }
         aspect-ratio: auto;
         object-fit: contain;
     }
-    .panels-section { padding: 0.5rem 0 0.75rem; }
+    /* Portrait frame (typical phone camera): give video more vertical room vs chat */
+    body.watch-stream-portrait #player {
+        min-height: min(68vh, 178vw);
+    }
+    .panels-section { padding: 0.5rem 0.55rem 0.75rem; }
     .chat-panel {
         width: 100%;
         flex: 1 1 0;
@@ -811,11 +1060,36 @@ button:disabled { background: #555; cursor: default; }
         height: auto;
         border-top: 1px solid #1a1a1a;
     }
+    .chat-input-area {
+        padding-bottom: max(0.6rem, env(safe-area-inset-bottom, 0px));
+    }
     .panels-grid {
         grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
     }
     .panels-below-delimiter {
         padding-top: 0.45rem;
+        min-height: 2.75rem;
+        box-sizing: border-box;
+    }
+    .donate-modal-overlay.visible {
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        box-sizing: border-box;
+        align-items: center;
+    }
+    .donate-modal {
+        max-height: min(90dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    #password-prompt {
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        box-sizing: border-box;
     }
 }
 

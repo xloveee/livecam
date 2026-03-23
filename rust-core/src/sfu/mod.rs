@@ -1,14 +1,18 @@
 use std::collections::{HashMap, VecDeque};
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use str0m::format::Codec;
 use str0m::media::{KeyframeRequest, KeyframeRequestKind, MediaData, Mid, Rid};
 use str0m::net::{Protocol, Receive};
 use str0m::{Event, IceConnectionState, Input, Output, Rtc};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
+
+use crate::hls::HlsSink;
 
 /// Unique identifier for a peer session (broadcaster or viewer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -102,6 +106,17 @@ struct TrackOut {
     local_mid: Option<Mid>,
 }
 
+/// Simulcast quality levels in descending order.
+const QUALITY_LEVELS: &[&str] = &["h", "m", "l"];
+const AQ_BAD_THRESHOLD: u8 = 1;
+const AQ_GOOD_THRESHOLD: u8 = 6;
+const AQ_COOLDOWN: Duration = Duration::from_secs(8);
+const AQ_UPGRADE_COOLDOWN: Duration = Duration::from_secs(30);
+const AQ_LOSS_BAD: f32 = 0.03;
+const AQ_LOSS_GOOD: f32 = 0.01;
+const AQ_NACK_BAD: u64 = 5;
+const AQ_NACK_GOOD: u64 = 2;
+
 /// Per-peer session state.
 struct Peer {
     id: PeerId,
@@ -112,7 +127,16 @@ struct Peer {
     tracks_out: Vec<TrackOut>,
     chosen_rid: Option<Rid>,
     last_media_at: Option<Instant>,
+    logged_mids: Vec<Mid>,
+    aq_bad_count: u8,
+    aq_good_count: u8,
+    aq_last_change: Option<Instant>,
+    aq_manual: bool,
+    write_error_count: u32,
+    last_video_write: Instant,
 }
+
+const WRITE_ERROR_DISCONNECT_THRESHOLD: u32 = 50;
 
 impl Peer {
     fn new(id: PeerId, rtc: Rtc, role: PeerRole, room_id: String) -> Self {
@@ -125,6 +149,13 @@ impl Peer {
             tracks_out: Vec::new(),
             chosen_rid: None,
             last_media_at: None,
+            logged_mids: Vec::new(),
+            aq_bad_count: 0,
+            aq_good_count: 0,
+            aq_last_change: None,
+            aq_manual: false,
+            write_error_count: 0,
+            last_video_write: Instant::now(),
         }
     }
 }
@@ -165,6 +196,7 @@ pub async fn run_sfu_loop(
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
     mut disconnect_rx: mpsc::UnboundedReceiver<PeerDisconnect>,
     room_state: RoomStateMap,
+    hls_dir: Option<PathBuf>,
 ) {
     let mut peers: Vec<Peer> = Vec::new();
     let mut propagation_queue: VecDeque<Propagated> = VecDeque::new();
@@ -172,6 +204,10 @@ pub async fn run_sfu_loop(
     let mut last_housekeeping = Instant::now();
     let mut media_fwd_count: u64 = 0;
     let mut last_media_log = Instant::now();
+    let mut hls_sinks: HashMap<String, HlsSink> = HashMap::new();
+    let mut addr_cache: HashMap<SocketAddr, usize> = HashMap::new();
+    let mut last_keyframe_per_peer: HashMap<PeerId, Instant> = HashMap::new();
+    let mut room_viewer_cache: HashMap<String, usize> = HashMap::new();
 
     tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
 
@@ -194,6 +230,11 @@ pub async fn run_sfu_loop(
                         peer.rtc.disconnect();
                     }
                 }
+                for room in &dead_rooms {
+                    if let Some(sink) = hls_sinks.remove(room) {
+                        sink.stop();
+                    }
+                }
             }
 
             for peer in peers.iter_mut() {
@@ -212,6 +253,7 @@ pub async fn run_sfu_loop(
             }
 
             peers.retain(|p| p.rtc.is_alive());
+            addr_cache.clear();
 
             // Recompute viewer counts and broadcaster liveness.
             let now = Instant::now();
@@ -231,6 +273,12 @@ pub async fn run_sfu_loop(
                     }
                 }
             }
+
+            room_viewer_cache.clear();
+            for (&room_id, &count) in &viewer_counts {
+                room_viewer_cache.insert(room_id.to_owned(), count as usize);
+            }
+
             if let Ok(mut state) = room_state.lock() {
                 for info in state.values_mut() {
                     info.viewer_count = 0;
@@ -264,6 +312,15 @@ pub async fn run_sfu_loop(
                     tracing::info!("{}: evicting stale broadcaster from room '{}'", old.id, room_id);
                     old.rtc.disconnect();
                 }
+                if let Some(old_sink) = hls_sinks.remove(&room_id) {
+                    old_sink.stop();
+                }
+                if let Some(ref dir) = hls_dir {
+                    match HlsSink::start(&room_id, dir) {
+                        Ok(sink) => { hls_sinks.insert(room_id.clone(), sink); }
+                        Err(e) => tracing::warn!("HLS sink failed for '{}': {}", room_id, e),
+                    }
+                }
             }
 
             if role == PeerRole::Viewer {
@@ -292,8 +349,11 @@ pub async fn run_sfu_loop(
             if let Some(peer) = peers.iter_mut().find(|p| {
                 p.id == qc.peer_id && p.room_id == qc.room_id && p.role == PeerRole::Viewer
             }) {
-                tracing::info!("{}: quality changed to {:?}", peer.id, qc.rid);
+                tracing::info!("{}: manual quality -> {:?}", peer.id, qc.rid);
                 peer.chosen_rid = qc.rid.clone();
+                peer.aq_manual = qc.rid.is_some();
+                peer.aq_bad_count = 0;
+                peer.aq_good_count = 0;
 
                 let target_rid: Rid = match qc.rid {
                     Some(rid) => rid,
@@ -340,9 +400,25 @@ pub async fn run_sfu_loop(
                     let now = Instant::now();
                     if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
                         let input = Input::Receive(now, receive);
-                        if let Some(peer) = peers.iter_mut().find(|p| p.rtc.accepts(&input)) {
-                            if let Err(e) = peer.rtc.handle_input(input) {
-                                tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+
+                        // Fast path: check address cache
+                        if let Some(&idx) = addr_cache.get(&source) {
+                            if idx < peers.len() && peers[idx].rtc.accepts(&input) {
+                                if let Err(e) = peers[idx].rtc.handle_input(input) {
+                                    tracing::warn!("{}: handle_input error: {:?}", peers[idx].id, e);
+                                }
+                                continue;
+                            }
+                        }
+
+                        // Slow path: linear scan, then update cache
+                        for (i, peer) in peers.iter_mut().enumerate() {
+                            if peer.rtc.accepts(&input) {
+                                addr_cache.insert(source, i);
+                                if let Err(e) = peer.rtc.handle_input(input) {
+                                    tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                                }
+                                break;
                             }
                         }
                     }
@@ -402,7 +478,16 @@ pub async fn run_sfu_loop(
                 if matches!(&prop, Propagated::Media { .. }) {
                     media_fwd_count += 1;
                 }
-                propagate(prop, &mut peers);
+                if let Propagated::Keyframe { target_peer, .. } = &prop {
+                    let now = Instant::now();
+                    if let Some(last) = last_keyframe_per_peer.get(target_peer) {
+                        if now.duration_since(*last) < Duration::from_millis(500) {
+                            continue;
+                        }
+                    }
+                    last_keyframe_per_peer.insert(*target_peer, now);
+                }
+                propagate(prop, &mut peers, &mut hls_sinks, &room_viewer_cache);
             }
         }
 
@@ -449,14 +534,23 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 };
             }
             if peer.role == PeerRole::Viewer {
-                // The viewer's SDP offer contained recvonly m-lines. str0m fires MediaAdded
-                // for each one. Match it to an unmapped TrackOut of the same media kind so
-                // the SFU knows where to write incoming broadcaster media.
                 if let Some(track_out) = peer.tracks_out.iter_mut().find(|t| {
                     t.local_mid.is_none() && t.kind == ev.kind
                 }) {
                     tracing::info!("{}: mapped viewer mid={} -> broadcaster mid={}", peer.id, ev.mid, track_out.source_mid);
                     track_out.local_mid = Some(ev.mid);
+
+                    if ev.kind == str0m::media::MediaKind::Video {
+                        if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
+                            tx.set_rtx_cache(1024, Duration::from_secs(2), Some(0.15));
+                            tracing::info!("{}: RTX cache tuned for video mid={}", peer.id, ev.mid);
+                        }
+                    } else if ev.kind == str0m::media::MediaKind::Audio {
+                        if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
+                            tx.set_rtx_cache(1, Duration::from_millis(1), Some(0.0));
+                            tracing::info!("{}: audio RTX disabled mid={}", peer.id, ev.mid);
+                        }
+                    }
                 }
             }
             Propagated::Noop
@@ -464,6 +558,14 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 
         Event::MediaData(data) => {
             if peer.role == PeerRole::Broadcaster {
+                if !peer.logged_mids.contains(&data.mid) {
+                    let codec = data.params.spec().codec;
+                    tracing::info!(
+                        "{} room='{}': first media mid={} codec={:?} keyframe={}",
+                        peer.id, peer.room_id, data.mid, codec, data.is_keyframe()
+                    );
+                    peer.logged_mids.push(data.mid);
+                }
                 peer.last_media_at = Some(Instant::now());
                 return Propagated::Media {
                     source_peer: peer.id,
@@ -487,13 +589,131 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
             Propagated::Noop
         }
 
+        Event::MediaEgressStats(stats) => {
+            if peer.role != PeerRole::Viewer {
+                return Propagated::Noop;
+            }
+
+            let is_video = peer.tracks_out.iter().any(|t| {
+                t.local_mid == Some(stats.mid) && t.kind == str0m::media::MediaKind::Video
+            });
+            if !is_video || peer.aq_manual {
+                return Propagated::Noop;
+            }
+
+            if peer.chosen_rid.is_some() {
+                let stale = stats.timestamp.saturating_duration_since(peer.last_video_write);
+                if stale > Duration::from_secs(3) {
+                    tracing::warn!(
+                        "{}: video stale {:.1}s on {:?}, resetting to default layer",
+                        peer.id, stale.as_secs_f32(), peer.chosen_rid
+                    );
+                    peer.chosen_rid = None;
+                    peer.aq_bad_count = 0;
+                    peer.aq_good_count = 0;
+                    peer.aq_last_change = Some(stats.timestamp);
+                    if let Some(track_out) = peer.tracks_out.iter().find(|t| {
+                        t.kind == str0m::media::MediaKind::Video
+                    }) {
+                        return Propagated::Keyframe {
+                            request: KeyframeRequest {
+                                mid: track_out.local_mid.unwrap_or(track_out.source_mid),
+                                rid: Some("h".into()),
+                                kind: KeyframeRequestKind::Pli,
+                            },
+                            target_peer: track_out.source_peer,
+                            source_mid: track_out.source_mid,
+                        };
+                    }
+                }
+            }
+
+            let loss = stats.loss.unwrap_or(0.0);
+            let is_bad = loss > AQ_LOSS_BAD || stats.nacks > AQ_NACK_BAD;
+            let is_good = loss < AQ_LOSS_GOOD && stats.nacks <= AQ_NACK_GOOD;
+
+            let current_idx = peer.chosen_rid.as_ref()
+                .and_then(|r| QUALITY_LEVELS.iter().position(|&q| q == &**r))
+                .unwrap_or(0);
+
+            if is_bad {
+                peer.aq_good_count = 0;
+                peer.aq_bad_count = peer.aq_bad_count.saturating_add(1);
+            } else if is_good {
+                peer.aq_bad_count = 0;
+                peer.aq_good_count = peer.aq_good_count.saturating_add(1);
+            } else {
+                peer.aq_bad_count = peer.aq_bad_count.saturating_sub(1);
+                peer.aq_good_count = 0;
+            }
+
+            let now = stats.timestamp;
+
+            let new_idx = if peer.aq_bad_count >= AQ_BAD_THRESHOLD
+                && current_idx < QUALITY_LEVELS.len() - 1
+            {
+                let can_downgrade = peer.aq_last_change
+                    .map(|t| now.saturating_duration_since(t) >= AQ_COOLDOWN)
+                    .unwrap_or(true);
+                if can_downgrade {
+                    peer.aq_bad_count = 0;
+                    Some(current_idx + 1)
+                } else {
+                    None
+                }
+            } else if peer.aq_good_count >= AQ_GOOD_THRESHOLD && current_idx > 0 {
+                let can_upgrade = peer.aq_last_change
+                    .map(|t| now.saturating_duration_since(t) >= AQ_UPGRADE_COOLDOWN)
+                    .unwrap_or(true);
+                if can_upgrade {
+                    peer.aq_good_count = 0;
+                    Some(current_idx - 1)
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
+
+            if let Some(idx) = new_idx {
+                let new_rid: Rid = QUALITY_LEVELS[idx].into();
+                tracing::info!(
+                    "{}: auto-quality {:?} -> {} (loss={:.1}% nacks={})",
+                    peer.id, peer.chosen_rid, &*new_rid, loss * 100.0, stats.nacks
+                );
+                peer.chosen_rid = Some(new_rid.clone());
+                peer.aq_last_change = Some(now);
+
+                if let Some(track_out) = peer.tracks_out.iter().find(|t| {
+                    t.kind == str0m::media::MediaKind::Video
+                }) {
+                    return Propagated::Keyframe {
+                        request: KeyframeRequest {
+                            mid: track_out.local_mid.unwrap_or(track_out.source_mid),
+                            rid: Some(new_rid),
+                            kind: KeyframeRequestKind::Pli,
+                        },
+                        target_peer: track_out.source_peer,
+                        source_mid: track_out.source_mid,
+                    };
+                }
+            }
+
+            Propagated::Noop
+        }
+
         _ => Propagated::Noop,
     }
 }
 
 /// Forward a propagated event to all relevant peers.
 /// Takes ownership so frame data can be moved (zero-copy) to the last viewer.
-fn propagate(prop: Propagated, peers: &mut [Peer]) {
+fn propagate(
+    prop: Propagated,
+    peers: &mut [Peer],
+    hls_sinks: &mut HashMap<String, HlsSink>,
+    room_viewer_cache: &HashMap<String, usize>,
+) {
     match prop {
         Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
             for peer in peers.iter_mut() {
@@ -515,9 +735,17 @@ fn propagate(prop: Propagated, peers: &mut [Peer]) {
         }
 
         Propagated::Media { source_peer, room_id, mut data } => {
-            let viewer_count = peers.iter().filter(|p| {
-                p.role == PeerRole::Viewer && p.room_id == room_id && p.id != source_peer
-            }).count();
+            if data.params.spec().codec == Codec::H264 {
+                if let Some(sink) = hls_sinks.get_mut(&room_id) {
+                    let pts = data.time.numer();
+                    let is_kf = data.is_keyframe();
+                    if !sink.write_video(pts, is_kf, &data.data) {
+                        hls_sinks.remove(&room_id);
+                    }
+                }
+            }
+
+            let viewer_count = room_viewer_cache.get(&room_id).copied().unwrap_or(0);
 
             let mut written = 0u32;
             for peer in peers.iter_mut() {
@@ -536,9 +764,10 @@ fn propagate(prop: Propagated, peers: &mut [Peer]) {
                     }
                 }
 
-                let local_mid = peer.tracks_out.iter()
+                let (local_mid, is_video) = peer.tracks_out.iter()
                     .find(|t| t.source_peer == source_peer && t.source_mid == data.mid)
-                    .and_then(|t| t.local_mid);
+                    .map(|t| (t.local_mid, t.kind == str0m::media::MediaKind::Video))
+                    .unwrap_or((None, false));
 
                 let Some(mid) = local_mid else {
                     continue;
@@ -563,9 +792,18 @@ fn propagate(prop: Propagated, peers: &mut [Peer]) {
                     data.data.clone()
                 };
 
-                if let Err(e) = writer.write(pt, data.network_time, data.time, frame) {
-                    tracing::warn!("{}: write error: {:?}", peer.id, e);
-                    peer.rtc.disconnect();
+                match writer.write(pt, data.network_time, data.time, frame) {
+                    Ok(()) => {
+                        peer.write_error_count = 0;
+                        if is_video { peer.last_video_write = Instant::now(); }
+                    }
+                    Err(e) => {
+                        peer.write_error_count += 1;
+                        if peer.write_error_count >= WRITE_ERROR_DISCONNECT_THRESHOLD {
+                            tracing::warn!("{}: {} consecutive write errors, disconnecting: {:?}", peer.id, peer.write_error_count, e);
+                            peer.rtc.disconnect();
+                        }
+                    }
                 }
             }
         }

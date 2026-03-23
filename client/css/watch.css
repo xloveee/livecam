@@ -388,9 +388,19 @@ button:disabled { background: #555; cursor: default; }
     -webkit-tap-highlight-color: transparent;
 }
 .panels-below-delimiter:focus-visible {
-    outline: 1px solid #555;
-    outline-offset: 3px;
+    outline: 1px solid rgba(255, 255, 255, 0.22);
+    outline-offset: 2px;
     border-radius: 2px;
+}
+/* Override global `button:hover` red — keep hit area invisible, hint only on the pill */
+button.panels-below-delimiter:hover {
+    background: transparent;
+}
+.panels-below-delimiter:hover .panels-below-delimiter-line {
+    background-color: rgba(255, 255, 255, 0.38);
+    box-shadow:
+        0 0 0 0.5px rgba(255, 255, 255, 0.1),
+        0 1px 2px rgba(0, 0, 0, 0.45);
 }
 /* iOS-style home-indicator pill: short rounded bar, not a full-width hairline */
 .panels-below-delimiter-line {
@@ -404,9 +414,10 @@ button:disabled { background: #555; cursor: default; }
     box-shadow:
         0 0 0 0.5px rgba(255, 255, 255, 0.08),
         0 1px 2px rgba(0, 0, 0, 0.45);
+    transition: background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .panels-below-delimiter:active .panels-below-delimiter-line {
-    background-color: rgba(255, 255, 255, 0.4);
+    background-color: rgba(255, 255, 255, 0.45);
 }
 
 /* ── Offline Banner (Header Dot) ────────────── */

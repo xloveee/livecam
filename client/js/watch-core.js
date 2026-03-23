@@ -38,6 +38,8 @@ var viewerState = 'init';
 
 /** Custom line from broadcaster (GET /api/room_info → offline_banner); empty → default copy */
 var offlineBannerCustom = '';
+var offlineOverlay = document.getElementById('offline-overlay');
+var offlineOverlayText = document.getElementById('offline-overlay-text');
 
 var decodeBanner = document.getElementById('decode-banner');
 var decodeCheckInterval = null;
@@ -241,16 +243,28 @@ function offlineBannerDisplayLine() {
     return t.length ? t : 'No broadcast right now';
 }
 
+function showOfflineOverlay() {
+    var line = offlineBannerDisplayLine();
+    if (offlineOverlayText) offlineOverlayText.textContent = line;
+    document.body.classList.add('watch-show-offline-overlay');
+}
+
+function hideOfflineOverlay() {
+    document.body.classList.remove('watch-show-offline-overlay');
+}
+
 function renderState() {
     passwordPrompt.style.display = 'none';
     statusEl.classList.remove('error');
     document.body.classList.remove('watch-header-offline-msg');
+    hideOfflineOverlay();
 
     switch (viewerState) {
         case 'offline':
             offlineBanner.classList.remove('live');
             offlineText.textContent = offlineBannerDisplayLine();
             document.body.classList.add('watch-header-offline-msg');
+            showOfflineOverlay();
             statusEl.textContent = 'Offline';
             viewerCountEl.textContent = '';
             qualitySelect.disabled = true;

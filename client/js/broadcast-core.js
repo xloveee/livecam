@@ -216,7 +216,7 @@ async function setRoomPassword(streamKey, password) {
 
 async function setOfflineBanner(streamKey, text) {
     try {
-        await fetch('/api/offline_banner/' + streamKey, {
+        await fetch('/api/donations/offline_banner', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ offline_banner: text || '' })
@@ -227,11 +227,11 @@ async function setOfflineBanner(streamKey, text) {
 async function loadOfflineBannerFromRoom() {
     if (!authenticatedKey || !offlineBannerText) return;
     try {
-        var resp = await fetch('/api/room_info/' + authenticatedKey);
+        var resp = await fetch('/api/donations/offline_banner');
         if (!resp.ok) return;
-        var info = await resp.json();
-        if (typeof info.offline_banner === 'string') {
-            offlineBannerText.value = info.offline_banner;
+        var data = await resp.json();
+        if (typeof data.offline_banner === 'string') {
+            offlineBannerText.value = data.offline_banner;
         }
     } catch (e) { /* ignore */ }
 }
@@ -261,7 +261,7 @@ if (offlineBannerText) {
     offlineBannerText.oninput = function () {
         clearTimeout(offlineBannerDebounce);
         offlineBannerDebounce = setTimeout(function () {
-            if (authenticatedKey) setOfflineBanner(authenticatedKey, offlineBannerText.value);
+            setOfflineBanner(authenticatedKey, offlineBannerText.value);
         }, 600);
     };
 }

@@ -40,7 +40,12 @@
             <div class="stream-snap-page stream-snap-page--playback">
                 <div class="stream-viewport">
                     <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
-                    <video id="player" playsinline webkit-playsinline controls></video>
+                    <div class="player-wrap" id="player-wrap">
+                        <video id="player" playsinline webkit-playsinline controls></video>
+                        <div class="offline-overlay" id="offline-overlay" aria-live="polite">
+                            <span class="offline-overlay-text" id="offline-overlay-text"></span>
+                        </div>
+                    </div>
 
                     <div id="decode-banner" role="status">
                         <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).

@@ -21,7 +21,7 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
-| **Offline banner (broadcaster)** | `POST https://yourdomain.com/api/offline_banner/{roomId}` — JSON `{ "offline_banner": "…" }` (shown on `/watch` when not live; empty clears). Public `GET /api/room_info/{roomId}` includes `offline_banner`. |
+| **Offline banner (broadcaster)** | `GET/POST https://yourdomain.com/api/donations/offline_banner` — persisted in SQLite; JSON `{ "offline_banner": "…" }`. Shown on `/watch` when not live (overlay on the video player); empty clears. Public `GET /api/room_info/{roomId}` includes `offline_banner`. |
 | **Chat (WebSocket)** | `wss://yourdomain.com/api/chat/{roomId}?nick=Name` |
 
 ## Architecture Highlights

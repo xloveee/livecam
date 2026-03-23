@@ -194,6 +194,24 @@ func (d *DB) GetDonation(id string) (*DonationRecord, error) {
 	return &rec, nil
 }
 
+func (d *DB) SaveOfflineBanner(streamKey, text string) error {
+	return d.SaveConfig(streamKey, "offline_banner", text, true)
+}
+
+func (d *DB) GetOfflineBanner(streamKey string) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var data string
+	err := d.db.QueryRow(
+		`SELECT config_data FROM streamer_config WHERE stream_key = ? AND provider = 'offline_banner'`,
+		streamKey).Scan(&data)
+	if err != nil {
+		return ""
+	}
+	return data
+}
+
 func (d *DB) GetHistory(streamKey string, limit int) ([]DonationRecord, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()

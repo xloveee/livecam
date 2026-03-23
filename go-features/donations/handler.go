@@ -55,6 +55,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.handleConfirm(w, r, donationID)
 	case path == "/history" || path == "/history/":
 		h.handleHistory(w, r)
+	case path == "/offline_banner" || path == "/offline_banner/":
+		h.handleOfflineBanner(w, r)
 	default:
 		http.NotFound(w, r)
 	}
@@ -385,6 +387,50 @@ func (h *Handler) handleHistory(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(records)
+}
+
+/* ── Offline banner (persisted in streamer_config) ────────── */
+
+func (h *Handler) handleOfflineBanner(w http.ResponseWriter, r *http.Request) {
+	streamKey, ok := h.auth(w, r)
+	if !ok {
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		text := h.db.GetOfflineBanner(streamKey)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"offline_banner": text})
+
+	case http.MethodPost:
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		var req struct {
+			OfflineBanner string `json:"offline_banner"`
+		}
+		if err := json.Unmarshal(body, &req); err != nil {
+			http.Error(w, "Bad request", http.StatusBadRequest)
+			return
+		}
+		text := req.OfflineBanner
+		if len(text) > 512 {
+			text = text[:512]
+		}
+		if err := h.db.SaveOfflineBanner(streamKey, text); err != nil {
+			log.Printf("[donations] offline_banner save error: %v", err)
+			http.Error(w, "Internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
 /* ── Chat broadcast ──────────────────────────────────────── */

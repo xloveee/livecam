@@ -288,8 +288,6 @@ pub struct RoomInfoResponse {
     pub max_viewers: u32,
     pub has_password: bool,
     pub is_live: bool,
-    /// Message for viewers when not live; empty means use client default copy.
-    pub offline_banner: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub password: Option<String>,
 }
@@ -311,7 +309,6 @@ pub async fn room_info_handler(
             max_viewers: info.max_viewers,
             has_password: info.password.is_some(),
             is_live: info.is_live,
-            offline_banner: info.offline_banner,
             password: info.password,
         },
         None => RoomInfoResponse {
@@ -319,7 +316,6 @@ pub async fn room_info_handler(
             max_viewers: 0,
             has_password: false,
             is_live: false,
-            offline_banner: String::new(),
             password: None,
         },
     };
@@ -365,35 +361,6 @@ pub async fn room_password_handler(
     }
 
     tracing::info!("Room password for '{}': {}", room_id, if active { "set" } else { "cleared" });
-    (StatusCode::OK, "ok")
-}
-
-fn sanitize_offline_banner(input: &str) -> String {
-    input
-        .chars()
-        .filter(|c| *c == '\n' || *c == '\t' || !c.is_control())
-        .take(512)
-        .collect()
-}
-
-#[derive(Deserialize)]
-pub struct OfflineBannerRequest {
-    pub offline_banner: String,
-}
-
-/// Sets the offline message shown to viewers when the room is not live. Empty clears to default.
-pub async fn offline_banner_handler(
-    State(state): State<Arc<AppState>>,
-    Path(room_id): Path<String>,
-    Json(body): Json<OfflineBannerRequest>,
-) -> impl IntoResponse {
-    let text = sanitize_offline_banner(&body.offline_banner);
-
-    if let Ok(mut s) = state.room_state.lock() {
-        s.entry(room_id.clone()).or_default().offline_banner = text;
-    }
-
-    tracing::info!("Offline banner updated for room '{}'", room_id);
     (StatusCode::OK, "ok")
 }
 

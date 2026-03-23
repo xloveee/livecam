@@ -303,18 +303,52 @@ main.stream-column {
  * WebRTC: intrinsic size arrives late — never use min-height:0 on the <video> or flex can
  * collapse the box on WebKit. Keep a floor + stacking so native controls stay tappable. */
 
+.player-wrap {
+    position: relative;
+    width: 100%;
+    flex: 1 1 auto;
+    min-height: 12rem;
+    display: flex;
+    flex-direction: column;
+}
 #player {
     display: block;
     width: 100%;
     max-width: 100%;
     flex: 1 1 auto;
-    min-height: 12rem;
+    min-height: 0;
     background: #000;
     border-radius: 4px;
     object-fit: contain;
     position: relative;
     z-index: 1;
     touch-action: manipulation;
+}
+
+/* Offline overlay: centered on the video when not live */
+.offline-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    border-radius: 4px;
+    background: rgba(0, 0, 0, 0.78);
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem 2rem;
+    pointer-events: none;
+}
+body.watch-show-offline-overlay .offline-overlay {
+    display: flex;
+}
+.offline-overlay-text {
+    color: #bbb;
+    font-size: 1rem;
+    line-height: 1.5;
+    text-align: center;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-width: 32rem;
 }
 
 @media (min-width: 901px) {

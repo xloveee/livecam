@@ -837,10 +837,17 @@ button:disabled { background: #555; cursor: default; }
 /* ── Mobile: stack vertically ───────────────── */
 
 @media (max-width: 900px) {
+    /* Phone declination: notch / home-indicator safe areas, one outer scroll (main), touch affordances */
+    html {
+        background-color: #0a0a0a;
+    }
     body {
         overflow: hidden;
-        min-height: 100%;
+        min-height: 100svh;
         min-height: 100dvh;
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        box-sizing: border-box;
     }
     .watch-row {
         flex: 1;
@@ -859,6 +866,8 @@ button:disabled { background: #555; cursor: default; }
         padding: 0.45rem 0.55rem;
         overflow-y: auto;
         overflow-x: hidden;
+        -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
         /* scroll-snap can fight native <video> controls on iOS — off on phone */
         scroll-snap-type: none;
         border-right: none;
@@ -869,6 +878,9 @@ button:disabled { background: #555; cursor: default; }
     }
     .site-header {
         padding: 0.1rem 0.4rem;
+        padding-left: max(0.4rem, env(safe-area-inset-left, 0px));
+        padding-right: max(0.4rem, env(safe-area-inset-right, 0px));
+        padding-top: max(0.1rem, env(safe-area-inset-top, 0px));
     }
     .site-header h1 { font-size: 0.62rem; }
     .site-header .viewer-count { font-size: 0.55rem; }
@@ -890,12 +902,15 @@ button:disabled { background: #555; cursor: default; }
         width: auto;
         flex-shrink: 0;
     }
+    /* Single vertical scroll on main — avoid nested scroll fighting the video */
     .stream-viewport {
         display: flex;
         flex-direction: column;
         flex: 1 1 auto;
         min-height: 0;
         width: 100%;
+        overflow-y: visible;
+        overscroll-behavior-y: auto;
     }
     /* Readable touch target: no max-height trap, no flex-shrink-to-zero */
     #player {
@@ -919,11 +934,36 @@ button:disabled { background: #555; cursor: default; }
         height: auto;
         border-top: 1px solid #1a1a1a;
     }
+    .chat-input-area {
+        padding-bottom: max(0.6rem, env(safe-area-inset-bottom, 0px));
+    }
     .panels-grid {
         grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
     }
     .panels-below-delimiter {
         padding-top: 0.45rem;
+        min-height: 2.75rem;
+        box-sizing: border-box;
+    }
+    .donate-modal-overlay.visible {
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        box-sizing: border-box;
+        align-items: center;
+    }
+    .donate-modal {
+        max-height: min(90dvh, calc(100dvh - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px) - 2rem));
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    #password-prompt {
+        padding-left: env(safe-area-inset-left, 0);
+        padding-right: env(safe-area-inset-right, 0);
+        padding-top: env(safe-area-inset-top, 0);
+        padding-bottom: env(safe-area-inset-bottom, 0);
+        box-sizing: border-box;
     }
 }
 

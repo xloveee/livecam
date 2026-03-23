@@ -103,7 +103,39 @@ body {
     box-shadow: 0 0 3px rgba(211,47,47,0.5);
 }
 
-/* ── Stream + chat row (50 / 50) ────────────── */
+/* ── Scroll region: snap between live row (video + chat) and panels below ─ */
+
+.watch-scroll {
+    flex: 1;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+}
+
+.watch-snap-slide {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+}
+
+/* First snap region: at least one full scrollport tall so panels stay off-screen until scroll */
+.watch-snap-slide--stream {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+}
+
+.watch-snap-slide--stream .watch-row {
+    flex: 1;
+    min-height: 0;
+}
+
+/* ── Stream + chat row ──────────────────────── */
 
 .watch-row {
     flex: 1;
@@ -198,40 +230,22 @@ body.watch-split-dragging.watch-split-dragging--row * {
     cursor: row-resize !important;
 }
 
-/* ── Stream Column (scroll-snap: playback “page” + panels “page”) ─
- * scroll-snap-type y proximity — gentle snap toward each section when scrolling ends.
- * scroll-snap-align start on each .stream-snap-page — panels sit below full playback view.
- * overscroll-behavior-y contain — resists chaining scroll into chat / page (with chat’s own contain). */
+/* ── Stream column (video + in-column banners; vertical scroll lives on #watch-scroll) ─ */
 
 main.stream-column {
-    flex: 1.25 1 0;
+    flex: 1.85 1 0;
     min-height: 0;
     min-width: 0;
     width: 0;
     height: 100%;
     align-self: stretch;
     padding: 0.5rem 0.75rem;
-    overflow-y: auto;
+    overflow: hidden;
     overflow-x: hidden;
-    scroll-snap-type: y proximity;
-    scroll-behavior: smooth;
-    overscroll-behavior-y: contain;
     overscroll-behavior-x: none;
-    -webkit-overflow-scrolling: touch;
     border-right: 1px solid #1a1a1a;
-}
-
-.stream-snap-page {
-    scroll-snap-align: start;
-    scroll-snap-stop: normal;
-}
-
-/* First snap region: at least one full column viewport tall so panels stay off-screen until scroll */
-.stream-snap-page--playback {
-    min-height: 100%;
     display: flex;
     flex-direction: column;
-    box-sizing: border-box;
 }
 
 /* ── Video Player ─────────────────────────────
@@ -317,6 +331,9 @@ button:disabled { background: #555; cursor: default; }
     display: flex;
     flex-direction: column;
     align-items: stretch;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
 }
 
 .panels-below-delimiter {
@@ -384,7 +401,7 @@ button:disabled { background: #555; cursor: default; }
 
 /* ── Password Prompt ────────────────────────── */
 
-/* Full-viewport overlay: keep markup under <body> (not inside overflow:auto stream column) so z-index wins over chat on iOS */
+/* Full-viewport overlay: keep markup under <body> (not inside #watch-scroll) so z-index wins over chat on iOS */
 #password-prompt {
     display: none;
     position: fixed;
@@ -502,7 +519,7 @@ button:disabled { background: #555; cursor: default; }
 .panels-section {
     width: 100%;
     max-width: none;
-    padding: 0.8rem 0 1rem;
+    padding: 0.8rem 0.75rem 1rem;
     flex-shrink: 0;
     box-sizing: border-box;
     display: flex;
@@ -591,7 +608,7 @@ button:disabled { background: #555; cursor: default; }
 /* ── Chat Panel ─────────────────────────────── */
 
 .chat-panel {
-    flex: 0.85 1 0;
+    flex: 0.7 1 0;
     min-width: 0;
     width: 0;
     min-height: 0;
@@ -854,16 +871,10 @@ button:disabled { background: #555; cursor: default; }
         max-width: none;
         height: auto;
         padding: 0.45rem 0.55rem;
-        overflow-y: auto;
+        overflow: hidden;
         overflow-x: hidden;
-        /* scroll-snap fights native <video> controls on iOS — off on phone */
-        scroll-snap-type: none;
-        overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
-    }
-    .stream-snap-page--playback {
-        min-height: auto;
     }
     .site-header {
         padding: 0.1rem 0.4rem;
@@ -908,7 +919,7 @@ button:disabled { background: #555; cursor: default; }
     body.watch-stream-portrait #player {
         min-height: min(68vh, 178vw);
     }
-    .panels-section { padding: 0.5rem 0 0.75rem; }
+    .panels-section { padding: 0.5rem 0.55rem 0.75rem; }
     .chat-panel {
         width: 100%;
         flex: 1 1 0;

@@ -35,79 +35,82 @@
         </div>
     </header>
 
-    <div class="watch-row">
-    <main class="stream-column">
-        <div class="stream-snap-page stream-snap-page--playback">
-        <div class="stream-viewport">
-            <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
-            <video id="player" playsinline webkit-playsinline controls></video>
+    <div class="watch-scroll" id="watch-scroll">
+        <div class="watch-snap-slide watch-snap-slide--stream">
+            <div class="watch-row">
+                <main class="stream-column">
+                    <div class="stream-viewport">
+                        <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
+                        <video id="player" playsinline webkit-playsinline controls></video>
 
-            <div id="decode-banner" role="status">
-                <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).
-                Use <strong>Baseline</strong> / <strong>Constrained Baseline</strong> in OBS, or publish from <strong>/broadcast</strong> (VP8 when available).
-            </div>
+                        <div id="decode-banner" role="status">
+                            <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).
+                            Use <strong>Baseline</strong> / <strong>Constrained Baseline</strong> in OBS, or publish from <strong>/broadcast</strong> (VP8 when available).
+                        </div>
 
-            <div id="degrade-banner">
-                <span class="degrade-icon">&#9888;</span>
-                <span id="degrade-text"></span>
-                <div id="hls-banner">
-                    <button onclick="switchToHLS()">Switch to stable playback</button>
-                    <button class="degrade-back" onclick="switchToWebRTC()">Back to real-time</button>
-                </div>
-            </div>
+                        <div id="degrade-banner">
+                            <span class="degrade-icon">&#9888;</span>
+                            <span id="degrade-text"></span>
+                            <div id="hls-banner">
+                                <button onclick="switchToHLS()">Switch to stable playback</button>
+                                <button class="degrade-back" onclick="switchToWebRTC()">Back to real-time</button>
+                            </div>
+                        </div>
 
-            <button type="button" id="scroll-hint" class="panels-below-delimiter" style="display:none;" aria-label="Scroll to panels below" onclick="document.getElementById('panels-section').scrollIntoView({behavior: 'smooth'})">
-                <span class="panels-below-delimiter-line" aria-hidden="true"></span>
-            </button>
-        </div>
-        </div>
+                        <button type="button" id="scroll-hint" class="panels-below-delimiter" style="display:none;" aria-label="Scroll to panels below" onclick="document.getElementById('panels-section').scrollIntoView({behavior: 'smooth', block: 'start'})">
+                            <span class="panels-below-delimiter-line" aria-hidden="true"></span>
+                        </button>
+                    </div>
+                </main>
 
-        <section class="panels-section stream-snap-page stream-snap-page--panels" id="panels-section">
-            <div class="panel-card panel-donate" id="panel-donate" style="display:none">
-                <div class="panel-donate-body">
-                    <h3>Support the Stream</h3>
-                    <p>Send a donation — your message will appear highlighted in chat.</p>
-                </div>
-                <button class="btn-donate" onclick="openDonateModal()">Donate</button>
-            </div>
-            <div class="panels-grid" id="panels-grid" hidden></div>
-        </section>
-    </main>
+                <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag: move left or up for more chat; right or down for less. Double-click resets to half." tabindex="-1" hidden></div>
 
-    <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag: move left or up for more chat; right or down for less. Double-click resets to half." tabindex="-1" hidden></div>
-
-    <aside class="chat-panel" aria-label="Chat">
-        <div class="chat-header">
-            <span>Chat</span>
-            <span class="chat-status" id="chat-status"></span>
-        </div>
-        <div class="chat-messages" id="chat-messages"></div>
-        <div class="chat-input-area">
-            <div class="chat-nick-prompt" id="chat-nick-prompt">
-                <label>Choose a nickname to start chatting</label>
-                <div class="nick-row">
-                    <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
-                    <button id="btn-chat-join">Join</button>
-                </div>
-                <div class="nick-error" id="nick-error"></div>
-                <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
-            </div>
-            <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()" style="pointer-events:none;opacity:0.25">
-                <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
-                <button disabled>Send</button>
-            </div>
-            <div id="chat-send" style="display:none">
-                <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
-                <div class="chat-send">
-                    <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
-                    <button id="btn-chat-send">Send</button>
-                </div>
+                <aside class="chat-panel" aria-label="Chat">
+                    <div class="chat-header">
+                        <span>Chat</span>
+                        <span class="chat-status" id="chat-status"></span>
+                    </div>
+                    <div class="chat-messages" id="chat-messages"></div>
+                    <div class="chat-input-area">
+                        <div class="chat-nick-prompt" id="chat-nick-prompt">
+                            <label>Choose a nickname to start chatting</label>
+                            <div class="nick-row">
+                                <input type="text" id="chat-nick" placeholder="Your nickname" maxlength="25" autocomplete="off" spellcheck="false">
+                                <button id="btn-chat-join">Join</button>
+                            </div>
+                            <div class="nick-error" id="nick-error"></div>
+                            <div class="nick-hint">Letters, numbers, underscore. 1-25 chars.</div>
+                        </div>
+                        <div class="chat-guest-bar" id="chat-guest-bar" onclick="showNickPrompt()" style="pointer-events:none;opacity:0.25">
+                            <input type="text" placeholder="Pick a nickname to chat..." disabled tabindex="-1">
+                            <button disabled>Send</button>
+                        </div>
+                        <div id="chat-send" style="display:none">
+                            <div class="chat-nick-badge">Chatting as <span id="chat-nick-display"></span></div>
+                            <div class="chat-send">
+                                <input type="text" id="chat-input" placeholder="Send a message..." maxlength="500" autocomplete="off" spellcheck="false">
+                                <button id="btn-chat-send">Send</button>
+                            </div>
+                        </div>
+                    </div>
+                </aside>
             </div>
         </div>
-    </aside>
+        <div class="watch-snap-slide watch-snap-slide--panels">
+            <section class="panels-section" id="panels-section">
+                <div class="panel-card panel-donate" id="panel-donate" style="display:none">
+                    <div class="panel-donate-body">
+                        <h3>Support the Stream</h3>
+                        <p>Send a donation — your message will appear highlighted in chat.</p>
+                    </div>
+                    <button class="btn-donate" onclick="openDonateModal()">Donate</button>
+                </div>
+                <div class="panels-grid" id="panels-grid" hidden></div>
+            </section>
+        </div>
     </div>
 
-    <!-- Body-level: fixed overlay must not sit inside main.stream-column (overflow scroll traps stacking on phone) -->
+    <!-- Body-level: fixed overlay must not sit inside #watch-scroll (overflow scroll traps stacking on phone) -->
     <div id="password-prompt">
         <div class="password-box">
             <label>This broadcast requires a password</label><br><br>

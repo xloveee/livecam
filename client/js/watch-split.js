@@ -13,9 +13,9 @@
     var CHAT_MIN_H = 176;
     var STREAM_MIN_H = 240;
     /* Chat cannot take more than this fraction of row — stream gets the rest first */
-    var CHAT_MAX_FRAC = 0.46;
+    var CHAT_MAX_FRAC = 0.40;
     /* Default chat size as fraction of row (stream gets ~1 − this, minus splitter) */
-    var DEFAULT_CHAT_FRAC = 0.34;
+    var DEFAULT_CHAT_FRAC = 0.28;
 
     var row = document.querySelector('.watch-row');
     var splitter = document.getElementById('watch-splitter');

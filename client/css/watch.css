@@ -1060,28 +1060,43 @@ body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
         align-items: stretch;
         overflow: hidden;
     }
-    /* Undo desktop flex equal-width hack (width:0); fill screen width */
+    /* Undo desktop flex equal-width hack (width:0); fill screen width.
+     * height:0 + flex:1 + min-height:0 gives a definite scrollport height (WebKit scroll-snap needs this).
+     * Do not use height:auto here — it lets the column grow with content so main never scrolls and snap never runs. */
     main.stream-column {
         width: 100%;
         flex: 1 1 0;
         min-height: 0;
+        height: 0;
         max-width: none;
-        height: auto;
         padding: 0.45rem 0.55rem;
-        overflow-y: auto;
+        overflow-y: scroll;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
         touch-action: pan-y;
-        /* Match desktop: two-page snap (playback / panels). Proximity is softer than mandatory and reduces fights with <video> taps. */
-        scroll-snap-type: y proximity;
-        scroll-behavior: smooth;
+        /* WebKit + touch: mandatory snap actually engages; proximity often feels like “off”. smooth scroll fights snap on iOS. */
+        scroll-snap-type: y mandatory;
+        scroll-behavior: auto;
         overscroll-behavior-y: contain;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
-    /* Fill the stream column’s flex height so panels stay below the fold until main is scrolled */
+    /* Fill the stream column’s scrollport so the first snap page is one full “screen” of this column */
     .stream-snap-page--playback {
         min-height: 100%;
+        scroll-snap-stop: always;
+    }
+    .stream-snap-page--panels,
+    .panels-section.stream-snap-page {
+        scroll-snap-align: start;
+        scroll-snap-stop: always;
+    }
+    /* Chat-collapsed uses flex:1 1 auto globally — on phone that prevents a bounded scrollport; keep flex-basis 0 here. */
+    body.watch-chat-hidden main.stream-column {
+        flex: 1 1 0 !important;
+        height: 0;
+        min-height: 0;
+        overflow-y: scroll;
     }
     .site-header {
         padding: 0.1rem 0.4rem;
@@ -1119,7 +1134,8 @@ body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
         overflow-y: visible;
         overscroll-behavior-y: auto;
     }
-    /* Readable touch target: no max-height trap, no flex-shrink-to-zero */
+    /* Readable touch target: no max-height trap, no flex-shrink-to-zero.
+     * pan-y so vertical drags chain to main.stream-column (scroll-snap); manipulation can eat scroll on some WebKit builds. */
     #player {
         flex: 0 0 auto;
         width: 100%;
@@ -1127,6 +1143,7 @@ body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
         max-height: none;
         aspect-ratio: auto;
         object-fit: contain;
+        touch-action: pan-y;
     }
     /* Portrait frame (typical phone camera): give video more vertical room vs chat */
     body.watch-stream-portrait #player {

@@ -341,6 +341,21 @@ main.stream-column {
 body.watch-show-offline-overlay .offline-overlay {
     display: flex;
 }
+.offline-overlay-inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    max-width: 100%;
+}
+.offline-overlay-img {
+    max-width: min(100%, 28rem);
+    max-height: min(40vh, 16rem);
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 4px;
+}
 .offline-overlay-text {
     color: #bbb;
     font-size: 1rem;

@@ -38,8 +38,10 @@ var viewerState = 'init';
 
 /** Custom line from broadcaster (GET /api/room_info → offline_banner); empty → default copy */
 var offlineBannerCustom = '';
+var offlineBannerImageUrl = '';
 var offlineOverlay = document.getElementById('offline-overlay');
 var offlineOverlayText = document.getElementById('offline-overlay-text');
+var offlineOverlayImg = document.getElementById('offline-overlay-img');
 
 var decodeBanner = document.getElementById('decode-banner');
 var decodeCheckInterval = null;
@@ -236,6 +238,11 @@ function applyOfflineBannerFromInfo(info) {
     if (info && typeof info.offline_banner === 'string') {
         offlineBannerCustom = info.offline_banner;
     }
+    if (info && typeof info.offline_banner_image === 'string') {
+        offlineBannerImageUrl = info.offline_banner_image;
+    } else {
+        offlineBannerImageUrl = '';
+    }
 }
 
 function offlineBannerDisplayLine() {
@@ -246,6 +253,16 @@ function offlineBannerDisplayLine() {
 function showOfflineOverlay() {
     var line = offlineBannerDisplayLine();
     if (offlineOverlayText) offlineOverlayText.textContent = line;
+    if (offlineOverlayImg) {
+        var u = (offlineBannerImageUrl || '').trim();
+        if (/^https?:\/\//i.test(u)) {
+            offlineOverlayImg.src = u;
+            offlineOverlayImg.style.display = 'block';
+        } else {
+            offlineOverlayImg.removeAttribute('src');
+            offlineOverlayImg.style.display = 'none';
+        }
+    }
     document.body.classList.add('watch-show-offline-overlay');
 }
 

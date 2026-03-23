@@ -119,7 +119,10 @@
                             <div>
                                 <label for="offline-banner-text">Offline banner (when not live)</label>
                                 <textarea id="offline-banner-text" rows="3" maxlength="512" placeholder="Optional message for viewers on /watch — e.g. schedule or “Back soon”" autocomplete="off"></textarea>
-                                <div class="field-hint">Shown under the header when you are not broadcasting. Leave empty for the default line.</div>
+                                <label for="offline-banner-image" style="margin-top:0.5rem;">Banner image URL (optional)</label>
+                                <input type="url" id="offline-banner-image" maxlength="2048" placeholder="https://example.com/banner.png" autocomplete="off" spellcheck="false">
+                                <div class="field-hint">Shown over the video area when offline (same persistence as panels). Paste HTTPS image URL; leave empty for text only.</div>
+                                <div id="offline-banner-status" class="field-hint" style="min-height:1.1rem;"></div>
                             </div>
                         </div>
                     </div>
@@ -226,7 +229,6 @@
                 chatConnect();
                 enumerateDevices();
                 loadDonationConfig();
-                loadOfflineBannerFromRoom();
             } catch (e) {
                 window.location.reload();
             }

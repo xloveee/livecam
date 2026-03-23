@@ -585,8 +585,10 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	info := fetchRoomInfo(roomID)
 
 	offlineBanner := ""
+	offlineBannerImg := ""
 	if sharedDonoDB != nil {
-		offlineBanner = sharedDonoDB.GetOfflineBanner(roomID)
+		offlineBanner = sharedDonoDB.GetOfflineBannerText(roomID)
+		offlineBannerImg = sharedDonoDB.GetOfflineBannerImageURL(roomID)
 	}
 
 	publicResp := struct {
@@ -595,12 +597,15 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		HasPassword   bool   `json:"has_password"`
 		IsLive        bool   `json:"is_live"`
 		OfflineBanner string `json:"offline_banner"`
+		// Optional image URL (https) shown on the offline overlay on /watch.
+		OfflineBannerImage string `json:"offline_banner_image,omitempty"`
 	}{
-		ViewerCount:   info.ViewerCount,
-		MaxViewers:    info.MaxViewers,
-		HasPassword:   info.HasPassword,
-		IsLive:        info.IsLive,
-		OfflineBanner: offlineBanner,
+		ViewerCount:        info.ViewerCount,
+		MaxViewers:         info.MaxViewers,
+		HasPassword:        info.HasPassword,
+		IsLive:             info.IsLive,
+		OfflineBanner:      offlineBanner,
+		OfflineBannerImage: offlineBannerImg,
 	}
 
 	w.Header().Set("Content-Type", "application/json")

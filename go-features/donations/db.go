@@ -2,7 +2,9 @@ package donations
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -198,7 +200,7 @@ func (d *DB) SaveOfflineBanner(streamKey, text string) error {
 	return d.SaveConfig(streamKey, "offline_banner", text, true)
 }
 
-func (d *DB) GetOfflineBanner(streamKey string) string {
+func (d *DB) getOfflineBannerRaw(streamKey string) string {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -210,6 +212,49 @@ func (d *DB) GetOfflineBanner(streamKey string) string {
 		return ""
 	}
 	return data
+}
+
+// GetOfflineBannerText returns the message line for viewers (never raw JSON).
+func (d *DB) GetOfflineBannerText(streamKey string) string {
+	raw := d.getOfflineBannerRaw(streamKey)
+	if raw == "" {
+		return ""
+	}
+	trimmed := strings.TrimSpace(raw)
+	if strings.HasPrefix(trimmed, "{") {
+		var cfg struct {
+			Text string `json:"text"`
+		}
+		if err := json.Unmarshal([]byte(raw), &cfg); err == nil {
+			return cfg.Text
+		}
+	}
+	return raw
+}
+
+// GetOfflineBannerImageURL returns an optional banner image URL (https only), or empty.
+func (d *DB) GetOfflineBannerImageURL(streamKey string) string {
+	raw := d.getOfflineBannerRaw(streamKey)
+	trimmed := strings.TrimSpace(raw)
+	if !strings.HasPrefix(trimmed, "{") {
+		return ""
+	}
+	var cfg struct {
+		ImageURL string `json:"image_url"`
+	}
+	if err := json.Unmarshal([]byte(raw), &cfg); err != nil {
+		return ""
+	}
+	u := strings.TrimSpace(cfg.ImageURL)
+	if strings.HasPrefix(u, "https://") || strings.HasPrefix(u, "http://") {
+		return u
+	}
+	return ""
+}
+
+// GetOfflineBanner is an alias for GetOfflineBannerText (room_info JSON field offline_banner).
+func (d *DB) GetOfflineBanner(streamKey string) string {
+	return d.GetOfflineBannerText(streamKey)
 }
 
 func (d *DB) GetHistory(streamKey string, limit int) ([]DonationRecord, error) {

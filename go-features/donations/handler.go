@@ -110,6 +110,7 @@ func (h *Handler) handleSetupPost(w http.ResponseWriter, r *http.Request, stream
 
 	validProviders := map[string]bool{
 		"stripe": true, "paypal": true, "crypto": true, "bank": true, "panels": true,
+		"offline_banner": true,
 	}
 	if !validProviders[req.Provider] {
 		http.Error(w, "Invalid provider", http.StatusBadRequest)

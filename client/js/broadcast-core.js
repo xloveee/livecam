@@ -20,6 +20,8 @@ var maxViewersInput = document.getElementById('max-viewers');
 var viewerCountEl = document.getElementById('viewer-count');
 var roomPasswordInput = document.getElementById('room-password');
 var offlineBannerText = document.getElementById('offline-banner-text');
+var offlineBannerImage = document.getElementById('offline-banner-image');
+var offlineBannerStatus = document.getElementById('offline-banner-status');
 var bitrateSelect = document.getElementById('bitrate');
 
 var pc = null;
@@ -214,26 +216,43 @@ async function setRoomPassword(streamKey, password) {
     } catch (e) { /* ignore */ }
 }
 
-async function setOfflineBanner(streamKey, text) {
-    try {
-        await fetch('/api/donations/offline_banner', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ offline_banner: text || '' })
-        });
-    } catch (e) { /* ignore */ }
+function offlineBannerConfigJSON() {
+    var text = offlineBannerText ? offlineBannerText.value.trim().substring(0, 512) : '';
+    var img = offlineBannerImage ? offlineBannerImage.value.trim().substring(0, 2048) : '';
+    return JSON.stringify({ text: text, image_url: img });
 }
 
-async function loadOfflineBannerFromRoom() {
-    if (!authenticatedKey || !offlineBannerText) return;
+function setOfflineBannerStatus(msg, isErr) {
+    if (!offlineBannerStatus) return;
+    offlineBannerStatus.textContent = msg || '';
+    offlineBannerStatus.style.color = isErr ? '#ef5350' : '#888';
+}
+
+async function saveOfflineBannerToServer() {
     try {
-        var resp = await fetch('/api/donations/offline_banner');
-        if (!resp.ok) return;
-        var data = await resp.json();
-        if (typeof data.offline_banner === 'string') {
-            offlineBannerText.value = data.offline_banner;
+        var resp = await fetch('/api/donations/setup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'same-origin',
+            body: JSON.stringify({
+                provider: 'offline_banner',
+                config_data: offlineBannerConfigJSON(),
+                enabled: true
+            })
+        });
+        if (resp.ok) {
+            setOfflineBannerStatus('Saved', false);
+            setTimeout(function () { setOfflineBannerStatus('', false); }, 2500);
+        } else if (resp.status === 503) {
+            setOfflineBannerStatus('Server has no donations DB — cannot save', true);
+        } else if (resp.status === 401) {
+            setOfflineBannerStatus('Not authenticated — refresh the page', true);
+        } else {
+            setOfflineBannerStatus('Save failed (' + resp.status + ')', true);
         }
-    } catch (e) { /* ignore */ }
+    } catch (e) {
+        setOfflineBannerStatus('Save failed (network)', true);
+    }
 }
 
 window.onRoomState = function (state) {
@@ -257,13 +276,18 @@ roomPasswordInput.oninput = function () {
 };
 
 var offlineBannerDebounce = null;
+function scheduleOfflineBannerSave() {
+    if (!authenticatedKey) return;
+    clearTimeout(offlineBannerDebounce);
+    offlineBannerDebounce = setTimeout(function () {
+        saveOfflineBannerToServer();
+    }, 600);
+}
 if (offlineBannerText) {
-    offlineBannerText.oninput = function () {
-        clearTimeout(offlineBannerDebounce);
-        offlineBannerDebounce = setTimeout(function () {
-            setOfflineBanner(authenticatedKey, offlineBannerText.value);
-        }, 600);
-    };
+    offlineBannerText.oninput = scheduleOfflineBannerSave;
+}
+if (offlineBannerImage) {
+    offlineBannerImage.oninput = scheduleOfflineBannerSave;
 }
 
 /* ── ICE & WebRTC Publish ────────────────────────────────── */

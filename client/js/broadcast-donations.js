@@ -45,6 +45,18 @@ function loadDonationConfig() {
                     case 'panels':
                         renderPanelsFromConfig(data.panels || []);
                         break;
+                    case 'offline_banner':
+                        try {
+                            var ob = JSON.parse(c.config_data);
+                            var ot = document.getElementById('offline-banner-text');
+                            var oi = document.getElementById('offline-banner-image');
+                            if (ot) ot.value = typeof ob.text === 'string' ? ob.text : '';
+                            if (oi) oi.value = typeof ob.image_url === 'string' ? ob.image_url : '';
+                        } catch (err) {
+                            var ot2 = document.getElementById('offline-banner-text');
+                            if (ot2) ot2.value = c.config_data || '';
+                        }
+                        break;
                     default:
                         break;
                 }

@@ -43,7 +43,10 @@
                     <div class="player-wrap" id="player-wrap">
                         <video id="player" playsinline webkit-playsinline controls></video>
                         <div class="offline-overlay" id="offline-overlay" aria-live="polite">
-                            <span class="offline-overlay-text" id="offline-overlay-text"></span>
+                            <div class="offline-overlay-inner">
+                                <img class="offline-overlay-img" id="offline-overlay-img" alt="" style="display:none;">
+                                <span class="offline-overlay-text" id="offline-overlay-text"></span>
+                            </div>
                         </div>
                     </div>
 

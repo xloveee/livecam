@@ -168,13 +168,13 @@ video.addEventListener('playing', function () {
     debugEvent('play:ok');
 });
 
-/* Phone: keep watch scroll at stream slide top (avoid snap / layout landing on panels). */
+/* Phone: keep stream column scrolled to playback top (avoid snap / layout landing on panels). */
 function resetWatchStreamColumnToTop() {
-    var sc = document.getElementById('watch-scroll');
-    if (!sc || !window.matchMedia('(max-width: 900px)').matches) {
+    var col = document.querySelector('main.stream-column');
+    if (!col || !window.matchMedia('(max-width: 900px)').matches) {
         return;
     }
-    sc.scrollTop = 0;
+    col.scrollTop = 0;
 }
 
 function scheduleResetWatchStreamColumnToTop() {

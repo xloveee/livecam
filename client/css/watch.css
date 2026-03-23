@@ -103,38 +103,6 @@ body {
     box-shadow: 0 0 3px rgba(211,47,47,0.5);
 }
 
-/* ── Scroll region: snap between live row (video + chat) and panels below ─ */
-
-.watch-scroll {
-    flex: 1;
-    min-height: 0;
-    width: 100%;
-    overflow-y: auto;
-    overflow-x: hidden;
-    scroll-snap-type: y proximity;
-    scroll-behavior: smooth;
-    overscroll-behavior-y: contain;
-    -webkit-overflow-scrolling: touch;
-}
-
-.watch-snap-slide {
-    scroll-snap-align: start;
-    scroll-snap-stop: normal;
-}
-
-/* First snap region: at least one full scrollport tall so panels stay off-screen until scroll */
-.watch-snap-slide--stream {
-    min-height: 100%;
-    display: flex;
-    flex-direction: column;
-    box-sizing: border-box;
-}
-
-.watch-snap-slide--stream .watch-row {
-    flex: 1;
-    min-height: 0;
-}
-
 /* ── Stream + chat row ──────────────────────── */
 
 .watch-row {
@@ -230,7 +198,8 @@ body.watch-split-dragging.watch-split-dragging--row * {
     cursor: row-resize !important;
 }
 
-/* ── Stream column (video + in-column banners; vertical scroll lives on #watch-scroll) ─ */
+/* ── Stream column (scroll-snap: playback “page” + panels “page” in this column only) ─
+ * Snap lives on main — donations/banners stay under the video column, not under chat. */
 
 main.stream-column {
     flex: 1.85 1 0;
@@ -240,12 +209,29 @@ main.stream-column {
     height: 100%;
     align-self: stretch;
     padding: 0.5rem 0.75rem;
-    overflow: hidden;
+    overflow-y: auto;
     overflow-x: hidden;
+    scroll-snap-type: y proximity;
+    scroll-behavior: smooth;
+    overscroll-behavior-y: contain;
     overscroll-behavior-x: none;
+    -webkit-overflow-scrolling: touch;
     border-right: 1px solid #1a1a1a;
     display: flex;
     flex-direction: column;
+}
+
+.stream-snap-page {
+    scroll-snap-align: start;
+    scroll-snap-stop: normal;
+}
+
+/* At least one full column viewport tall so panels stay off-screen until scroll */
+.stream-snap-page--playback {
+    min-height: 100%;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
 }
 
 /* ── Video Player ─────────────────────────────
@@ -401,7 +387,7 @@ button:disabled { background: #555; cursor: default; }
 
 /* ── Password Prompt ────────────────────────── */
 
-/* Full-viewport overlay: keep markup under <body> (not inside #watch-scroll) so z-index wins over chat on iOS */
+/* Full-viewport overlay: keep markup under <body> (not inside main.stream-column overflow) so z-index wins over chat on iOS */
 #password-prompt {
     display: none;
     position: fixed;
@@ -871,10 +857,15 @@ button:disabled { background: #555; cursor: default; }
         max-width: none;
         height: auto;
         padding: 0.45rem 0.55rem;
-        overflow: hidden;
+        overflow-y: auto;
         overflow-x: hidden;
+        /* scroll-snap can fight native <video> controls on iOS — off on phone */
+        scroll-snap-type: none;
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
+    }
+    .stream-snap-page--playback {
+        min-height: auto;
     }
     .site-header {
         padding: 0.1rem 0.4rem;

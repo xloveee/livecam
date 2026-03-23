@@ -111,14 +111,14 @@ function fetchDonateMethods() {
                     if (!window.matchMedia('(max-width: 900px)').matches) {
                         return;
                     }
-                    var sc = document.getElementById('watch-scroll');
-                    var slide = document.querySelector('.watch-snap-slide--stream');
-                    if (!sc || !slide) {
+                    var col = document.querySelector('main.stream-column');
+                    var playback = document.querySelector('.stream-snap-page--playback');
+                    if (!col || !playback) {
                         return;
                     }
-                    var thresh = Math.max(Math.floor(slide.offsetHeight * 0.45), 100);
-                    if (sc.scrollTop > thresh) {
-                        sc.scrollTop = 0;
+                    var thresh = Math.max(Math.floor(playback.offsetHeight * 0.45), 100);
+                    if (col.scrollTop > thresh) {
+                        col.scrollTop = 0;
                     }
                 });
             });

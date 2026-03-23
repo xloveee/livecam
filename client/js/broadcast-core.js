@@ -22,7 +22,7 @@ var statsInterval = null;
 var activeStreamKey = null;
 var authenticatedKey = '';
 
-/** Firefox: ICE often emits recoverable `disconnected`; WHIP + setCodecPreferences + simulcast need interop tweaks. */
+/** Firefox: recoverable `disconnected` ICE; publish path uses addTrack + VP8 prefs instead of simulcast transceiver. */
 function isFirefoxBrowser() {
     if (typeof navigator === 'undefined') {
         return false;
@@ -239,6 +239,24 @@ async function fetchICEConfig() {
     }
 }
 
+/** Match watch-core: pre-gather ICE before offer; Firefox can fail without pool on some networks. */
+function createBroadcastPeerConnection(iceServers) {
+    var base = {
+        iceServers: iceServers || [],
+        bundlePolicy: 'max-bundle',
+        rtcpMuxPolicy: 'require'
+    };
+    try {
+        return new RTCPeerConnection(Object.assign({}, base, { iceCandidatePoolSize: 10 }));
+    } catch (e) {
+        try {
+            return new RTCPeerConnection(base);
+        } catch (e2) {
+            throw e2;
+        }
+    }
+}
+
 /** Baseline (0x42) before Main (0x4D) before High (0x64) — WebKit mobile decode. */
 function h264ProfileRank(codec) {
     var line = codec.sdpFmtpLine || '';
@@ -259,9 +277,6 @@ function sortH264ForCompat(codecs) {
 
 /** VP8-only when available — desktop otherwise negotiates H.264 Main/High; iPhone viewers often cannot decode it. */
 function applyBroadcastVideoCodecPreferences(pc) {
-    if (isFirefoxBrowser()) {
-        return;
-    }
     try {
         if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
         var caps = RTCRtpSender.getCapabilities('video');
@@ -311,20 +326,13 @@ btnStart.onclick = async function () {
 
     var config = await fetchICEConfig();
 
-    pc = new RTCPeerConnection({
-        iceServers: config.iceServers || [],
-        bundlePolicy: 'max-bundle',
-        rtcpMuxPolicy: 'require'
-    });
+    pc = createBroadcastPeerConnection(config.iceServers || []);
 
     localStream.getTracks().forEach(function (track) {
         if (track.kind === 'video') {
-            /* Firefox: simulcast (rid + multiple sendEncodings) is uneven; single layer avoids WHIP/ICE churn. */
+            /* Firefox: addTransceiver+sendEncodings caused ICE/SDP churn with WHIP; same MediaStream as audio. */
             if (isFirefoxBrowser()) {
-                pc.addTransceiver(track, {
-                    direction: 'sendonly',
-                    sendEncodings: [{ maxBitrate: 2500000 }]
-                });
+                pc.addTrack(track, localStream);
             } else {
                 pc.addTransceiver(track, {
                     direction: 'sendonly',

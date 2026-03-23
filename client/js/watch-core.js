@@ -275,23 +275,30 @@ function resolveOfflineBannerImageSrc(u) {
 
 function showOfflineOverlay() {
     var line = offlineBannerDisplayLine();
+    var src = resolveOfflineBannerImageSrc((offlineBannerImageUrl || '').trim());
+    var hasImg = !!src;
+
     if (offlineOverlayText) offlineOverlayText.textContent = line;
     if (offlineOverlayImg) {
-        var u = (offlineBannerImageUrl || '').trim();
-        var src = resolveOfflineBannerImageSrc(u);
-        if (src) {
+        if (hasImg) {
             offlineOverlayImg.src = src;
-            offlineOverlayImg.style.display = 'block';
+            offlineOverlayImg.style.display = '';
         } else {
             offlineOverlayImg.removeAttribute('src');
             offlineOverlayImg.style.display = 'none';
         }
     }
+    if (offlineOverlay) {
+        offlineOverlay.classList.toggle('offline-overlay--text-only', !hasImg);
+    }
+    if (hasImg && video) video.poster = src;
     document.body.classList.add('watch-show-offline-overlay');
 }
 
 function hideOfflineOverlay() {
     document.body.classList.remove('watch-show-offline-overlay');
+    if (video) video.removeAttribute('poster');
+    if (offlineOverlay) offlineOverlay.classList.remove('offline-overlay--text-only');
 }
 
 function renderState() {

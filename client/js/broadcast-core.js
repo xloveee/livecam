@@ -22,6 +22,25 @@ var statsInterval = null;
 var activeStreamKey = null;
 var authenticatedKey = '';
 
+/** Firefox: ICE often emits recoverable `disconnected`; WHIP + setCodecPreferences + simulcast need interop tweaks. */
+function isFirefoxBrowser() {
+    if (typeof navigator === 'undefined') {
+        return false;
+    }
+    var ua = navigator.userAgent || '';
+    return /Firefox\//.test(ua) || /FxiOS\//.test(ua);
+}
+
+var broadcastLiveStarted = false;
+var iceDisconnectTimer = null;
+
+function clearIceDisconnectTimer() {
+    if (iceDisconnectTimer) {
+        clearTimeout(iceDisconnectTimer);
+        iceDisconnectTimer = null;
+    }
+}
+
 /* ── Settings UI ─────────────────────────────────────────── */
 
 function toggleSettings() {
@@ -240,6 +259,9 @@ function sortH264ForCompat(codecs) {
 
 /** VP8-only when available — desktop otherwise negotiates H.264 Main/High; iPhone viewers often cannot decode it. */
 function applyBroadcastVideoCodecPreferences(pc) {
+    if (isFirefoxBrowser()) {
+        return;
+    }
     try {
         if (typeof RTCRtpSender === 'undefined' || !RTCRtpSender.getCapabilities) return;
         var caps = RTCRtpSender.getCapabilities('video');
@@ -284,6 +306,9 @@ btnStart.onclick = async function () {
     btnStart.style.display = 'none';
     btnStop.style.display = 'inline-block';
 
+    broadcastLiveStarted = false;
+    clearIceDisconnectTimer();
+
     var config = await fetchICEConfig();
 
     pc = new RTCPeerConnection({
@@ -294,14 +319,22 @@ btnStart.onclick = async function () {
 
     localStream.getTracks().forEach(function (track) {
         if (track.kind === 'video') {
-            pc.addTransceiver(track, {
-                direction: 'sendonly',
-                sendEncodings: [
-                    { rid: 'h', maxBitrate: 2500000 },
-                    { rid: 'm', maxBitrate: 1000000, scaleResolutionDownBy: 2.0 },
-                    { rid: 'l', maxBitrate: 400000, scaleResolutionDownBy: 4.0 }
-                ]
-            });
+            /* Firefox: simulcast (rid + multiple sendEncodings) is uneven; single layer avoids WHIP/ICE churn. */
+            if (isFirefoxBrowser()) {
+                pc.addTransceiver(track, {
+                    direction: 'sendonly',
+                    sendEncodings: [{ maxBitrate: 2500000 }]
+                });
+            } else {
+                pc.addTransceiver(track, {
+                    direction: 'sendonly',
+                    sendEncodings: [
+                        { rid: 'h', maxBitrate: 2500000 },
+                        { rid: 'm', maxBitrate: 1000000, scaleResolutionDownBy: 2.0 },
+                        { rid: 'l', maxBitrate: 400000, scaleResolutionDownBy: 4.0 }
+                    ]
+                });
+            }
         } else {
             pc.addTrack(track, localStream);
         }
@@ -309,24 +342,59 @@ btnStart.onclick = async function () {
 
     applyBroadcastVideoCodecPreferences(pc);
 
-    pc.oniceconnectionstatechange = function () {
-        var state = pc.iceConnectionState;
-        if (state === 'connected' || state === 'completed') {
-            statusEl.textContent = 'Live';
-            statusEl.classList.add('connected');
-            statusEl.classList.remove('error');
-            liveBadge.classList.add('visible');
-            startStats();
-            applyBitrateCap();
-            activeStreamKey = streamKey;
-            setViewerLimit(streamKey, maxViewersInput.value);
-            setRoomPassword(streamKey, roomPasswordInput.value.trim());
-        } else if (state === 'disconnected' || state === 'failed' || state === 'closed') {
+    function onBroadcastPcStateChange() {
+        if (!pc) {
+            return;
+        }
+        var ice = pc.iceConnectionState;
+        var conn = pc.connectionState;
+        if (ice === 'connected' || ice === 'completed' || conn === 'connected') {
+            clearIceDisconnectTimer();
+            if (!broadcastLiveStarted) {
+                broadcastLiveStarted = true;
+                statusEl.textContent = 'Live';
+                statusEl.classList.add('connected');
+                statusEl.classList.remove('error');
+                liveBadge.classList.add('visible');
+                startStats();
+                applyBitrateCap();
+                activeStreamKey = streamKey;
+                setViewerLimit(streamKey, maxViewersInput.value);
+                setRoomPassword(streamKey, roomPasswordInput.value.trim());
+            }
+            return;
+        }
+        if (ice === 'failed' || ice === 'closed' || conn === 'failed' || conn === 'closed') {
+            clearIceDisconnectTimer();
             stopBroadcast();
             statusEl.textContent = 'Disconnected';
             statusEl.classList.add('error');
+            return;
         }
-    };
+        /* disconnected is often transient (esp. Firefox); only tear down if it persists */
+        if (ice === 'disconnected') {
+            clearIceDisconnectTimer();
+            iceDisconnectTimer = setTimeout(function () {
+                if (!pc) {
+                    return;
+                }
+                var i2 = pc.iceConnectionState;
+                var c2 = pc.connectionState;
+                if (i2 !== 'disconnected') {
+                    return;
+                }
+                if (c2 === 'connected' || c2 === 'connecting') {
+                    return;
+                }
+                stopBroadcast();
+                statusEl.textContent = 'Disconnected';
+                statusEl.classList.add('error');
+            }, 5000);
+        }
+    }
+
+    pc.oniceconnectionstatechange = onBroadcastPcStateChange;
+    pc.onconnectionstatechange = onBroadcastPcStateChange;
 
     try {
         var offer = await pc.createOffer();
@@ -347,6 +415,8 @@ btnStart.onclick = async function () {
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp });
 
     } catch (err) {
+        broadcastLiveStarted = false;
+        clearIceDisconnectTimer();
         statusEl.textContent = 'Failed: ' + err.message;
         statusEl.classList.add('error');
         btnStart.style.display = '';
@@ -363,6 +433,8 @@ btnStop.onclick = function () {
 };
 
 function stopBroadcast() {
+    clearIceDisconnectTimer();
+    broadcastLiveStarted = false;
     if (statsInterval) { clearInterval(statsInterval); statsInterval = null; }
     if (pc) { pc.close(); pc = null; }
     activeStreamKey = null;

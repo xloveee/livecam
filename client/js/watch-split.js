@@ -16,6 +16,9 @@
     var CHAT_MAX_FRAC = 0.40;
     /* Default chat size as fraction of row (stream gets ~1 − this, minus splitter) */
     var DEFAULT_CHAT_FRAC = 0.28;
+    /* Phone (vertical stack): default ~half row so chat height matches stream column height */
+    var CHAT_MAX_FRAC_MOBILE = 0.5;
+    var DEFAULT_CHAT_FRAC_MOBILE = 0.5;
 
     var row = document.querySelector('.watch-row');
     var splitter = document.getElementById('watch-splitter');
@@ -54,7 +57,7 @@
 
     function clampChatHeight(h, rowH) {
         var maxC = rowH - SPLITTER - STREAM_MIN_H;
-        maxC = Math.min(maxC, Math.floor(rowH * CHAT_MAX_FRAC));
+        maxC = Math.min(maxC, Math.floor(rowH * CHAT_MAX_FRAC_MOBILE));
         if (maxC < 1) {
             maxC = 1;
         }
@@ -124,7 +127,7 @@
 
     function defaultHalfHeight() {
         var rh = row.getBoundingClientRect().height;
-        return clampChatHeight(Math.round((rh - SPLITTER) * DEFAULT_CHAT_FRAC), rh);
+        return clampChatHeight(Math.round((rh - SPLITTER) * DEFAULT_CHAT_FRAC_MOBILE), rh);
     }
 
     function updateAria(size, total, desktop) {

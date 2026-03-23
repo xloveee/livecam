@@ -873,8 +873,9 @@ button:disabled { background: #555; cursor: default; }
         border-right: none;
         border-bottom: 1px solid #1a1a1a;
     }
+    /* Fill the stream column’s flex height so panels stay below the fold until main is scrolled */
     .stream-snap-page--playback {
-        min-height: auto;
+        min-height: 100%;
     }
     .site-header {
         padding: 0.1rem 0.4rem;

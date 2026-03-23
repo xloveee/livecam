@@ -139,6 +139,9 @@
         if (mqDesktop.matches) {
             return;
         }
+        if (document.body.classList.contains('watch-chat-hidden')) {
+            return;
+        }
         var rh = row.getBoundingClientRect().height;
         var playerEl = document.getElementById('player');
         var ph = playerEl ? playerEl.offsetHeight : 0;

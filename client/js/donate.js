@@ -131,6 +131,18 @@ function fetchDonateMethods() {
 
 /* ── Modal ──────────────────────────────────────────────── */
 
+/* Header / panels: open modal when methods exist, else scroll to support section */
+function openDonateModalOrFocus() {
+    if (availableMethods) {
+        openDonateModal();
+        return;
+    }
+    var sec = document.getElementById('panels-section');
+    if (sec) {
+        sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+}
+
 function openDonateModal() {
     if (!availableMethods) return;
     donateError.textContent = '';

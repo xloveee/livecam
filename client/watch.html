@@ -31,6 +31,15 @@
                     <option value="m">720p</option>
                     <option value="l">360p</option>
                 </select>
+                <button type="button" id="btn-toggle-chat" class="header-icon-btn header-icon-btn--chat-toggle" aria-label="Hide chat" aria-expanded="true" aria-controls="watch-chat-panel" title="Hide chat">
+                    <span class="header-icon-btn__gfx" aria-hidden="true">
+                        <svg class="header-icon-chat-open" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                        <svg class="header-icon-chat-closed" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </span>
+                </button>
+                <button type="button" id="btn-header-donate" class="header-icon-btn header-icon-btn--donate" aria-label="Donate" title="Support the stream">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/></svg>
+                </button>
             </div>
         </div>
     </header>
@@ -76,7 +85,7 @@
 
         <div class="watch-splitter" id="watch-splitter" role="separator" aria-orientation="vertical" aria-label="Resize chat panel" title="Drag: move left or up for more chat; right or down for less. Double-click resets to half." tabindex="-1" hidden></div>
 
-        <aside class="chat-panel" aria-label="Chat">
+        <aside class="chat-panel" id="watch-chat-panel" aria-label="Chat">
             <div class="chat-header">
                 <span>Chat</span>
                 <span class="chat-status" id="chat-status"></span>
@@ -148,6 +157,7 @@
     <script src="/js/chat.js"></script>
     <script src="/js/donate.js"></script>
     <script src="/js/watch-split.js"></script>
+    <script src="/js/watch-header.js"></script>
     <script>
         (async function init() {
             roomId = getRoomIdFromURL();

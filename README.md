@@ -231,7 +231,16 @@ broadcast.yourdomain.com {
 - **STUN** is sufficient when your server has a public IP and clients are on typical home/office NATs.
 - **TURN** (relay) is needed for clients behind symmetric NATs or restrictive firewalls. Self-host with [coturn](https://github.com/coturn/coturn) or use a managed service.
 
-**Firefox on macOS, Chrome works:** If **about:webrtc** shows **`Error in sendto` … `-5961`** to **both** the public STUN server (e.g. `stun.l.google.com`) **and** your SFU (`SFU_PUBLIC_IP`:`SFU_UDP_PORT`), **outgoing UDP from Firefox is blocked locally** (Firewall per-app rules, VPN, or tools like Little Snitch)—not only a missing TURN line on the server. Allow **Firefox** for UDP, disable VPN for a test, or use **TURN over TLS** (`turns:` on 443) if UDP cannot be used at all.
+**Firefox on macOS, Chrome works:** If **about:webrtc** shows **`Error in sendto` … `-5961`** to **both** the public STUN server (e.g. `stun.l.google.com`) **and** your SFU (`SFU_PUBLIC_IP`:`SFU_UDP_PORT`), **outgoing UDP from Firefox is blocked locally** (Firewall per-app rules, VPN, or tools like Little Snitch)—not only a missing TURN line on the server.
+
+**Checklist (local Firefox / UDP):**
+
+1. **Fully quit Firefox** (⌘Q) and open it again, then retry **Go Live**. Firewall and permission changes often require a **new browser process**; a reload alone may not clear ICE/socket state.
+2. **macOS Firewall** (System Settings → Network → Firewall): ensure **Firefox** is allowed; after changing rules, repeat step 1.
+3. **VPN** off for a test, or split-tunnel so Firefox is not forced through a tunnel that blocks UDP.
+4. **Third-party filters:** Little Snitch, LuLu, corporate endpoint agents, or antivirus “web shields” — allow **UDP** for **Firefox** or test with them disabled briefly.
+5. **Compare Chrome** on the same machine and URL: if Chrome connects but Firefox does not, the block is **browser-specific** (rules above).
+6. **Server-side:** if some networks still need relay, configure **TURN** (`TURN_*` env). If **all** UDP from the client is blocked, **TURN over TLS** (`turns:` on 443) may be required.
 
 ### iPhone / WebKit: RTP arrives but no picture (`framesDecoded=0`, video `0×0`)
 

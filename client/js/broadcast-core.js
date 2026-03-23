@@ -387,7 +387,7 @@ btnStart.onclick = async function () {
             /* Firefox logs "ICE failed, add a TURN server" — STUN does not relay media. Full hint in title (CSS may ellipsize #status). */
             if (iceFailed) {
                 statusEl.textContent = 'ICE failed — TURN on server, or Firefox UDP blocked locally.';
-                statusEl.title = 'Server: set TURN_URL + TURN_USERNAME + TURN_CREDENTIAL (coturn) if relay is needed. If Chrome works but Firefox fails: in about:webrtc, errors like sendto ... -5961 to STUN and your SFU mean this Mac is blocking Firefox UDP (macOS Firewall app rules, VPN, Little Snitch). Allow Firefox for UDP or test another browser. TURNS (TLS on 443) can work when UDP is blocked end-to-end.';
+                statusEl.title = 'Server: TURN_URL + TURN_USERNAME + TURN_CREDENTIAL (coturn) if relay is needed. Firefox + sendto -5961 to STUN and SFU: local UDP blocked — fully quit Firefox (⌘Q) after firewall changes; check macOS Firewall, VPN, Little Snitch/LuLu/antivirus; compare Chrome on same URL. Full checklist: README → STUN/TURN. TURNS (TLS :443) if UDP cannot be used.';
             } else {
                 clearStatusTitle();
                 statusEl.textContent = 'Disconnected';

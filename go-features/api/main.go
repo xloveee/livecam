@@ -86,7 +86,9 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
-	// Upload: register both paths — some reverse proxies strip the /api prefix (proxy_pass …/ trailing slash).
+	// Upload: explicit POST routes (reliable on Go 1.22+ mux) + prefix fallbacks for odd proxies.
+	mux.HandleFunc("POST /api/offline_banner_upload/{streamKey}", offlineBannerUploadHandler)
+	mux.HandleFunc("POST /offline_banner_upload/{streamKey}", offlineBannerUploadHandler)
 	mux.HandleFunc("/api/offline_banner_upload/", offlineBannerUploadHandler)
 	mux.HandleFunc("/offline_banner_upload/", offlineBannerUploadHandler)
 	mux.HandleFunc("/offline_banner_media/", offlineBannerMediaHandler)
@@ -623,10 +625,15 @@ func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	roomID, okPath := offlineBannerUploadRoomFromPath(r.URL.Path)
-	if !okPath {
-		http.NotFound(w, r)
-		return
+	roomID := r.PathValue("streamKey")
+	if roomID == "" {
+		var okPath bool
+		roomID, okPath = offlineBannerUploadRoomFromPath(r.URL.Path)
+		if !okPath {
+			log.Printf("[offline_banner_upload] 404 path=%q method=%s", r.URL.Path, r.Method)
+			http.NotFound(w, r)
+			return
+		}
 	}
 	if roomID != streamKey {
 		http.Error(w, "Forbidden", http.StatusForbidden)

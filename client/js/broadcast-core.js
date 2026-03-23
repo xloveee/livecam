@@ -290,6 +290,40 @@ if (offlineBannerImage) {
     offlineBannerImage.oninput = scheduleOfflineBannerSave;
 }
 
+function livecamApiRoot() {
+    var m = document.querySelector('meta[name="livecam-api-root"]');
+    if (!m) return '';
+    var c = (m.getAttribute('content') || '').trim();
+    return c.replace(/\/$/, '');
+}
+
+/** Try /api/... then /offline_banner_upload/... (nginx often strips /api). */
+function offlineBannerUploadURLs(streamKey) {
+    var enc = encodeURIComponent(streamKey);
+    var root = livecamApiRoot();
+    return [
+        root + '/api/offline_banner_upload/' + enc,
+        root + '/offline_banner_upload/' + enc
+    ];
+}
+
+function postOfflineBannerUpload(formData) {
+    var urls = offlineBannerUploadURLs(authenticatedKey);
+    function attempt(i) {
+        if (i >= urls.length) {
+            return Promise.resolve(null);
+        }
+        return fetch(urls[i], { method: 'POST', body: formData, credentials: 'same-origin' })
+            .then(function (r) {
+                if (r.status === 404 && i + 1 < urls.length) {
+                    return attempt(i + 1);
+                }
+                return r;
+            });
+    }
+    return attempt(0);
+}
+
 var offlineBannerUpload = document.getElementById('offline-banner-upload');
 var maxOfflineBannerUploadBytes = 2 * 1024 * 1024;
 if (offlineBannerUpload) {
@@ -310,9 +344,12 @@ if (offlineBannerUpload) {
         }
         var fd = new FormData();
         fd.append('file', f);
-        var upUrl = '/api/offline_banner_upload/' + encodeURIComponent(authenticatedKey);
-        fetch(upUrl, { method: 'POST', body: fd, credentials: 'same-origin' })
+        postOfflineBannerUpload(fd)
             .then(function (r) {
+                if (!r) {
+                    setOfflineBannerStatus('Upload failed (network)', true);
+                    return null;
+                }
                 if (r.ok) {
                     return r.json();
                 }
@@ -322,6 +359,8 @@ if (offlineBannerUpload) {
                     setOfflineBannerStatus('Not authenticated — refresh the page', true);
                 } else if (r.status === 400) {
                     setOfflineBannerStatus('Not an image or file too large', true);
+                } else if (r.status === 404) {
+                    setOfflineBannerStatus('Upload 404 — redeploy go-proxy with upload routes, or fix nginx so /api reaches Go', true);
                 } else {
                     setOfflineBannerStatus('Upload failed (' + r.status + ')', true);
                 }

@@ -189,6 +189,8 @@ Browsers require HTTPS for WebRTC. Place a reverse proxy in front of the Go serv
 
 **nginx** (with Let's Encrypt):
 
+Use `proxy_pass http://127.0.0.1:8443` **without** a trailing slash on the upstream URL, or `proxy_pass http://127.0.0.1:8443/api/` inside `location /api/` so the path stays `/api/...` on the Go service. If `location /api/` uses `proxy_pass http://127.0.0.1:8443/` (trailing slash only), nginx **strips** `/api` and routes like `/api/offline_banner_upload/...` become `/offline_banner_upload/...` on the backend — the Go proxy registers both shapes, but misconfigured `proxy_pass` is a common source of 404s.
+
 ```nginx
 server {
     listen 443 ssl;

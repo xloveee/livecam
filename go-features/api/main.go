@@ -86,7 +86,9 @@ func main() {
 	mux.HandleFunc("/api/room_info/", roomInfoProxyHandler)
 	mux.HandleFunc("/api/viewer_limit/", viewerLimitProxyHandler)
 	mux.HandleFunc("/api/room_password/", roomPasswordProxyHandler)
+	// Upload: register both paths — some reverse proxies strip the /api prefix (proxy_pass …/ trailing slash).
 	mux.HandleFunc("/api/offline_banner_upload/", offlineBannerUploadHandler)
+	mux.HandleFunc("/offline_banner_upload/", offlineBannerUploadHandler)
 	mux.HandleFunc("/offline_banner_media/", offlineBannerMediaHandler)
 	mux.HandleFunc("/api/auth/broadcast", authBroadcastHandler)
 	mux.HandleFunc("/api/active", activeProxyHandler)
@@ -591,6 +593,23 @@ func fetchRoomInfo(roomID string) roomInfoResult {
 
 const maxOfflineBannerUploadBytes = 2 << 20
 
+func offlineBannerUploadRoomFromPath(urlPath string) (string, bool) {
+	prefixes := []string{"/api/offline_banner_upload/", "/offline_banner_upload/"}
+	for _, p := range prefixes {
+		if !strings.HasPrefix(urlPath, p) {
+			continue
+		}
+		raw := strings.TrimPrefix(urlPath, p)
+		raw = strings.TrimSuffix(raw, "/")
+		roomID, err := url.PathUnescape(raw)
+		if err != nil || roomID == "" {
+			return "", false
+		}
+		return roomID, true
+	}
+	return "", false
+}
+
 func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -604,10 +623,12 @@ func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	rawUp := strings.TrimPrefix(r.URL.Path, "/api/offline_banner_upload/")
-	rawUp = strings.TrimSuffix(rawUp, "/")
-	roomID, err := url.PathUnescape(rawUp)
-	if err != nil || roomID == "" || roomID != streamKey {
+	roomID, okPath := offlineBannerUploadRoomFromPath(r.URL.Path)
+	if !okPath {
+		http.NotFound(w, r)
+		return
+	}
+	if roomID != streamKey {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}

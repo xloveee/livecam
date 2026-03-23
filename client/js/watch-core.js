@@ -34,6 +34,8 @@ var lastBytesReceived = 0;
 var stallCount = 0;
 var webrtcFailCount = 0;
 var connectTimeout = null;
+/** After WHEP answer, wait for ICE + media. 10s was too short for Firefox, iOS, and many mobile NATs. */
+var WHEP_CONNECT_TIMEOUT_MS = 40000;
 var viewerState = 'init';
 
 /** Custom line from broadcaster (GET /api/room_info → offline_banner); empty → default copy */
@@ -119,7 +121,13 @@ var watchAdapter = {
 
     teardownVideo: function () {
         watchAdapter.stopHLS();
-        video.srcObject = null;
+        try {
+            if (video) {
+                video.pause();
+                video.removeAttribute('src');
+                video.srcObject = null;
+            }
+        } catch (e) { /* aborting in-flight media load can throw / reject in some UAs */ }
     },
 
     startHLS: function (url) {
@@ -538,12 +546,19 @@ function startDecodeCheck() {
 
 /* ── WebRTC Lifecycle ───────────────────────────────────── */
 
+function clearWhepConnectTimeout() {
+    if (connectTimeout) {
+        clearTimeout(connectTimeout);
+        connectTimeout = null;
+    }
+}
+
 function teardownConnection() {
     debugEvent('teardown');
     debugPlayResult = '';
     clearPollTimer();
     clearDecodeCheck();
-    if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+    clearWhepConnectTimeout();
     stopStatsLoop();
     if (pc) {
         if (sessionId && roomId) {
@@ -572,7 +587,7 @@ function onPeerStateChange() {
     var conn = pc.connectionState;
     debugEvent('ice:' + s);
     if (s === 'connected' || s === 'completed' || conn === 'connected') {
-        if (connectTimeout) { clearTimeout(connectTimeout); connectTimeout = null; }
+        clearWhepConnectTimeout();
         setState('live');
         startStatsLoop();
         startDecodeCheck();
@@ -621,8 +636,15 @@ async function connectWHEP() {
     pc = watchAdapter.createPC(config.iceServers || []);
 
     pc.ontrack = function (event) {
+        clearWhepConnectTimeout();
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
+        /* Firefox / mobile often deliver recv tracks before iceConnectionState hits "connected". */
+        if (viewerState === 'connecting') {
+            setState('live');
+            startStatsLoop();
+            startDecodeCheck();
+        }
     };
 
     pc.oniceconnectionstatechange = onPeerStateChange;
@@ -691,7 +713,7 @@ async function connectWHEP() {
                 teardownConnection();
                 setState('offline');
             }
-        }, 10000);
+        }, WHEP_CONNECT_TIMEOUT_MS);
 
     } catch (err) {
         console.error('WHEP connection failed:', err);

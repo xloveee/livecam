@@ -231,6 +231,8 @@ broadcast.yourdomain.com {
 - **STUN** is sufficient when your server has a public IP and clients are on typical home/office NATs.
 - **TURN** (relay) is needed for clients behind symmetric NATs or restrictive firewalls. Self-host with [coturn](https://github.com/coturn/coturn) or use a managed service.
 
+**Firefox on macOS, Chrome works:** If **about:webrtc** shows **`Error in sendto` … `-5961`** to **both** the public STUN server (e.g. `stun.l.google.com`) **and** your SFU (`SFU_PUBLIC_IP`:`SFU_UDP_PORT`), **outgoing UDP from Firefox is blocked locally** (Firewall per-app rules, VPN, or tools like Little Snitch)—not only a missing TURN line on the server. Allow **Firefox** for UDP, disable VPN for a test, or use **TURN over TLS** (`turns:` on 443) if UDP cannot be used at all.
+
 ### iPhone / WebKit: RTP arrives but no picture (`framesDecoded=0`, video `0×0`)
 
 If diagnostics show **`ice=connected`**, **`inbound-rtp` `bytesReceived` increasing**, **`track` `live`**, but **`framesDecoded=0`** and the `<video>` stays **`0×0` / `readyState=0`**, packets are reaching the phone but the **decoder is not outputting frames**. This is **not** explained by missing TURN alone. The watch page shows a **“Picture stuck?”** banner after a few seconds when it detects this pattern.

@@ -386,8 +386,8 @@ btnStart.onclick = async function () {
             stopBroadcast();
             /* Firefox logs "ICE failed, add a TURN server" — STUN does not relay media. Full hint in title (CSS may ellipsize #status). */
             if (iceFailed) {
-                statusEl.textContent = 'ICE failed — add TURN on the server (coturn + TURN_* env).';
-                statusEl.title = 'This network needs a TURN relay. Set TURN_URL, TURN_USERNAME, TURN_CREDENTIAL on the Go proxy and restart. Open firewall for coturn (e.g. 3478 UDP/TCP). See README — STUN/TURN.';
+                statusEl.textContent = 'ICE failed — TURN on server, or Firefox UDP blocked locally.';
+                statusEl.title = 'Server: set TURN_URL + TURN_USERNAME + TURN_CREDENTIAL (coturn) if relay is needed. If Chrome works but Firefox fails: in about:webrtc, errors like sendto ... -5961 to STUN and your SFU mean this Mac is blocking Firefox UDP (macOS Firewall app rules, VPN, Little Snitch). Allow Firefox for UDP or test another browser. TURNS (TLS on 443) can work when UDP is blocked end-to-end.';
             } else {
                 clearStatusTitle();
                 statusEl.textContent = 'Disconnected';

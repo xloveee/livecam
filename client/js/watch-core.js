@@ -479,11 +479,9 @@ function getRecvonlyVideoTransceiver(pc) {
 }
 
 function applyViewerVideoCodecPreferences(pc) {
-    /* Firefox: setCodecPreferences often breaks WHEP offer/answer pairing with SFUs; use default codec order. */
-    if (isFirefoxBrowser()) {
-        debugEvent('codec-prefs:skipped-firefox');
-        return;
-    }
+    /* Firefox default SDP often lists VP8 (and VP9) before H.264. OBS / many publishers send H.264 only — the SFU
+     * forwards RTP for the publisher codec; if the WHEP answer followed VP8 preference, the negotiated codec
+     * would not match the room and viewers get no picture. Same H.264-then-VP8 order as Chromium (README policy). */
     try {
         if (typeof RTCRtpReceiver === 'undefined' || !RTCRtpReceiver.getCapabilities) return;
         var caps = RTCRtpReceiver.getCapabilities('video');

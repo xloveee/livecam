@@ -65,7 +65,7 @@ The SFU negotiates **H.264** and **VP8** for video (plus **Opus** for audio). **
 | Client | Typical experience |
 |--------|-------------------|
 | **Chrome / Edge / Brave / Opera** (desktop & Android) | Primary targets; full WHIP/WHEP. |
-| **Firefox** (desktop & Android) | Supported; VP8 path is reliable if H.264 hardware decode is unavailable. |
+| **Firefox** (desktop & Android) | Supported; **WHEP** uses the same receiver codec ordering as Chromium (**H.264** then **VP8**) so **H.264-only** publishers (e.g. OBS) match. VP8 is still preferred when the publisher uses VP8. |
 | **Safari** (macOS, iPadOS) | Supported; use **H.264 Baseline / Constrained Baseline** from OBS when using OBS. |
 | **Safari / WebKit** (iPhone) | Supported; **encoder profile** matters for **H.264** — see [iPhone / WebKit](#iphone--webkit-rtp-arrives-but-no-picture-framesdecoded0-video-0×0). |
 
@@ -88,7 +88,7 @@ WebRTC end-to-end rules recorded here so **desktop → mobile** and **mobile →
 |------|------|-------------------|---------|
 | **Publisher (browser)** | `client/js/broadcast-core.js` | **VP8 + rest (no H.264 in list)** if VP8 exists; else **H.264 sorted** + rest | Maximize **phone viewer** compatibility for browser-origin streams. |
 | **Publisher (OBS)** | *(not applicable)* | Encoder settings in OBS | Typically **H.264**; profile must be mobile-safe for iPhone. |
-| **Viewer** | `client/js/watch-core.js` | **H.264**, then **VP8**, then remainder | Match **OBS**-heavy rooms; still accept VP8 publishers. |
+| **Viewer** | `client/js/watch-core.js` | **H.264**, then **VP8**, then remainder (`RTCRtpReceiver.setCodecPreferences`) | Match **OBS**-heavy rooms; still accept VP8 publishers. **Firefox** needs this explicitly — its default offer tends to prefer **VP8/VP9** first, which can negotiate the wrong codec when the room is **H.264-only** (e.g. OBS), so viewers see no video. |
 | **SFU (WHIP/WHEP)** | `rust-core/src/api.rs` | `RtcConfig`: **H.264** + **VP8** + **Opus** enabled | Single media plane; **no transcoding** — forward RTP for the negotiated codec. |
 
 #### Adding support for more codecs later

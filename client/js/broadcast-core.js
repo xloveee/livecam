@@ -390,11 +390,7 @@ async function fetchICEConfig() {
     try {
         var resp = await fetch(livecamApiRoot() + '/api/config');
         if (!resp.ok) return {};
-        var data = await resp.json();
-        if (typeof applySponsorFooterFromConfig === 'function') {
-            applySponsorFooterFromConfig(data);
-        }
-        return data;
+        return await resp.json();
     } catch (e) {
         return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
     }

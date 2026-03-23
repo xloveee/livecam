@@ -79,7 +79,6 @@
             width: 100%;
             max-width: 380px;
         }
-        .livecam-sponsor-footer[hidden] { display: none !important; }
         .livecam-sponsor-footer a { color: #888; text-decoration: none; }
         .livecam-sponsor-footer a:hover { text-decoration: underline; color: #aaa; }
         .error {
@@ -105,12 +104,8 @@
         <div class="error" id="login-error"></div>
     </div>
 
-    <footer id="livecam-sponsor-footer" class="livecam-sponsor-footer" hidden></footer>
+    <footer class="livecam-sponsor-footer">Development sponsored by <a href="https://xlovecam.com" target="_blank" rel="noopener noreferrer">xlovecam.com</a></footer>
 
-    <script src="/js/sponsor-footer.js"></script>
-    <script>
-        loadLivecamSponsorFooter();
-    </script>
     <script>
         var pwdInput = document.getElementById('login-pwd');
         var keyInput = document.getElementById('login-key');

@@ -159,9 +159,6 @@ SFU_ARCHIVE_DIR=/opt/livecam/archive
 HLS_DIR=/opt/livecam/hls
 
 # Go Proxy
-# Optional: small sponsor line in the web UI (see README — LIVECAM_SPONSOR_FOOTER_*).
-# LIVECAM_SPONSOR_FOOTER_TEXT=Development sponsored by XLoveCam
-# LIVECAM_SPONSOR_FOOTER_URL=https://xlovecam.com
 GO_LISTEN_PORT=8443
 CLIENT_DIR=/opt/livecam/client
 RUST_CORE_URL=http://127.0.0.1:8080

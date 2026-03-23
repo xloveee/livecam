@@ -674,9 +674,6 @@ textarea:focus {
     line-height: 1.3;
     width: 100%;
 }
-.livecam-sponsor-footer[hidden] {
-    display: none !important;
-}
 .livecam-sponsor-footer a {
     color: #888;
     text-decoration: none;

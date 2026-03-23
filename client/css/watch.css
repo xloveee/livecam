@@ -1301,9 +1301,6 @@ body.watch-chat-hidden .chat-header-btn--toggle .chat-header-svg-closed {
     border-top: 1px solid #1a1a1a;
     line-height: 1.3;
 }
-.livecam-sponsor-footer[hidden] {
-    display: none !important;
-}
 .livecam-sponsor-footer a {
     color: #888;
     text-decoration: none;

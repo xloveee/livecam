@@ -128,6 +128,8 @@
         </aside>
     </div>
 
+    <footer id="livecam-sponsor-footer" class="livecam-sponsor-footer" hidden></footer>
+
     <!-- Body-level: fixed overlay must not sit inside main.stream-column (overflow scroll traps stacking on phone) -->
     <div id="password-prompt">
         <div class="password-box">
@@ -165,6 +167,7 @@
         <div id="debug-content"></div>
     </div>
 
+    <script src="/js/sponsor-footer.js"></script>
     <script src="/js/watch-core.js"></script>
     <script src="/js/chat.js"></script>
     <script src="/js/donate.js"></script>
@@ -172,6 +175,7 @@
     <script src="/js/watch-header.js"></script>
     <script>
         (async function init() {
+            loadLivecamSponsorFooter();
             roomId = getRoomIdFromURL();
             if (roomId) roomIdFromURL = true;
             await pollActive();

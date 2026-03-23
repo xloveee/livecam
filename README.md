@@ -182,6 +182,9 @@ Both options use the same WHIP endpoint. **Video codec** follows whatever the pu
 | `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |
 | `BROADCAST_PASSWORD` | *(none — open mode)* | Page-level password required to access `/broadcast` |
 | `OFFLINE_BANNER_UPLOAD_DIR` | `{CLIENT_DIR}/../data/offline_banners` | Writable directory for uploaded offline banner images (one file per room; each upload replaces the previous). |
+| `LIVECAM_SPONSOR_FOOTER_TEXT` | *(none)* | If set, shown as a small footer on `/watch`, `/broadcast`, and broadcast login; also returned as `sponsor_footer_text` in `GET /api/config`. |
+| `LIVECAM_SPONSOR_FOOTER_URL` | *(none)* | Optional `http:` or `https:` URL; if set with text, the footer links here (`sponsor_footer_url` in `/api/config`). |
+| `LIVECAM_SPONSOR_FOOTER_DISABLED` | *(off)* | Set to `1` to omit sponsor fields even if text is set (e.g. fork / private deploy). |
 
 ### TLS + nginx (Required for production WebRTC)
 

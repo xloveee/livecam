@@ -219,11 +219,15 @@
         </div>
     </div>
 
+    <footer id="livecam-sponsor-footer" class="livecam-sponsor-footer" hidden></footer>
+
+    <script src="/js/sponsor-footer.js"></script>
     <script src="/js/broadcast-core.js"></script>
     <script src="/js/broadcast-chat.js"></script>
     <script src="/js/broadcast-donations.js"></script>
     <script>
         (async function init() {
+            loadLivecamSponsorFooter();
             try {
                 var resp = await fetch('/api/auth/broadcast');
                 if (!resp.ok) { window.location.reload(); return; }

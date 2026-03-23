@@ -25,11 +25,15 @@ import (
 )
 
 var (
-	iceServers    []map[string]interface{}
-	clientDir     string
-	rustCoreURL   string
-	sharedDonoDB  *donations.DB
+	iceServers          []map[string]interface{}
+	clientDir           string
+	rustCoreURL         string
+	sharedDonoDB        *donations.DB
+	sponsorFooterText   string
+	sponsorFooterURL    string
 )
+
+const sponsorFooterTextMaxRunes = 280
 
 func main() {
 	initConfig()
@@ -204,6 +208,44 @@ func initConfig() {
 		donations.OfflineBannerUploadDir = uploadDir
 		log.Printf("Offline banner uploads: %s", uploadDir)
 	}
+
+	loadSponsorFooterFromEnv()
+}
+
+func normalizeHTTPSponsorURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	return u.String()
+}
+
+func loadSponsorFooterFromEnv() {
+	sponsorFooterText = ""
+	sponsorFooterURL = ""
+	if strings.TrimSpace(os.Getenv("LIVECAM_SPONSOR_FOOTER_DISABLED")) == "1" {
+		log.Printf("Sponsor footer: disabled (LIVECAM_SPONSOR_FOOTER_DISABLED=1)")
+		return
+	}
+	t := strings.TrimSpace(os.Getenv("LIVECAM_SPONSOR_FOOTER_TEXT"))
+	if len([]rune(t)) > sponsorFooterTextMaxRunes {
+		rs := []rune(t)
+		t = string(rs[:sponsorFooterTextMaxRunes])
+	}
+	if t == "" {
+		return
+	}
+	sponsorFooterText = t
+	sponsorFooterURL = normalizeHTTPSponsorURL(os.Getenv("LIVECAM_SPONSOR_FOOTER_URL"))
+	if sponsorFooterURL != "" {
+		log.Printf("Sponsor footer: enabled (text + link)")
+	} else {
+		log.Printf("Sponsor footer: enabled (text only)")
+	}
 }
 
 func isSecureRequest(r *http.Request) bool {
@@ -239,6 +281,12 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 
 	resp := map[string]interface{}{
 		"iceServers": iceServers,
+	}
+	if sponsorFooterText != "" {
+		resp["sponsor_footer_text"] = sponsorFooterText
+		if sponsorFooterURL != "" {
+			resp["sponsor_footer_url"] = sponsorFooterURL
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")

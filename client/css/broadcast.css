@@ -662,3 +662,26 @@ textarea:focus {
     .settings-overlay-panel { width: 100%; border-radius: 0; height: 80vh; }
     .settings-tab { font-size: 0.62rem; padding: 0.5rem 0.2rem; }
 }
+
+/* ── Sponsor / credits (GET /api/config) ─────────────── */
+.livecam-sponsor-footer {
+    flex-shrink: 0;
+    text-align: center;
+    font-size: 0.65rem;
+    color: #666;
+    padding: 0.25rem 0.5rem 0.4rem;
+    border-top: 1px solid #1a1a1a;
+    line-height: 1.3;
+    width: 100%;
+}
+.livecam-sponsor-footer[hidden] {
+    display: none !important;
+}
+.livecam-sponsor-footer a {
+    color: #888;
+    text-decoration: none;
+}
+.livecam-sponsor-footer a:hover {
+    text-decoration: underline;
+    color: #aaa;
+}

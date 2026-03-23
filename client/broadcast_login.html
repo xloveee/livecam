@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="livecam-api-root" content="">
     <title>Broadcast — livecam</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -68,6 +69,19 @@
         }
         button:hover { background: #b71c1c; }
         button:disabled { background: #333; cursor: default; }
+        .livecam-sponsor-footer {
+            margin-top: auto;
+            padding-top: 1rem;
+            text-align: center;
+            font-size: 0.7rem;
+            color: #666;
+            line-height: 1.35;
+            width: 100%;
+            max-width: 380px;
+        }
+        .livecam-sponsor-footer[hidden] { display: none !important; }
+        .livecam-sponsor-footer a { color: #888; text-decoration: none; }
+        .livecam-sponsor-footer a:hover { text-decoration: underline; color: #aaa; }
         .error {
             font-size: 0.85rem;
             color: #ef5350;
@@ -91,6 +105,12 @@
         <div class="error" id="login-error"></div>
     </div>
 
+    <footer id="livecam-sponsor-footer" class="livecam-sponsor-footer" hidden></footer>
+
+    <script src="/js/sponsor-footer.js"></script>
+    <script>
+        loadLivecamSponsorFooter();
+    </script>
     <script>
         var pwdInput = document.getElementById('login-pwd');
         var keyInput = document.getElementById('login-key');

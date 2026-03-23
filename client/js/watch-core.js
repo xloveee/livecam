@@ -439,9 +439,13 @@ function getRoomIdFromURL() {
 
 async function fetchICEConfig() {
     try {
-        var resp = await fetch('/api/config');
+        var resp = await fetch(livecamApiRoot() + '/api/config');
         if (!resp.ok) return {};
-        return await resp.json();
+        var data = await resp.json();
+        if (typeof applySponsorFooterFromConfig === 'function') {
+            applySponsorFooterFromConfig(data);
+        }
+        return data;
     } catch (e) {
         return { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
     }

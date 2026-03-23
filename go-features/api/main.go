@@ -33,7 +33,11 @@ var (
 	sponsorFooterURL    string
 )
 
-const sponsorFooterTextMaxRunes = 280
+const (
+	sponsorFooterTextMaxRunes  = 280
+	defaultSponsorFooterText   = "Development sponsored by XLoveCam"
+	defaultSponsorFooterURLRaw = "https://xlovecam.com"
+)
 
 func main() {
 	initConfig()
@@ -231,16 +235,23 @@ func loadSponsorFooterFromEnv() {
 		log.Printf("Sponsor footer: disabled (LIVECAM_SPONSOR_FOOTER_DISABLED=1)")
 		return
 	}
+	/* Go does not read deploy/.env unless systemd/shell exports it — defaults keep sponsor line visible. */
 	t := strings.TrimSpace(os.Getenv("LIVECAM_SPONSOR_FOOTER_TEXT"))
+	textFromEnv := t != ""
 	if len([]rune(t)) > sponsorFooterTextMaxRunes {
 		rs := []rune(t)
 		t = string(rs[:sponsorFooterTextMaxRunes])
 	}
 	if t == "" {
-		return
+		t = defaultSponsorFooterText
 	}
 	sponsorFooterText = t
 	sponsorFooterURL = normalizeHTTPSponsorURL(os.Getenv("LIVECAM_SPONSOR_FOOTER_URL"))
+	if sponsorFooterURL == "" {
+		if !textFromEnv {
+			sponsorFooterURL = normalizeHTTPSponsorURL(defaultSponsorFooterURLRaw)
+		}
+	}
 	if sponsorFooterURL != "" {
 		log.Printf("Sponsor footer: enabled (text + link)")
 	} else {

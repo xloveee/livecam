@@ -158,7 +158,9 @@ Both options use the same WHIP endpoint. **Video codec** follows whatever the pu
 
 ### Environment Variables
 
-A commented template lives at **`deploy/.env.example`**. Copy it to **`deploy/.env`**, set secrets and IPs, and keep **`.env`** out of version control.
+A commented template lives at **`deploy/.env.example`**. Copy it to **`deploy/.env`**, set secrets and IPs, and keep **`.env`** out of version control. The Go proxy does **not** read `.env` by itself — use `export $(grep -v '^#' deploy/.env | xargs)` before `go run`, or **`EnvironmentFile=`** in systemd. Sponsor defaults are compiled in so the footer still appears if those variables are not exported.
+
+The browser loads sponsor text from **`GET /api/config`** (same origin as the site). If you only open static files without the Go service, the client falls back to the same default line when the request fails; when the API responds with ICE config but **no** sponsor fields, the footer stays off (e.g. `LIVECAM_SPONSOR_FOOTER_DISABLED=1`).
 
 **Rust Core** (`rust-core`):
 
@@ -184,9 +186,9 @@ A commented template lives at **`deploy/.env.example`**. Copy it to **`deploy/.e
 | `SESSION_SECRET` | *(insecure default)* | Secret for broadcaster session tokens (16+ chars) |
 | `BROADCAST_PASSWORD` | *(none — open mode)* | Page-level password required to access `/broadcast` |
 | `OFFLINE_BANNER_UPLOAD_DIR` | `{CLIENT_DIR}/../data/offline_banners` | Writable directory for uploaded offline banner images (one file per room; each upload replaces the previous). |
-| `LIVECAM_SPONSOR_FOOTER_TEXT` | *(none)* | If set, shown as a small footer on `/watch`, `/broadcast`, and broadcast login; also returned as `sponsor_footer_text` in `GET /api/config`. |
-| `LIVECAM_SPONSOR_FOOTER_URL` | *(none)* | Optional `http:` or `https:` URL; if set with text, the footer links here (`sponsor_footer_url` in `/api/config`). |
-| `LIVECAM_SPONSOR_FOOTER_DISABLED` | *(off)* | Set to `1` to omit sponsor fields even if text is set (e.g. fork / private deploy). |
+| `LIVECAM_SPONSOR_FOOTER_TEXT` | XLoveCam line (see below) | Footer text on `/watch`, `/broadcast`, login; `sponsor_footer_text` in `GET /api/config`. **Default** is used when unset (Go does not load `.env` files — export vars or use systemd `EnvironmentFile`). |
+| `LIVECAM_SPONSOR_FOOTER_URL` | `https://xlovecam.com` when text is default | Optional `http:` or `https:` link (`sponsor_footer_url`). If you set **custom** text and leave URL unset, the footer is **text-only** (no default link). |
+| `LIVECAM_SPONSOR_FOOTER_DISABLED` | *(off)* | Set to `1` to turn off the footer entirely. |
 
 ### TLS + nginx (Required for production WebRTC)
 

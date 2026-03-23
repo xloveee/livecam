@@ -39,12 +39,32 @@ function applySponsorFooterFromConfig(cfg) {
     }
 }
 
+function livecamStaticSponsorFallback() {
+    return {
+        sponsor_footer_text: 'Development sponsored by XLoveCam',
+        sponsor_footer_url: 'https://xlovecam.com'
+    };
+}
+
 async function loadLivecamSponsorFooter() {
     try {
         var resp = await fetch(livecamSponsorConfigFetchUrl(), { credentials: 'same-origin', cache: 'no-store' });
         if (!resp.ok) {
+            applySponsorFooterFromConfig(livecamStaticSponsorFallback());
             return;
         }
-        applySponsorFooterFromConfig(await resp.json());
-    } catch (e) { /* ignore */ }
+        var cfg = await resp.json();
+        if (cfg && cfg.sponsor_footer_text != null && String(cfg.sponsor_footer_text).trim() !== '') {
+            applySponsorFooterFromConfig(cfg);
+            return;
+        }
+        /* Live Go proxy answered: no sponsor key means disabled or neutral fork; do not invent branding. */
+        if (cfg && cfg.iceServers) {
+            applySponsorFooterFromConfig({});
+            return;
+        }
+        applySponsorFooterFromConfig(livecamStaticSponsorFallback());
+    } catch (e) {
+        applySponsorFooterFromConfig(livecamStaticSponsorFallback());
+    }
 }

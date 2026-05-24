@@ -115,6 +115,7 @@ func main() {
 	mux.Handle("/hls/", setCORSAndCache(hlsFS))
 	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
+	mux.HandleFunc("/privacy", privacyHandler)
 	mux.HandleFunc("/watch/", watchHandler)
 	mux.HandleFunc("/", rootHandler)
 
@@ -409,6 +410,10 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 
 func watchHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, clientDir+"/watch.html")
+}
+
+func privacyHandler(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, clientDir+"/privacy.html")
 }
 
 func rootHandler(w http.ResponseWriter, r *http.Request) {

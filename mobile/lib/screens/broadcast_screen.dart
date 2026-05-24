@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
+import '../config/feature_flags.dart';
 import '../models/server_profile.dart';
 import '../models/stream_destination.dart';
 import '../services/auth_service.dart';
@@ -79,7 +80,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
 
   Future<void> _goLive() async {
     if (_busy) return;
-    if (!_useLivecam && !_useRtmp) {
+    if (!_useLivecam && (!kEnableRtmpDestinations || !_useRtmp)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select at least one destination')),
       );
@@ -108,7 +109,7 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
         await _whip.start(server: widget.server, authToken: token);
       }
 
-      if (_useRtmp && _selectedRtmp != null) {
+      if (kEnableRtmpDestinations && _useRtmp && _selectedRtmp != null) {
         setState(() => _status = 'Starting RTMP...');
         await _rtmp.start(destination: _selectedRtmp!, frontCamera: _frontCamera);
       }
@@ -134,7 +135,9 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
     setState(() => _frontCamera = !_frontCamera);
     if (_isLive) {
       await _whip.switchCamera();
-      await _rtmp.switchCamera();
+      if (kEnableRtmpDestinations) {
+        await _rtmp.switchCamera();
+      }
     } else {
       await _whip.openCamera(frontCamera: _frontCamera);
       setState(() {});
@@ -184,26 +187,28 @@ class _BroadcastScreenState extends State<BroadcastScreen> {
                   title: const Text('livecam (WHIP)'),
                   subtitle: Text(widget.server.normalizedBaseUrl),
                 ),
-                CheckboxListTile(
-                  value: _useRtmp,
-                  onChanged: _isLive
-                      ? null
-                      : (v) => setState(() => _useRtmp = v ?? false),
-                  title: const Text('RTMP (Twitch/Kick)'),
-                ),
-                if (_useRtmp && _destinations.isNotEmpty)
-                  DropdownButtonFormField<StreamDestination>(
-                    value: _selectedRtmp,
-                    decoration: const InputDecoration(labelText: 'RTMP destination'),
-                    items: _destinations
-                        .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
-                        .toList(),
+                if (kEnableRtmpDestinations) ...[
+                  CheckboxListTile(
+                    value: _useRtmp,
                     onChanged: _isLive
                         ? null
-                        : (d) => setState(() => _selectedRtmp = d),
+                        : (v) => setState(() => _useRtmp = v ?? false),
+                    title: const Text('RTMP (Twitch/Kick)'),
                   ),
-                if (_useRtmp && _destinations.isEmpty)
-                  const Text('Add RTMP destinations from home screen menu'),
+                  if (_useRtmp && _destinations.isNotEmpty)
+                    DropdownButtonFormField<StreamDestination>(
+                      value: _selectedRtmp,
+                      decoration: const InputDecoration(labelText: 'RTMP destination'),
+                      items: _destinations
+                          .map((d) => DropdownMenuItem(value: d, child: Text(d.name)))
+                          .toList(),
+                      onChanged: _isLive
+                          ? null
+                          : (d) => setState(() => _selectedRtmp = d),
+                    ),
+                  if (_useRtmp && _destinations.isEmpty)
+                    const Text('Add RTMP destinations from home screen menu'),
+                ],
                 const SizedBox(height: 12),
                 Row(
                   children: [

@@ -18,8 +18,8 @@ local.properties
 **/android/key.properties
 *.jks
 *.keystore
+android/keystore/
 **/google-services.json
-**/GoogleService-Info.plist
 
 # iOS
 **/ios/Pods/
@@ -28,6 +28,9 @@ local.properties
 **/ios/Flutter/Flutter.podspec
 **/ios/ServiceDefinitions.json
 **/ios/Runner/GeneratedPluginRegistrant.*
+
+store/screenshots/
+store/icon_source.png
 
 # macOS
 **/macos/Flutter/ephemeral/

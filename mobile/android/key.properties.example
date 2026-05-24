@@ -1,0 +1,5 @@
+# Copy to android/key.properties (never commit). See store/RELEASE_SIGNING.md
+storePassword=YOUR_STORE_PASSWORD
+keyPassword=YOUR_KEY_PASSWORD
+keyAlias=upload
+storeFile=../keystore/upload-keystore.jks

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../config/feature_flags.dart';
 import '../models/server_profile.dart';
 import '../services/storage_service.dart';
 import 'broadcast_screen.dart';
@@ -89,14 +90,15 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: const Text('livecam Mobile'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.settings_input_antenna),
-            tooltip: 'RTMP destinations',
-            onPressed: () => Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => const DestinationsScreen()),
+          if (kEnableRtmpDestinations)
+            IconButton(
+              icon: const Icon(Icons.settings_input_antenna),
+              tooltip: 'RTMP destinations',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const DestinationsScreen()),
+              ),
             ),
-          ),
         ],
       ),
       body: _loading

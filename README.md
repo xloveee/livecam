@@ -1,6 +1,6 @@
 # livecam
 
-Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, browser-based broadcast, simulcast SFU, viewer caps, VOD recording, HLS fallback. Built with Rust (str0m), Go, C99. Run your own livecam or creator stream — no Twitch, no YouTube, no middlemen. AGPLv3.
+Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, browser-based broadcast, **Flutter mobile app**, simulcast SFU, viewer caps, VOD recording, HLS fallback. Built with Rust (str0m), Go, C99, Flutter. Run your own livecam or creator stream — no Twitch, no YouTube, no middlemen. AGPLv3.
 
 
 ## Questions this repository answers
@@ -8,6 +8,7 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 - How do I stream without depending on Twitch, YouTube, or other platforms?
 - Can I own my stream, audience, and chat instead of a third party?
 - Can I broadcast from my phone or browser without installing an app?
+- Is there a native iOS/Android app for WHIP broadcast, viewing, and chat?
 - Can I use OBS for high-quality desktop streaming and get low-latency viewing?
 - How do I add real-time chat to my own stream with basic moderation?
 
@@ -17,8 +18,10 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 |---|---|
 | **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{streamKey}` |
 | **Publish (Browser)** | `https://yourdomain.com/broadcast` |
-| **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` |
+| **Publish (Mobile WHIP)** | `POST https://yourdomain.com/api/whip/{streamKey}` with SDP body + `Authorization: Bearer {token}` |
+| **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` → JSON `{ "token", "stream_key" }` (+ session cookie for browser) |
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
+| **Watch (Mobile WHEP/HLS)** | `POST /api/whep/{roomId}` (WebRTC) or `GET /hls/{roomId}/master.m3u8` (fallback) |
 | **Quality Change** | `POST https://yourdomain.com/api/quality/{roomId}` |
 | **ICE Config (Browser)** | `https://yourdomain.com/api/config` |
 | **Offline banner (broadcaster)** | Text + optional image: `POST /api/donations/setup` with `provider: "offline_banner"` and JSON `config_data` `{"text":"…","image_url":"https://…"}` or `image_url` `/offline_banner_media/{roomId}` after upload. **Upload (overwrites previous file per room):** `POST /api/offline_banner_upload/{streamKey}` multipart field `file` (PNG/JPEG/GIF/WebP, max 2 MB). Served at `GET /offline_banner_media/{roomId}`. Public `GET /api/room_info/{roomId}` includes `offline_banner` and `offline_banner_image`. |
@@ -48,6 +51,7 @@ livecam/
 │   │   └── c_src/       # C99 chat logic (command parser, rate limiter)
 │   └── vendor/          # Vendored Go dependencies (gorilla/websocket)
 ├── client/              # Static HTML/JS — WHEP Viewer + Browser Broadcast + Chat
+├── mobile/              # Flutter iOS/Android app — WHIP/WHEP, chat, RTMP destinations
 └── deploy/              # Configs, scripts (Docker, Systemd, TURN)
 ```
 
@@ -57,6 +61,7 @@ livecam/
 - **Go** (1.21+) — with CGo enabled (default)
 - **OBS Studio** (30+) — with WHIP output support
 - **Browser** — Any modern browser with WebRTC (see **Browser and device support** below).
+- **Flutter** (3.16+) — for building the mobile app from [`mobile/`](mobile/) (optional; prebuilt APK/IPA not shipped from this repo)
 
 ### Browser and device support
 
@@ -153,6 +158,30 @@ Drag the **resize bar** between stream and chat to change the split (vertical ba
 5. Click **Start Broadcast**.
 
 Both options use the same WHIP endpoint. **Video codec** follows whatever the publisher negotiates (browser `/broadcast` is usually **VP8** when the browser supports it; **OBS** is usually **H.264**). The stream key doubles as the room ID. Viewers at `/watch/{stream-key}` will receive the broadcast.
+
+**Option C — Mobile app (Flutter, iOS/Android)**
+
+1. Build and run from [`mobile/`](mobile/) (see [mobile/README.md](mobile/README.md)).
+2. Add a **server profile**: base URL (e.g. `https://indep.stream`), 32-char stream key, broadcast password if set on the server.
+3. **Log in** — the app calls `POST /api/auth/broadcast` and stores the returned **Bearer token** (web clients still use the session cookie).
+4. **Go Live** — WHIP publish with VP8 codec preference; optional **RTMP** restream to Twitch/Kick from the destinations screen.
+5. **Watch** — WHEP with HLS fallback on iOS; chat uses the same WebSocket protocol as the web viewer.
+
+Mobile auth example:
+
+```bash
+curl -sS -X POST https://yourdomain.com/api/auth/broadcast \
+  -H 'Content-Type: application/json' \
+  -d '{"password":"YOUR_BROADCAST_PASSWORD","stream_key":"YOUR_32_CHAR_STREAM_KEY"}'
+# → {"status":"ok","token":"<hex>","stream_key":"..."}
+
+curl -sS -X POST https://yourdomain.com/api/whip/YOUR_32_CHAR_STREAM_KEY \
+  -H 'Content-Type: application/sdp' \
+  -H 'Authorization: Bearer <token>' \
+  --data-binary @offer.sdp
+```
+
+After updating the Go proxy for Bearer auth, restart `go-proxy` so mobile login and WHIP publish pick up the change.
 
 ## Production Deployment
 
@@ -301,6 +330,7 @@ Clients connect via `wss://yourdomain.com/api/chat/{roomId}?nick=Name`. Messages
 | Branch | Features |
 |--------|----------|
 | `main` | Stream only (WHIP/WHEP, browser broadcast, viewer page) |
+| `app` | Flutter mobile client + Bearer auth for WHIP (`mobile/`, Go API token support) |
 | `feature/chat` | Stream + real-time chat |
 | `feature/donations` | Stream + chat + donations (Stripe, PayPal, crypto, bank) |
 

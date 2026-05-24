@@ -364,6 +364,36 @@ int32_t extract_stream_key_from_token(const char *token_hex, char *out_key)
     return found;
 }
 
+/*
+ * Validate a session token against a specific stream key (open or whitelist mode).
+ * Returns 1 if token matches the key, 0 otherwise. Constant-time compare.
+ */
+int32_t validate_session_token_for_key(const char *token_hex, const char *stream_key)
+{
+    if (token_hex == NULL || stream_key == NULL) {
+        return 0;
+    }
+
+    if (is_format_valid(stream_key) == 0) {
+        return 0;
+    }
+
+    const size_t token_len = bounded_strlen(token_hex, SESSION_TOKEN_HEX_LEN + 1);
+    if (token_len != SESSION_TOKEN_HEX_LEN) {
+        return 0;
+    }
+
+    char candidate[SESSION_TOKEN_HEX_LEN + 1];
+    generate_session_token(stream_key, candidate);
+
+    volatile int32_t diff = 0;
+    for (size_t j = 0; j < SESSION_TOKEN_HEX_LEN; j++) {
+        diff |= (token_hex[j] ^ candidate[j]);
+    }
+
+    return (diff == 0) ? 1 : 0;
+}
+
 #define MAX_ROOM_PASSWORD_LEN 128
 
 /*

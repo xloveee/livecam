@@ -37,16 +37,25 @@ func main() {
 	chatHub := chat.NewHub()
 	chatAuth := chat.AuthFunc(func(r *http.Request) (string, bool) {
 		cookie, err := r.Cookie("broadcaster_session")
-		if err != nil || cookie.Value == "" {
+		if err == nil && cookie.Value != "" {
+			if key, ok := streamKeyFromSessionToken(cookie.Value); ok {
+				return key, true
+			}
+		}
+		bearer := bearerTokenFromRequest(r)
+		if bearer == "" {
 			return "", false
 		}
-		cToken := C.CString(cookie.Value)
-		defer C.free(unsafe.Pointer(cToken))
-		var outKey [C.STREAM_KEY_EXACT_LEN + 1]C.char
-		if C.extract_stream_key_from_token(cToken, &outKey[0]) == 0 {
-			return "", false
+		// Path: /api/chat/{roomId} — roomId equals stream key for broadcasters.
+		path := strings.TrimPrefix(r.URL.Path, "/api/chat/")
+		roomID := strings.TrimSuffix(path, "/")
+		if roomID != "" && validateBearerForStreamKey(bearer, roomID) {
+			return roomID, true
 		}
-		return C.GoString(&outKey[0]), true
+		if key, ok := streamKeyFromSessionToken(bearer); ok {
+			return key, true
+		}
+		return "", false
 	})
 
 	donationDBPath := os.Getenv("DONATION_DB_PATH")
@@ -213,22 +222,64 @@ func isSecureRequest(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
 }
 
-func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
-	cookie, err := r.Cookie("broadcaster_session")
-	if err != nil || cookie.Value == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+func bearerTokenFromRequest(r *http.Request) string {
+	auth := r.Header.Get("Authorization")
+	if auth == "" {
+		return ""
+	}
+	const prefix = "Bearer "
+	if !strings.HasPrefix(auth, prefix) {
+		return ""
+	}
+	return strings.TrimSpace(auth[len(prefix):])
+}
+
+func streamKeyFromSessionToken(token string) (string, bool) {
+	if token == "" {
 		return "", false
 	}
-
-	cToken := C.CString(cookie.Value)
+	cToken := C.CString(token)
 	defer C.free(unsafe.Pointer(cToken))
-
 	var outKey [C.STREAM_KEY_EXACT_LEN + 1]C.char
 	if C.extract_stream_key_from_token(cToken, &outKey[0]) == 0 {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return "", false
 	}
 	return C.GoString(&outKey[0]), true
+}
+
+func validateBearerForStreamKey(token, streamKey string) bool {
+	if token == "" || streamKey == "" {
+		return false
+	}
+	cToken := C.CString(token)
+	defer C.free(unsafe.Pointer(cToken))
+	cKey := C.CString(streamKey)
+	defer C.free(unsafe.Pointer(cKey))
+	return C.validate_session_token_for_key(cToken, cKey) == 1
+}
+
+func requireBroadcasterAuth(w http.ResponseWriter, r *http.Request) (string, bool) {
+	cookie, err := r.Cookie("broadcaster_session")
+	if err == nil && cookie.Value != "" {
+		if key, ok := streamKeyFromSessionToken(cookie.Value); ok {
+			return key, true
+		}
+	}
+
+	bearer := bearerTokenFromRequest(r)
+	if bearer != "" {
+		if key, ok := streamKeyFromSessionToken(bearer); ok {
+			return key, true
+		}
+		// Open mode: token validated against stream_key query param (mobile clients).
+		qKey := r.URL.Query().Get("stream_key")
+		if qKey != "" && validateBearerForStreamKey(bearer, qKey) {
+			return qKey, true
+		}
+	}
+
+	http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	return "", false
 }
 
 func configHandler(w http.ResponseWriter, r *http.Request) {
@@ -321,6 +372,7 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"status":     "ok",
+		"token":      token,
 		"stream_key": req.StreamKey,
 	})
 }
@@ -420,6 +472,12 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 	isValid := C.validate_stream_key(cKey)
 	if isValid == 0 {
 		http.Error(w, "Invalid stream key", http.StatusUnauthorized)
+		return
+	}
+
+	bearer := bearerTokenFromRequest(r)
+	if bearer != "" && !validateBearerForStreamKey(bearer, streamKey) {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 

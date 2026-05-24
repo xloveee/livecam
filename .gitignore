@@ -17,7 +17,28 @@ Thumbs.db
 
 # Environment files (may contain secrets)
 .env
+.env.*
+!.env.example
+!**/.env.example
 *.env.local
+deploy/.env
+
+# Runtime data (SQLite, uploads — secrets, PII, stream keys in filenames)
+data/
+
+# VOD archive recordings (runtime; rust-core/archive/ also ignored below)
+archive/
+
+# Go build artifacts at repo root
+/api-server
+
+# TLS / signing / credentials (never commit)
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+*.mobileprovision
 
 # VOD archive recordings (runtime data, not source)
 rust-core/archive/

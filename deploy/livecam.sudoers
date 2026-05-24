@@ -1,0 +1,16 @@
+# Independent Broadcasting — limited sudo for the livecam deploy user.
+# Install: sudo install -m 440 deploy/livecam.sudoers /etc/sudoers.d/livecam
+# Validate: sudo visudo -cf /etc/sudoers.d/livecam
+
+Defaults:livecam !requiretty
+
+Cmnd_Alias LIVECAM_SYSTEMD = /bin/systemctl daemon-reload, \
+    /bin/systemctl * sfu*, /bin/systemctl * go-proxy*, /bin/systemctl * nginx*
+
+Cmnd_Alias LIVECAM_NGINX_TEST = /usr/sbin/nginx -t
+
+Cmnd_Alias LIVECAM_JOURNAL = /usr/bin/journalctl
+
+livecam ALL=(ALL) NOPASSWD: LIVECAM_SYSTEMD
+livecam ALL=(ALL) NOPASSWD: LIVECAM_NGINX_TEST
+livecam ALL=(ALL) NOPASSWD: LIVECAM_JOURNAL

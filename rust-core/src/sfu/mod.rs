@@ -1,4 +1,5 @@
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::fs;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -6,13 +7,14 @@ use std::time::{Duration, Instant};
 
 use str0m::format::Codec;
 use str0m::media::{KeyframeRequest, KeyframeRequestKind, MediaData, Mid, Rid};
-use str0m::net::{Protocol, Receive};
+use str0m::net::{Protocol, Receive, Transmit};
 use str0m::{Event, IceConnectionState, Input, Output, Rtc};
 use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 use tokio::time::sleep;
 
-use crate::hls::HlsSink;
+use crate::config::pick_ice_recv_dest;
+use crate::hls::RoomHls;
 
 /// Unique identifier for a peer session (broadcaster or viewer).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -65,6 +67,50 @@ pub struct PeerDisconnect {
     pub room_id: String,
 }
 
+/// Studio facecam rect (normalized 0–1) published on room_info for WHEP PIP.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct CameraLayout {
+    pub x: f32,
+    pub y: f32,
+    pub w: f32,
+    pub h: f32,
+    pub visible: bool,
+}
+
+/// One program-plate layer. `track` is the WHIP video mid index (0 = primary).
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SceneLayer {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default, rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
+    #[serde(default)]
+    pub w: f32,
+    #[serde(default)]
+    pub h: f32,
+    #[serde(default)]
+    pub visible: bool,
+    #[serde(default)]
+    pub track: u8,
+    #[serde(default)]
+    pub z: i32,
+}
+
+/// Program plate + every visible video source. Watch Live composites from this.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
+pub struct SceneLayout {
+    #[serde(default)]
+    pub plate_w: u32,
+    #[serde(default)]
+    pub plate_h: u32,
+    #[serde(default)]
+    pub layers: Vec<SceneLayer>,
+}
+
 /// Per-room metadata visible to both API handlers and the SFU loop.
 #[derive(Debug, Clone)]
 pub struct RoomInfo {
@@ -72,6 +118,8 @@ pub struct RoomInfo {
     pub max_viewers: u32,
     pub password: Option<String>,
     pub is_live: bool,
+    pub camera: Option<CameraLayout>,
+    pub scene: Option<SceneLayout>,
 }
 
 impl Default for RoomInfo {
@@ -81,6 +129,8 @@ impl Default for RoomInfo {
             max_viewers: 0,
             password: None,
             is_live: false,
+            camera: None,
+            scene: None,
         }
     }
 }
@@ -134,9 +184,44 @@ struct Peer {
     aq_manual: bool,
     write_error_count: u32,
     last_video_write: Instant,
+    last_hls_pli: Option<Instant>,
+    /// Viewer: first decodable video IDR written, per local mid (screen and camera independently).
+    video_started: HashSet<Mid>,
+    /// Viewer: request a publisher IDR as soon as the WHEP video mid is mapped.
+    need_join_pli: bool,
+}
+
+#[derive(Default)]
+struct H264ParamSets {
+    sps: Option<Vec<u8>>,
+    pps: Option<Vec<u8>>,
+}
+
+impl H264ParamSets {
+    fn observe(&mut self, annex_b: &[u8]) {
+        let (sps, pps) = crate::hls::extract_sps_pps(annex_b);
+        if let Some(s) = sps {
+            self.sps = Some(s);
+        }
+        if let Some(p) = pps {
+            self.pps = Some(p);
+        }
+    }
+
+    fn ensure(&self, annex_b: &[u8]) -> Option<Vec<u8>> {
+        if crate::hls::access_unit_has_sps_pps(annex_b) {
+            return None;
+        }
+        let sps = self.sps.as_deref()?;
+        let pps = self.pps.as_deref()?;
+        Some(crate::hls::prepend_sps_pps(sps, pps, annex_b))
+    }
 }
 
 const WRITE_ERROR_DISCONNECT_THRESHOLD: u32 = 50;
+/// Keep Compatible playlists after the last broadcaster ICE-disconnects so a
+/// watch page still open can finish the current segments. New WHIP cancels this.
+const HLS_PLAYLIST_LINGER: Duration = Duration::from_secs(30);
 
 impl Peer {
     fn new(id: PeerId, rtc: Rtc, role: PeerRole, room_id: String) -> Self {
@@ -156,6 +241,9 @@ impl Peer {
             aq_manual: false,
             write_error_count: 0,
             last_video_write: Instant::now(),
+            last_hls_pli: None,
+            video_started: HashSet::new(),
+            need_join_pli: false,
         }
     }
 }
@@ -181,17 +269,33 @@ enum Propagated {
     },
 }
 
+/// Send from the socket whose local IP matches str0m's Transmit.source so
+/// ICE-lite replies appear to come from the nominated candidate.
+fn send_udp(sockets: &[UdpSocket], t: &Transmit) {
+    let sock = sockets
+        .iter()
+        .find(|s| s.local_addr().map(|a| a.ip() == t.source.ip()).unwrap_or(false))
+        .or_else(|| sockets.first());
+    if let Some(s) = sock {
+        if let Err(e) = s.try_send_to(&t.contents, t.destination) {
+            tracing::warn!("UDP send {} -> {}: {}", t.source, t.destination, e);
+        }
+    }
+}
+
 /// The main SFU run loop. Drives all Rtc instances, demuxes UDP, forwards media.
 ///
-/// `socket`         — single multiplexed UDP socket for all WebRTC traffic
+/// `sockets`        — one UDP socket per advertised host IP (loopback + LAN)
 /// `candidate_addr` — public address advertised in ICE candidates
+/// `ice_addrs`      — all host candidate addresses (LAN extras included)
 /// `new_peer_rx`    — channel receiving new Rtc instances from the HTTP handlers
 /// `quality_rx`     — channel receiving quality change requests from the HTTP handlers
 /// `disconnect_rx`  — channel receiving explicit viewer disconnect requests
 /// `room_state`     — shared map of room metadata (viewer counts, caps)
 pub async fn run_sfu_loop(
-    socket: UdpSocket,
+    sockets: Vec<UdpSocket>,
     candidate_addr: SocketAddr,
+    ice_addrs: Vec<SocketAddr>,
     mut new_peer_rx: mpsc::UnboundedReceiver<NewPeer>,
     mut quality_rx: mpsc::UnboundedReceiver<QualityChange>,
     mut disconnect_rx: mpsc::UnboundedReceiver<PeerDisconnect>,
@@ -204,12 +308,19 @@ pub async fn run_sfu_loop(
     let mut last_housekeeping = Instant::now();
     let mut media_fwd_count: u64 = 0;
     let mut last_media_log = Instant::now();
-    let mut hls_sinks: HashMap<String, HlsSink> = HashMap::new();
+    // Keyed by broadcaster PeerId so evict/ICE-death only stop that publisher's
+    // sinks. A room-keyed map used to let housekeeping see the evicted peer
+    // (!alive) and tear down the replacement's just-started HLS (0-byte stop).
+    let mut hls_sinks: HashMap<PeerId, RoomHls> = HashMap::new();
+    let mut hls_linger: HashMap<String, Instant> = HashMap::new();
     let mut addr_cache: HashMap<SocketAddr, usize> = HashMap::new();
     let mut last_keyframe_per_peer: HashMap<PeerId, Instant> = HashMap::new();
     let mut room_viewer_cache: HashMap<String, usize> = HashMap::new();
+    let mut h264_params: HashMap<PeerId, H264ParamSets> = HashMap::new();
 
-    tracing::info!("SFU run loop started on {}", socket.local_addr().unwrap());
+    let bound: Vec<SocketAddr> = sockets.iter().filter_map(|s| s.local_addr().ok()).collect();
+    tracing::info!("SFU run loop started on {:?}", bound);
+    let mut seen_udp: HashSet<SocketAddr> = HashSet::new();
 
     loop {
         // ── Periodic housekeeping (~250ms) ────────────────────────
@@ -217,23 +328,41 @@ pub async fn run_sfu_loop(
         if last_housekeeping.elapsed() >= Duration::from_millis(250) {
             last_housekeeping = Instant::now();
 
-            let mut dead_rooms: Vec<String> = Vec::new();
-            for peer in peers.iter() {
-                if !peer.rtc.is_alive() && peer.role == PeerRole::Broadcaster {
-                    dead_rooms.push(peer.room_id.clone());
+            let live_bc_rooms: HashSet<String> = peers
+                .iter()
+                .filter(|p| p.role == PeerRole::Broadcaster && p.rtc.is_alive())
+                .map(|p| p.room_id.clone())
+                .collect();
+
+            let dead_bc: Vec<(PeerId, String)> = peers
+                .iter()
+                .filter(|p| p.role == PeerRole::Broadcaster && !p.rtc.is_alive())
+                .map(|p| (p.id, p.room_id.clone()))
+                .collect();
+
+            // Only the outgoing publisher's own sinks. A live replacement in
+            // the same room must keep packing.
+            for (id, room) in &dead_bc {
+                if let Some(sink) = hls_sinks.remove(id) {
+                    tracing::info!(
+                        "{}: stopping own HLS for room '{}' (playlists kept)",
+                        id, room
+                    );
+                    sink.stop();
+                    let room_has_sink = hls_sinks.values().any(|s| s.room_id() == room);
+                    if !live_bc_rooms.contains(room) && !room_has_sink {
+                        hls_linger.entry(room.clone()).or_insert_with(Instant::now);
+                    }
                 }
             }
-            if !dead_rooms.is_empty() {
-                for peer in peers.iter_mut() {
-                    if peer.role == PeerRole::Viewer && dead_rooms.contains(&peer.room_id) {
-                        tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
-                        peer.rtc.disconnect();
-                    }
-                }
-                for room in &dead_rooms {
-                    if let Some(sink) = hls_sinks.remove(room) {
-                        sink.stop();
-                    }
+
+            for peer in peers.iter_mut() {
+                if peer.role == PeerRole::Viewer
+                    && !live_bc_rooms.contains(&peer.room_id)
+                    && dead_bc.iter().any(|(_, r)| r == &peer.room_id)
+                {
+                    tracing::info!("{}: kicking viewer (broadcaster left room '{}')", peer.id, peer.room_id);
+                    peer.rtc.disconnect();
                 }
             }
 
@@ -242,9 +371,7 @@ pub async fn run_sfu_loop(
                     loop {
                         match peer.rtc.poll_output() {
                             Ok(Output::Transmit(t)) => {
-                                if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
-                                    tracing::warn!("{}: final UDP send error: {}", peer.id, e);
-                                }
+                                send_udp(&sockets, &t);
                             }
                             _ => break,
                         }
@@ -253,7 +380,30 @@ pub async fn run_sfu_loop(
             }
 
             peers.retain(|p| p.rtc.is_alive());
+            h264_params.retain(|id, _| peers.iter().any(|p| p.id == *id));
             addr_cache.clear();
+
+            let now = Instant::now();
+            hls_linger.retain(|room, since| {
+                if now.duration_since(*since) < HLS_PLAYLIST_LINGER {
+                    return true;
+                }
+                if live_bc_rooms.contains(room) {
+                    return false;
+                }
+                if hls_sinks.values().any(|s| s.room_id() == room) {
+                    return false;
+                }
+                if let Some(ref root) = hls_dir {
+                    let path = root.join(room);
+                    match fs::remove_dir_all(&path) {
+                        Ok(()) => tracing::info!("HLS linger expired, removed {:?}", path),
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+                        Err(e) => tracing::warn!("HLS linger cleanup {:?}: {}", path, e),
+                    }
+                }
+                false
+            });
 
             // Recompute viewer counts and broadcaster liveness.
             let now = Instant::now();
@@ -295,6 +445,76 @@ pub async fn run_sfu_loop(
                         .is_live = true;
                 }
             }
+
+            for peer in peers.iter_mut() {
+                if peer.role != PeerRole::Broadcaster {
+                    continue;
+                }
+                if !hls_sinks.contains_key(&peer.id) {
+                    continue;
+                }
+                let due = peer
+                    .last_hls_pli
+                    .map(|t| t.elapsed() >= Duration::from_secs(2))
+                    .unwrap_or(true);
+                if !due {
+                    continue;
+                }
+                peer.last_hls_pli = Some(Instant::now());
+                let video_mids: Vec<Mid> = peer
+                    .tracks_in
+                    .iter()
+                    .filter(|t| t.kind == str0m::media::MediaKind::Video)
+                    .map(|t| t.mid)
+                    .collect();
+                for mid in video_mids {
+                    if let Some(mut writer) = peer.rtc.writer(mid) {
+                        let _ = writer.request_keyframe(None, KeyframeRequestKind::Pli);
+                        for name in ["h", "m", "l"] {
+                            let _ = writer.request_keyframe(
+                                Some(name.into()),
+                                KeyframeRequestKind::Pli,
+                            );
+                        }
+                    }
+                }
+            }
+
+            // Late WHEP join: HLS remux inserts SPS/PPS on each .ts, but
+            // forwarded RTP is raw. Ask the publisher for an IDR now.
+            let mut join_plis: Vec<(PeerId, Mid)> = Vec::new();
+            for peer in peers.iter_mut() {
+                if peer.role != PeerRole::Viewer || !peer.need_join_pli {
+                    continue;
+                }
+                let mapped: Vec<(PeerId, Mid)> = peer
+                    .tracks_out
+                    .iter()
+                    .filter(|t| t.kind == str0m::media::MediaKind::Video && t.local_mid.is_some())
+                    .map(|t| (t.source_peer, t.source_mid))
+                    .collect();
+                if mapped.is_empty() {
+                    continue;
+                }
+                let n = mapped.len();
+                join_plis.extend(mapped);
+                peer.need_join_pli = false;
+                tracing::info!("{}: WHEP join PLI -> {} video track(s)", peer.id, n);
+            }
+            for (bcast_id, mid) in join_plis {
+                if let Some(broadcaster) = peers.iter_mut().find(|p| p.id == bcast_id) {
+                    if let Some(mut writer) = broadcaster.rtc.writer(mid) {
+                        let _ = writer.request_keyframe(None, KeyframeRequestKind::Pli);
+                        let _ = writer.request_keyframe(None, KeyframeRequestKind::Fir);
+                        for name in ["h", "m", "l"] {
+                            let _ = writer.request_keyframe(
+                                Some(name.into()),
+                                KeyframeRequestKind::Pli,
+                            );
+                        }
+                    }
+                }
+            }
         }
 
         // ── Accept new peers from HTTP handlers ───────────────────
@@ -306,18 +526,29 @@ pub async fn run_sfu_loop(
 
             if role == PeerRole::Broadcaster {
                 peer.last_media_at = Some(Instant::now());
+                let mut evict_ids: Vec<PeerId> = Vec::new();
                 for old in peers.iter_mut().filter(|p| {
                     p.role == PeerRole::Broadcaster && p.room_id == room_id
                 }) {
                     tracing::info!("{}: evicting stale broadcaster from room '{}'", old.id, room_id);
                     old.rtc.disconnect();
+                    evict_ids.push(old.id);
                 }
-                if let Some(old_sink) = hls_sinks.remove(&room_id) {
-                    old_sink.stop();
+                // Stop only the outgoing publisher. Do not touch a sink we
+                // are about to insert for the new peer (same room_id).
+                for old_id in evict_ids {
+                    if let Some(old_sink) = hls_sinks.remove(&old_id) {
+                        tracing::info!(
+                            "{}: stopping evicted publisher HLS for room '{}'",
+                            old_id, room_id
+                        );
+                        old_sink.stop();
+                    }
                 }
+                hls_linger.remove(&room_id);
                 if let Some(ref dir) = hls_dir {
-                    match HlsSink::start(&room_id, dir) {
-                        Ok(sink) => { hls_sinks.insert(room_id.clone(), sink); }
+                    match RoomHls::start(&room_id, dir) {
+                        Ok(sink) => { hls_sinks.insert(peer_id, sink); }
                         Err(e) => tracing::warn!("HLS sink failed for '{}': {}", room_id, e),
                     }
                 }
@@ -354,6 +585,7 @@ pub async fn run_sfu_loop(
                 peer.aq_manual = qc.rid.is_some();
                 peer.aq_bad_count = 0;
                 peer.aq_good_count = 0;
+                peer.video_started.clear();
 
                 let target_rid: Rid = match qc.rid {
                     Some(rid) => rid,
@@ -393,37 +625,56 @@ pub async fn run_sfu_loop(
 
         // ── Batch-read all available UDP packets ─────────────────
         let mut read_something = false;
-        loop {
-            match socket.try_recv_from(&mut buf) {
-                Ok((n, source)) => {
-                    read_something = true;
-                    let now = Instant::now();
-                    if let Ok(receive) = Receive::new(Protocol::Udp, source, candidate_addr, &buf[..n]) {
-                        let input = Input::Receive(now, receive);
-
-                        // Fast path: check address cache
-                        if let Some(&idx) = addr_cache.get(&source) {
-                            if idx < peers.len() && peers[idx].rtc.accepts(&input) {
-                                if let Err(e) = peers[idx].rtc.handle_input(input) {
-                                    tracing::warn!("{}: handle_input error: {:?}", peers[idx].id, e);
-                                }
-                                continue;
-                            }
+        for socket in sockets.iter() {
+            let sock_dest = socket.local_addr().ok();
+            loop {
+                match socket.try_recv_from(&mut buf) {
+                    Ok((n, source)) => {
+                        read_something = true;
+                        let now = Instant::now();
+                        // Prefer the socket's real local IP (dual-home). Inferring
+                        // dest from the packet source made ICE-lite reply from
+                        // the LAN IP when Chrome had sent to 127.0.0.1.
+                        let dest = match sock_dest {
+                            Some(a) if !a.ip().is_unspecified() => a,
+                            _ if ice_addrs.is_empty() => candidate_addr,
+                            _ => pick_ice_recv_dest(source, &ice_addrs),
+                        };
+                        if seen_udp.insert(source) {
+                            tracing::info!(
+                                "UDP first packet {} -> {} ({}B)",
+                                source,
+                                dest,
+                                n
+                            );
                         }
+                        if let Ok(receive) = Receive::new(Protocol::Udp, source, dest, &buf[..n]) {
+                            let input = Input::Receive(now, receive);
 
-                        // Slow path: linear scan, then update cache
-                        for (i, peer) in peers.iter_mut().enumerate() {
-                            if peer.rtc.accepts(&input) {
-                                addr_cache.insert(source, i);
-                                if let Err(e) = peer.rtc.handle_input(input) {
-                                    tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                            // Fast path: check address cache
+                            if let Some(&idx) = addr_cache.get(&source) {
+                                if idx < peers.len() && peers[idx].rtc.accepts(&input) {
+                                    if let Err(e) = peers[idx].rtc.handle_input(input) {
+                                        tracing::warn!("{}: handle_input error: {:?}", peers[idx].id, e);
+                                    }
+                                    continue;
                                 }
-                                break;
+                            }
+
+                            // Slow path: linear scan, then update cache
+                            for (i, peer) in peers.iter_mut().enumerate() {
+                                if peer.rtc.accepts(&input) {
+                                    addr_cache.insert(source, i);
+                                    if let Err(e) = peer.rtc.handle_input(input) {
+                                        tracing::warn!("{}: handle_input error: {:?}", peer.id, e);
+                                    }
+                                    break;
+                                }
                             }
                         }
                     }
+                    Err(_) => break,
                 }
-                Err(_) => break,
             }
         }
 
@@ -451,9 +702,7 @@ pub async fn run_sfu_loop(
                             break;
                         }
                         Ok(Output::Transmit(t)) => {
-                            if let Err(e) = socket.try_send_to(&t.contents, t.destination) {
-                                tracing::warn!("{}: UDP send error: {}", peer.id, e);
-                            }
+                            send_udp(&sockets, &t);
                         }
                         Ok(Output::Event(event)) => {
                             let ev = handle_peer_event(peer, event);
@@ -487,7 +736,7 @@ pub async fn run_sfu_loop(
                     }
                     last_keyframe_per_peer.insert(*target_peer, now);
                 }
-                propagate(prop, &mut peers, &mut hls_sinks, &room_viewer_cache);
+                propagate(prop, &mut peers, &mut hls_sinks, &room_viewer_cache, &mut h264_params);
             }
         }
 
@@ -503,9 +752,21 @@ pub async fn run_sfu_loop(
         if !read_something {
             let wait = next_timeout.saturating_duration_since(Instant::now())
                 .max(Duration::from_millis(1));
-            tokio::select! {
-                _ = socket.readable() => {}
-                _ = sleep(wait) => {}
+            match sockets.len() {
+                0 => sleep(wait).await,
+                1 => {
+                    tokio::select! {
+                        _ = sockets[0].readable() => {}
+                        _ = sleep(wait) => {}
+                    }
+                }
+                _ => {
+                    tokio::select! {
+                        _ = sockets[0].readable() => {}
+                        _ = sockets[1].readable() => {}
+                        _ = sleep(wait) => {}
+                    }
+                }
             }
         }
     }
@@ -525,7 +786,32 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
         Event::MediaAdded(ev) => {
             tracing::info!("{}: media added mid={} kind={:?} dir={:?}", peer.id, ev.mid, ev.kind, ev.direction);
             if peer.role == PeerRole::Broadcaster {
+                if ev.kind == str0m::media::MediaKind::Video {
+                    if let Some(mut writer) = peer.rtc.writer(ev.mid) {
+                        for name in ["h", "m", "l"] {
+                            let _ = writer.request_keyframe(
+                                Some(name.into()),
+                                KeyframeRequestKind::Pli,
+                            );
+                        }
+                    }
+                }
                 peer.tracks_in.push(TrackIn { mid: ev.mid, kind: ev.kind });
+                if ev.kind == str0m::media::MediaKind::Video {
+                    let video_mids: Vec<String> = peer
+                        .tracks_in
+                        .iter()
+                        .filter(|t| t.kind == str0m::media::MediaKind::Video)
+                        .map(|t| t.mid.to_string())
+                        .collect();
+                    tracing::info!(
+                        "{} room='{}': broadcaster video mids={} {:?}",
+                        peer.id,
+                        peer.room_id,
+                        video_mids.len(),
+                        video_mids
+                    );
+                }
                 return Propagated::TrackOpen {
                     source_peer: peer.id,
                     room_id: peer.room_id.clone(),
@@ -545,6 +831,7 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                             tx.set_rtx_cache(1024, Duration::from_secs(2), Some(0.15));
                             tracing::info!("{}: RTX cache tuned for video mid={}", peer.id, ev.mid);
                         }
+                        peer.need_join_pli = true;
                     } else if ev.kind == str0m::media::MediaKind::Audio {
                         if let Some(tx) = peer.rtc.direct_api().stream_tx_by_mid(ev.mid, None) {
                             tx.set_rtx_cache(1, Duration::from_millis(1), Some(0.0));
@@ -561,8 +848,8 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 if !peer.logged_mids.contains(&data.mid) {
                     let codec = data.params.spec().codec;
                     tracing::info!(
-                        "{} room='{}': first media mid={} codec={:?} keyframe={}",
-                        peer.id, peer.room_id, data.mid, codec, data.is_keyframe()
+                        "{} room='{}': first media mid={} codec={:?} rid={:?} keyframe={}",
+                        peer.id, peer.room_id, data.mid, codec, data.rid, data.is_keyframe()
                     );
                     peer.logged_mids.push(data.mid);
                 }
@@ -683,6 +970,7 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                 );
                 peer.chosen_rid = Some(new_rid.clone());
                 peer.aq_last_change = Some(now);
+                peer.video_started.clear();
 
                 if let Some(track_out) = peer.tracks_out.iter().find(|t| {
                     t.kind == str0m::media::MediaKind::Video
@@ -711,8 +999,9 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
 fn propagate(
     prop: Propagated,
     peers: &mut [Peer],
-    hls_sinks: &mut HashMap<String, HlsSink>,
+    hls_sinks: &mut HashMap<PeerId, RoomHls>,
     room_viewer_cache: &HashMap<String, usize>,
+    h264_params: &mut HashMap<PeerId, H264ParamSets>,
 ) {
     match prop {
         Propagated::TrackOpen { source_peer, room_id, mid, kind } => {
@@ -735,17 +1024,41 @@ fn propagate(
         }
 
         Propagated::Media { source_peer, room_id, mut data } => {
-            if data.params.spec().codec == Codec::H264 {
-                if let Some(sink) = hls_sinks.get_mut(&room_id) {
+            let is_h264 = data.params.spec().codec == Codec::H264;
+            let video_index = peers.iter().find(|p| p.id == source_peer).and_then(|p| {
+                p.tracks_in
+                    .iter()
+                    .filter(|t| t.kind == str0m::media::MediaKind::Video)
+                    .position(|t| t.mid == data.mid)
+            });
+            if is_h264 {
+                h264_params.entry(source_peer).or_default().observe(&data.data);
+                if let Some(sink) = hls_sinks.get_mut(&source_peer) {
                     let pts = data.time.numer();
                     let is_kf = data.is_keyframe();
-                    if !sink.write_video(pts, is_kf, &data.data) {
-                        hls_sinks.remove(&room_id);
+                    let rid = data.rid.as_deref();
+                    if crate::hls::RoomHls::accepts_frame(video_index, rid) {
+                        if !sink.write_video(rid, pts, is_kf, &data.data) {
+                            hls_sinks.remove(&source_peer);
+                        }
                     }
                 }
             }
 
             let viewer_count = room_viewer_cache.get(&room_id).copied().unwrap_or(0);
+            let is_kf = data.is_keyframe();
+            let default_h: Rid = "h".into();
+            let default_l: Rid = "l".into();
+
+            // Prefix SPS/PPS once per keyframe, then fanout that buffer.
+            if is_h264 && is_kf {
+                if let Some(prefixed) = h264_params
+                    .get(&source_peer)
+                    .and_then(|c| c.ensure(&data.data))
+                {
+                    data.data = prefixed;
+                }
+            }
 
             let mut written = 0u32;
             for peer in peers.iter_mut() {
@@ -757,8 +1070,22 @@ fn propagate(
                 }
 
                 if let Some(ref actual_rid) = data.rid {
-                    let default_rid: Rid = "h".into();
-                    let target = peer.chosen_rid.as_ref().unwrap_or(&default_rid);
+                    let screen_started = peer.tracks_out.iter().any(|t| {
+                        t.kind == str0m::media::MediaKind::Video
+                            && t.source_mid == data.mid
+                            && t.local_mid
+                                .map(|m| peer.video_started.contains(&m))
+                                .unwrap_or(false)
+                    });
+                    let target = if let Some(rid) = peer.chosen_rid.as_ref() {
+                        rid
+                    } else if screen_started || peer.last_video_write.elapsed() < Duration::from_secs(2)
+                    {
+                        &default_h
+                    } else {
+                        /* Screen rid h often lags when a second camera encode is up. */
+                        &default_l
+                    };
                     if target != actual_rid {
                         continue;
                     }
@@ -773,11 +1100,21 @@ fn propagate(
                     continue;
                 };
 
+                if is_video && !peer.video_started.contains(&mid) && !is_kf {
+                    continue;
+                }
+
                 let Some(mut writer) = peer.rtc.writer(mid) else {
                     continue;
                 };
 
                 let Some(pt) = writer.match_params(data.params) else {
+                    continue;
+                };
+                /* match_params searches the whole local codec list. A VP8-only
+                 * WHEP answer still has unused H.264 PTs locally — writing those
+                 * delivers RTP Firefox counts but never decodes. */
+                if !writer.payload_params().any(|p| p.pt() == pt) {
                     continue;
                 };
 
@@ -792,10 +1129,23 @@ fn propagate(
                     data.data.clone()
                 };
 
+                let frame_len = frame.len();
                 match writer.write(pt, data.network_time, data.time, frame) {
                     Ok(()) => {
                         peer.write_error_count = 0;
-                        if is_video { peer.last_video_write = Instant::now(); }
+                        if is_video {
+                            if data.rid.is_some() {
+                                peer.last_video_write = Instant::now();
+                            }
+                            if is_kf {
+                                if peer.video_started.insert(mid) {
+                                    tracing::info!(
+                                        "{}: first viewer keyframe mid={} bytes={}",
+                                        peer.id, mid, frame_len
+                                    );
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         peer.write_error_count += 1;

@@ -155,7 +155,7 @@ func (h *Hub) applyPersist(room *Room) {
 	}
 }
 
-func (h *Hub) commitModeration(room *Room) {
+func (h *Hub) stageModerationLocked(room *Room) *roomModState {
 	for ip := range room.bannedIPs {
 		if !IsBannableIP(ip) {
 			delete(room.bannedIPs, ip)
@@ -169,8 +169,12 @@ func (h *Hub) commitModeration(room *Room) {
 	h.persistMu.Lock()
 	h.persist[room.id] = st
 	h.persistMu.Unlock()
-	h.writePersistFile(room.id, st)
 	sendModerationLocked(room)
+	return st
+}
+
+func (h *Hub) commitModeration(room *Room) {
+	h.writePersistFile(room.id, h.stageModerationLocked(room))
 }
 
 func (h *Hub) writePersistFile(roomID string, st *roomModState) {

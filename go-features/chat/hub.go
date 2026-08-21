@@ -398,6 +398,7 @@ func (h *Hub) HandleMessage(c *Client, text string) {
 
 	now := time.Now().Unix()
 	var dropSessions []string
+	var persist *roomModState
 
 	room.mu.Lock()
 	room.pruneFloodLocked(now)
@@ -412,10 +413,13 @@ func (h *Hub) HandleMessage(c *Client, text string) {
 			})
 			return
 		case FloodBan:
-			dropSessions = h.applyFloodIPBanLocked(room, c)
+			dropSessions, persist = h.applyFloodIPBanLocked(room, c)
 			ip := NormalizeIP(c.ip)
 			closed := IsBannableIP(ip) && room.bannedIPs[ip]
 			room.mu.Unlock()
+			if persist != nil {
+				h.writePersistFile(room.id, persist)
+			}
 			if !closed {
 				sendToClient(c, OutboundMsg{
 					Type: "system",
@@ -447,7 +451,7 @@ func (h *Hub) HandleMessage(c *Client, text string) {
 	room.mu.Unlock()
 }
 
-func (h *Hub) applyFloodIPBanLocked(room *Room, c *Client) []string {
+func (h *Hub) applyFloodIPBanLocked(room *Room, c *Client) ([]string, *roomModState) {
 	ips := collectBanIPs(room, c.nick, h.copyWHEP(room.id))
 	if ip := NormalizeIP(c.ip); IsBannableIP(ip) {
 		ips[ip] = true
@@ -460,16 +464,16 @@ func (h *Hub) applyFloodIPBanLocked(room *Room, c *Client) []string {
 		room.bannedIPs[ip] = true
 	}
 	if len(ips) == 0 {
-		return nil
+		return nil, nil
 	}
 	closeMatchingClients(room, nil, ips)
 	dropSessions := h.takeMatchingWHEP(room.id, ips, room.nickIPs[c.nick])
-	h.commitModeration(room)
+	st := h.stageModerationLocked(room)
 	broadcastToRoom(room, OutboundMsg{
 		Type: "system",
 		Text: "IP ban: " + joinComma(setToSorted(ips)),
 	}, nil)
-	return dropSessions
+	return dropSessions, st
 }
 
 func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
@@ -495,6 +499,7 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 	}
 
 	var dropSessions []string
+	var persist *roomModState
 
 	room.mu.Lock()
 	switch cmd.Type {
@@ -516,7 +521,7 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		}
 		closeMatchingClients(room, map[string]bool{nick: true}, ips)
 		dropSessions = h.takeMatchingWHEP(room.id, ips, room.nickIPs[nick])
-		h.commitModeration(room)
+		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{Type: "ban", Nick: nick}, nil)
 		if len(ips) > 0 {
 			broadcastToRoom(room, OutboundMsg{
@@ -538,7 +543,7 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		room.bannedIPs[ip] = true
 		closeMatchingClients(room, nil, map[string]bool{ip: true})
 		dropSessions = h.takeMatchingWHEP(room.id, map[string]bool{ip: true}, nil)
-		h.commitModeration(room)
+		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: "IP ban: " + ip,
@@ -548,14 +553,14 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		arg := cmd.Arg1
 		if ip := NormalizeIP(arg); ip != "" {
 			delete(room.bannedIPs, ip)
-			h.commitModeration(room)
+			persist = h.stageModerationLocked(room)
 			broadcastToRoom(room, OutboundMsg{
 				Type: "system",
 				Text: ip + " has been unbanned.",
 			}, nil)
 		} else {
 			delete(room.banned, arg)
-			h.commitModeration(room)
+			persist = h.stageModerationLocked(room)
 			broadcastToRoom(room, OutboundMsg{
 				Type: "system",
 				Text: arg + " has been unbanned.",
@@ -605,7 +610,7 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		if target, ok := room.nicks[nick]; ok {
 			target.role = RoleMod
 		}
-		h.commitModeration(room)
+		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: nick + " is now a moderator.",
@@ -617,7 +622,7 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		if target, ok := room.nicks[nick]; ok && target.role != RoleBroadcaster {
 			target.role = RoleViewer
 		}
-		h.commitModeration(room)
+		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: nick + " is no longer a moderator.",
@@ -627,6 +632,9 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		sendToClient(c, OutboundMsg{Type: "system", Text: "Unknown command."})
 	}
 	room.mu.Unlock()
+	if persist != nil {
+		h.writePersistFile(room.id, persist)
+	}
 	h.fireWHEPDrops(c.roomID, dropSessions)
 }
 

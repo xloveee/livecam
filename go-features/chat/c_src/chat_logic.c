@@ -136,6 +136,10 @@ int32_t parse_chat_command(const char *text, chat_command_t *out)
         extract_word(text, len, pos, out->arg1, CHAT_MAX_CMD_ARG_LEN);
         out->type = (out->arg1[0] != '\0') ? CMD_UNMOD : CMD_NONE;
 
+    } else if (cmd_name_eq(cmd, cmd_len, "/ipban", 6)) {
+        extract_word(text, len, pos, out->arg1, CHAT_MAX_CMD_ARG_LEN);
+        out->type = (out->arg1[0] != '\0') ? CMD_IPBAN : CMD_NONE;
+
     } else {
         return 0;
     }
@@ -151,6 +155,108 @@ int32_t check_chat_rate_limit(int64_t last_msg_sec, int64_t now_sec,
     if (slow_seconds <= 0) { return 1; }
     if (now_sec - last_msg_sec >= (int64_t)slow_seconds) { return 1; }
     return 0;
+}
+
+/* ── Flood ladder (sliding window; caller stores chat_flood_t) ── */
+
+int32_t flood_mute_seconds(int32_t strikes)
+{
+    if (strikes <= 0) { return 0; }
+    if (strikes == 1) { return FLOOD_MUTE_STRIKE1; }
+    if (strikes == 2) { return FLOOD_MUTE_STRIKE2; }
+    return FLOOD_MUTE_STRIKE3;
+}
+
+static void flood_prune(chat_flood_t *st, int64_t now_sec)
+{
+    int32_t w = 0;
+    for (int32_t i = 0; i < st->count && i < FLOOD_STAMP_CAP; i++) {
+        if (now_sec - st->stamps[i] < (int64_t)FLOOD_WINDOW_SEC) {
+            st->stamps[w++] = st->stamps[i];
+        }
+    }
+    st->count = w;
+}
+
+static void flood_push(chat_flood_t *st, int64_t now_sec)
+{
+    if (st->count >= FLOOD_STAMP_CAP) {
+        for (int32_t i = 1; i < st->count; i++) {
+            st->stamps[i - 1] = st->stamps[i];
+        }
+        st->count--;
+    }
+    st->stamps[st->count++] = now_sec;
+}
+
+static int32_t flood_clamp_left(int64_t left)
+{
+    if (left <= 0) { return 0; }
+    if (left > 2147483647LL) { return 2147483647; }
+    return (int32_t)left;
+}
+
+int32_t check_chat_flood(chat_flood_t *st, int64_t now_sec, int32_t *mute_left)
+{
+    if (mute_left != NULL) { *mute_left = 0; }
+    if (st == NULL) { return FLOOD_ALLOW; }
+
+    if (st->count < 0 || st->count > FLOOD_STAMP_CAP) {
+        st->count = 0;
+    }
+    if (st->strikes < 0) { st->strikes = 0; }
+
+    if (st->mute_until > now_sec) {
+        st->last_seen = now_sec;
+        if (mute_left != NULL) {
+            *mute_left = flood_clamp_left(st->mute_until - now_sec);
+        }
+        return FLOOD_MUTED;
+    }
+
+    /* Quiet time starts after mute ends so a 2-minute mute does not
+     * itself decay strike 2 (mute and decay are both 120s). */
+    {
+        int64_t quiet_from = st->last_seen;
+        if (st->mute_until > quiet_from) {
+            quiet_from = st->mute_until;
+        }
+        if (st->strikes > 0 && quiet_from > 0 &&
+            (now_sec - quiet_from) >= (int64_t)FLOOD_DECAY_SEC) {
+            st->strikes = 0;
+            st->count = 0;
+            st->mute_until = 0;
+        }
+    }
+
+    st->last_seen = now_sec;
+    flood_prune(st, now_sec);
+    flood_push(st, now_sec);
+
+    if (st->count <= FLOOD_MAX_IN_WINDOW) {
+        return FLOOD_ALLOW;
+    }
+
+    st->count = 0;
+    if (st->strikes < FLOOD_BAN_STRIKE) {
+        st->strikes++;
+    }
+
+    if (st->strikes >= FLOOD_BAN_STRIKE) {
+        /* Long mute so a failed (non-bannable) IP-ban still drops traffic. */
+        st->mute_until = now_sec + (365LL * 24LL * 3600LL);
+        if (mute_left != NULL) {
+            *mute_left = flood_clamp_left(st->mute_until - now_sec);
+        }
+        return FLOOD_BAN;
+    }
+
+    {
+        const int32_t dur = flood_mute_seconds(st->strikes);
+        st->mute_until = now_sec + (int64_t)dur;
+        if (mute_left != NULL) { *mute_left = dur; }
+    }
+    return FLOOD_STRIKE;
 }
 
 /* ── Message moderation ──────────────────────────────────── */

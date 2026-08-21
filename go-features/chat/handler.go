@@ -19,12 +19,20 @@ var (
 
 type AuthFunc func(r *http.Request) (streamKey string, ok bool)
 
-func NewHandler(hub *Hub, auth AuthFunc) http.HandlerFunc {
+// RoomAccessFunc is the invite-password gate (same secret as WHEP/HLS).
+// It must not open the room. Nil means no extra check (tests only).
+type RoomAccessFunc func(r *http.Request, roomID string) bool
+
+func NewHandler(hub *Hub, auth AuthFunc, access RoomAccessFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		path := strings.TrimPrefix(r.URL.Path, "/api/chat/")
 		roomID := strings.TrimSuffix(path, "/")
 		if roomID == "" {
 			http.Error(w, "missing room id", http.StatusBadRequest)
+			return
+		}
+		if access != nil && !access(r, roomID) {
+			http.Error(w, "Incorrect room password", http.StatusForbidden)
 			return
 		}
 
@@ -53,30 +61,40 @@ func NewHandler(hub *Hub, auth AuthFunc) http.HandlerFunc {
 			}
 		}
 
+		ip := ClientIP(r)
+		if role != RoleBroadcaster && hub.IsIPBanned(roomID, ip) {
+			http.Error(w, "You are banned from this chat.", http.StatusForbidden)
+			return
+		}
+		if role != RoleBroadcaster && !isGuest && hub.IsNickBanned(roomID, nick) {
+			http.Error(w, "You are banned from this chat.", http.StatusForbidden)
+			return
+		}
+
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Printf("[chat] upgrade failed: %v", err)
 			return
 		}
 
-		ip := r.Header.Get("X-Forwarded-For")
-		if ip == "" {
-			ip = r.RemoteAddr
-		}
-
 		client := newClient(hub, conn, roomID, nick, role, ip)
 
-		if err := hub.Join(client); err != nil {
+		replaced, err := hub.Join(client)
+		if err != nil {
 			msg := err.Error()
 			if err == errBanned {
 				msg = "You are banned from this chat."
+			} else if err == errNickTaken {
+				msg = "Nickname already taken."
 			}
 			conn.WriteJSON(OutboundMsg{Type: "error", Text: msg})
 			conn.Close()
 			return
 		}
 
-		if !isGuest {
+		// Streamer does not need a welcome on every socket. Reconnects and
+		// blips (same nick within ~30s) must not stack "Welcome to the chat".
+		if !isGuest && role != RoleBroadcaster && !replaced && hub.shouldWelcome(roomID, nick) {
 			sendToClient(client, OutboundMsg{
 				Type: "system",
 				Text: "Welcome to the chat, " + nick + "!",

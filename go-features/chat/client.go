@@ -155,16 +155,34 @@ func (c *Client) writePump() {
 		c.conn.Close()
 	}()
 
+	writeText := func(msg []byte) error {
+		c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+		return c.conn.WriteMessage(websocket.TextMessage, msg)
+	}
+
 	for {
 		select {
 		case msg, ok := <-c.send:
-			c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 			if !ok {
+				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 				c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			if err := writeText(msg); err != nil {
 				return
+			}
+			// One JSON frame each; drain whatever piled up so a burst
+			// does not wait a full select turn per line.
+			queued := len(c.send)
+			for i := 0; i < queued; i++ {
+				msg, ok = <-c.send
+				if !ok {
+					c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+					return
+				}
+				if err := writeText(msg); err != nil {
+					return
+				}
 			}
 
 		case <-ticker.C:

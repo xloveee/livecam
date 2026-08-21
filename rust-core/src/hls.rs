@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -171,6 +172,7 @@ struct HlsSink {
     pps: Option<Vec<u8>>,
     pes_scratch: Vec<u8>,
     ts_scratch: Vec<u8>,
+    playlist_scratch: String,
 }
 
 impl HlsSink {
@@ -219,6 +221,7 @@ impl HlsSink {
             pps: None,
             pes_scratch: Vec::with_capacity(4096),
             ts_scratch: Vec::with_capacity(188 * 64),
+            playlist_scratch: String::with_capacity(512),
         })
     }
 
@@ -328,12 +331,14 @@ impl HlsSink {
         );
     }
 
-    fn segment_name(&self, index: u32) -> String {
-        format!("{}{:03}.ts", self.segment_prefix, index)
-    }
-
     fn open_segment(&mut self, pts: u64) -> bool {
-        let path = self.hls_dir.join(self.segment_name(self.segment_index));
+        self.playlist_scratch.clear();
+        let _ = write!(
+            self.playlist_scratch,
+            "{}{:03}.ts",
+            self.segment_prefix, self.segment_index
+        );
+        let path = self.hls_dir.join(self.playlist_scratch.as_str());
         match File::create(&path) {
             Ok(mut f) => {
                 self.write_pat_pmt(&mut f);
@@ -386,7 +391,7 @@ impl HlsSink {
         }
     }
 
-    fn write_playlist(&self, first_index: usize) {
+    fn write_playlist(&mut self, first_index: usize) {
         let mut max_dur = self
             .segment_durations
             .iter()
@@ -400,26 +405,33 @@ impl HlsSink {
         // is never TARGETDURATION 1 with EXTINF 2.000.
         let target_duration = max_dur.ceil().max(2.0) as u32;
 
-        let mut m3u8 = String::with_capacity(512);
-        m3u8.push_str("#EXTM3U\n");
-        m3u8.push_str("#EXT-X-VERSION:3\n");
-        m3u8.push_str(&format!("#EXT-X-TARGETDURATION:{}\n", target_duration));
-        m3u8.push_str(&format!("#EXT-X-MEDIA-SEQUENCE:{}\n", first_index));
+        self.playlist_scratch.clear();
+        let _ = write!(
+            self.playlist_scratch,
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{}\n",
+            target_duration, first_index
+        );
 
         for (i, dur) in self.segment_durations.iter().enumerate().skip(first_index) {
-            m3u8.push_str(&format!("#EXTINF:{:.3},\n", dur));
-            m3u8.push_str(&format!("{}\n", self.segment_name(i as u32)));
+            let _ = write!(
+                self.playlist_scratch,
+                "#EXTINF:{:.3},\n{}{:03}.ts\n",
+                dur, self.segment_prefix, i
+            );
         }
 
         if self.current_segment.is_some() {
             let open_dur = (self.last_pts.saturating_sub(self.segment_start_pts)) as f64 / 90_000.0;
             let open_dur = if open_dur > 0.05 { open_dur } else { SEGMENT_DURATION_SECS };
-            m3u8.push_str(&format!("#EXTINF:{:.3},\n", open_dur));
-            m3u8.push_str(&format!("{}\n", self.segment_name(self.segment_index)));
+            let _ = write!(
+                self.playlist_scratch,
+                "#EXTINF:{:.3},\n{}{:03}.ts\n",
+                open_dur, self.segment_prefix, self.segment_index
+            );
         }
 
         let path = self.hls_dir.join(&self.playlist_name);
-        if let Err(e) = fs::write(&path, m3u8.as_bytes()) {
+        if let Err(e) = fs::write(&path, self.playlist_scratch.as_bytes()) {
             tracing::warn!("HLS: failed to write playlist {:?}: {}", path, e);
         }
     }

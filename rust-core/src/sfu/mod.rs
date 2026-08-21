@@ -199,13 +199,7 @@ struct H264ParamSets {
 
 impl H264ParamSets {
     fn observe(&mut self, annex_b: &[u8]) {
-        let (sps, pps) = crate::hls::extract_sps_pps(annex_b);
-        if let Some(s) = sps {
-            self.sps = Some(s);
-        }
-        if let Some(p) = pps {
-            self.pps = Some(p);
-        }
+        crate::hls::update_sps_pps(&mut self.sps, &mut self.pps, annex_b);
     }
 
     fn ensure(&self, annex_b: &[u8]) -> Option<Vec<u8>> {

@@ -261,13 +261,13 @@ impl HlsSink {
 
         self.last_pts = pts_90khz;
         let opened_new = is_keyframe && self.current_segment.is_some();
-        let mut prefixed = Vec::new();
-        let payload = if opened_new {
-            self.ensure_sps_pps(annex_b, &mut prefixed)
+        let ok = if opened_new {
+            let mut prefixed = Vec::new();
+            let payload = self.ensure_sps_pps(annex_b, &mut prefixed);
+            self.write_pes(pts_90khz, is_keyframe, payload)
         } else {
-            annex_b
+            self.write_pes(pts_90khz, is_keyframe, annex_b)
         };
-        let ok = self.write_pes(pts_90khz, is_keyframe, payload);
         if ok {
             self.mux_audio_up_to(pts_90khz);
         }
@@ -289,11 +289,7 @@ impl HlsSink {
     }
 
     fn cache_parameter_sets(&mut self, annex_b: &[u8]) {
-        for_each_annex_b_nal(annex_b, |nal| match nal_type(nal) {
-            7 => self.sps = Some(nal.to_vec()),
-            8 => self.pps = Some(nal.to_vec()),
-            _ => {}
-        });
+        update_sps_pps(&mut self.sps, &mut self.pps, annex_b);
     }
 
     /// SPS + PPS then the access unit, so each new .ts is independently decodable.
@@ -749,14 +745,18 @@ pub(crate) fn access_unit_has_sps_pps(data: &[u8]) -> bool {
 }
 
 /// Last SPS and PPS seen in an Annex-B access unit (with start codes).
+pub(crate) fn update_sps_pps(sps: &mut Option<Vec<u8>>, pps: &mut Option<Vec<u8>>, data: &[u8]) {
+    for_each_annex_b_nal(data, |nal| match nal_type(nal) {
+        7 if sps.as_deref() != Some(nal) => *sps = Some(nal.to_vec()),
+        8 if pps.as_deref() != Some(nal) => *pps = Some(nal.to_vec()),
+        _ => {}
+    });
+}
+
 pub(crate) fn extract_sps_pps(data: &[u8]) -> (Option<Vec<u8>>, Option<Vec<u8>>) {
     let mut sps = None;
     let mut pps = None;
-    for_each_annex_b_nal(data, |nal| match nal_type(nal) {
-        7 => sps = Some(nal.to_vec()),
-        8 => pps = Some(nal.to_vec()),
-        _ => {}
-    });
+    update_sps_pps(&mut sps, &mut pps, data);
     (sps, pps)
 }
 

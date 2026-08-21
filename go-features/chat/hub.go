@@ -729,9 +729,17 @@ func sendModerationLocked(room *Room) {
 		BannedIPs:   setToSorted(room.bannedIPs),
 		Mods:        setToSorted(room.mods),
 	}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
 	for client := range room.clients {
-		if client.role == RoleBroadcaster || client.role == RoleMod {
-			sendToClient(client, msg)
+		if client.role != RoleBroadcaster && client.role != RoleMod {
+			continue
+		}
+		select {
+		case client.send <- data:
+		default:
 		}
 	}
 }
@@ -771,10 +779,16 @@ func (room *Room) pruneFloodLocked(now int64) {
 			delete(room.flood, nick)
 			continue
 		}
-		if st.MuteUntil > now || st.Strikes > 0 || st.Count > 0 {
+		if st.MuteUntil > now {
 			continue
 		}
-		if st.LastSeen > 0 && now-st.LastSeen >= decay {
+		// Same quiet clock as check_chat_flood: mute time does not count
+		// as decay, and leftover stamps/strikes drop after FLOOD_DECAY_SEC.
+		quietFrom := st.LastSeen
+		if st.MuteUntil > quietFrom {
+			quietFrom = st.MuteUntil
+		}
+		if quietFrom > 0 && now-quietFrom >= decay {
 			delete(room.flood, nick)
 		}
 	}

@@ -428,32 +428,30 @@ impl HlsSink {
         if self.current_segment.is_none() || self.aac.is_none() {
             return;
         }
-        if self.aac.as_ref().unwrap().next_pts.is_none() {
-            self.aac.as_mut().unwrap().next_pts = Some(pts_90khz);
+        let mut aac = self.aac.take().unwrap();
+        if aac.next_pts.is_none() {
+            aac.next_pts = Some(pts_90khz);
         }
-        let ticks = self.aac.as_ref().unwrap().ticks_per_frame;
+        let ticks = aac.ticks_per_frame;
         if ticks == 0 {
+            self.aac = Some(aac);
             return;
         }
         let mut safety = 0u32;
         loop {
-            let (pts, frame) = {
-                let aac = self.aac.as_ref().unwrap();
-                let pts = aac.next_pts.unwrap();
-                if pts > pts_90khz {
-                    break;
-                }
-                // Video PTS jumped (new publisher / wrap). Snap instead of flooding.
-                if pts_90khz.saturating_sub(pts) > 180_000 {
-                    self.aac.as_mut().unwrap().next_pts = Some(pts_90khz);
-                    break;
-                }
-                (pts, aac.frames[aac.idx].clone())
-            };
-            if !self.write_audio_pes(pts, &frame) {
+            let pts = aac.next_pts.unwrap();
+            if pts > pts_90khz {
+                break;
+            }
+            // Video PTS jumped (new publisher / wrap). Snap instead of flooding.
+            if pts_90khz.saturating_sub(pts) > 180_000 {
+                aac.next_pts = Some(pts_90khz);
+                break;
+            }
+            if !self.write_audio_pes(pts, &aac.frames[aac.idx]) {
+                self.aac = Some(aac);
                 return;
             }
-            let aac = self.aac.as_mut().unwrap();
             aac.idx = (aac.idx + 1) % aac.frames.len();
             aac.next_pts = Some(pts + ticks);
             safety += 1;
@@ -461,6 +459,7 @@ impl HlsSink {
                 break;
             }
         }
+        self.aac = Some(aac);
     }
 
     fn write_pes(&mut self, pts_90khz: u64, is_rap: bool, annex_b: &[u8]) -> bool {

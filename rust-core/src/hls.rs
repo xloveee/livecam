@@ -271,16 +271,6 @@ impl HlsSink {
         if ok {
             self.mux_audio_up_to(pts_90khz);
         }
-        if ok && opened_new {
-            // Publish as soon as the first IDR lands so pip.m3u8 / master.m3u8
-            // exist before the 2s segment closes.
-            let oldest = self.window_start();
-            self.evict_outside_window(oldest);
-            self.write_playlist(oldest);
-            if let Some(ref mut f) = self.current_segment {
-                let _ = f.flush();
-            }
-        }
         ok
     }
 
@@ -358,11 +348,16 @@ impl HlsSink {
 
         self.segment_index += 1;
         let oldest = self.window_start();
-        self.evict_outside_window(oldest);
         self.write_playlist(oldest);
+        self.evict_outside_window(oldest);
     }
 
     fn evict_outside_window(&self, first_index: usize) {
+        // A replacement publisher must not delete lingering Compatible
+        // segments until it has a closed playlist of its own.
+        if self.segment_durations.is_empty() {
+            return;
+        }
         let last_index = if self.current_segment.is_some() {
             self.segment_index
         } else {
@@ -388,17 +383,17 @@ impl HlsSink {
     }
 
     fn write_playlist(&mut self, first_index: usize) {
-        let mut max_dur = self
+        if self.segment_durations.len() <= first_index {
+            return;
+        }
+        let max_dur = self
             .segment_durations
             .iter()
             .skip(first_index)
             .cloned()
             .fold(0.0_f64, f64::max);
-        if self.current_segment.is_some() {
-            max_dur = max_dur.max(SEGMENT_DURATION_SECS);
-        }
-        // Live target is ~2s. Floor at 2 so an early open-segment playlist
-        // is never TARGETDURATION 1 with EXTINF 2.000.
+        // Closed segments only. Listing an open .ts is what made Compatible
+        // flicker / "file is corrupt" (player fetched a growing MPEG-TS).
         let target_duration = max_dur.ceil().max(2.0) as u32;
 
         self.playlist_scratch.clear();
@@ -416,21 +411,18 @@ impl HlsSink {
             );
         }
 
-        if self.current_segment.is_some() {
-            let open_dur = (self.last_pts.saturating_sub(self.segment_start_pts)) as f64 / 90_000.0;
-            let open_dur = if open_dur > 0.05 { open_dur } else { SEGMENT_DURATION_SECS };
-            let _ = write!(
-                self.playlist_scratch,
-                "#EXTINF:{:.3},\n{}{:03}.ts\n",
-                open_dur, self.segment_prefix, self.segment_index
-            );
-        }
-
         let path = self.hls_dir.join(&self.playlist_name);
-        if let Err(e) = fs::write(&path, self.playlist_scratch.as_bytes()) {
-            tracing::warn!("HLS: failed to write playlist {:?}: {}", path, e);
+        let tmp = path.with_extension("m3u8.tmp");
+        if let Err(e) = fs::write(&tmp, self.playlist_scratch.as_bytes()) {
+            tracing::warn!("HLS: failed to write playlist {:?}: {}", tmp, e);
+            return;
+        }
+        if let Err(e) = fs::rename(&tmp, &path) {
+            tracing::warn!("HLS: failed to publish playlist {:?}: {}", path, e);
+            let _ = fs::remove_file(&tmp);
         }
     }
+
 
     fn mux_audio_up_to(&mut self, pts_90khz: u64) {
         if self.current_segment.is_none() || self.aac.is_none() {
@@ -920,22 +912,72 @@ mod tests {
         let _ = fs::remove_dir_all(&root);
     }
 
+
     #[test]
-    fn first_keyframe_writes_playlist_before_segment_close() {
+    fn playlist_omits_open_segment() {
         let root = tmp_root("early");
         let mut room = RoomHls::start("room3", &root).unwrap();
         assert!(room.write_video(Some("h"), 0, true, IDR));
         assert!(room.write_video(Some("l"), 0, true, IDR));
 
         let dir = root.join("room3");
+        if dir.join("master.m3u8").exists() {
+            let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+            assert!(
+                !master.contains("seg000.ts"),
+                "open Compatible segment must not be listed: {master}"
+            );
+        }
+        if dir.join("pip.m3u8").exists() {
+            let pip = fs::read_to_string(dir.join("pip.m3u8")).unwrap();
+            assert!(
+                !pip.contains("pip000.ts"),
+                "open Preview segment must not be listed: {pip}"
+            );
+        }
+
+        assert!(room.write_video(Some("h"), TWO_SECS_90KHZ, true, IDR));
         let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
-        let pip = fs::read_to_string(dir.join("pip.m3u8")).unwrap();
         assert!(master.contains("seg000.ts"), "{master}");
-        assert!(pip.contains("pip000.ts"), "{pip}");
+        assert!(
+            !master.contains("seg001.ts"),
+            "open next segment must not be listed: {master}"
+        );
 
         room.stop();
         let _ = fs::remove_dir_all(&root);
     }
+
+    #[test]
+    fn restart_keeps_linger_until_new_closed_seg() {
+        let root = tmp_root("linger2");
+        let dir = root.join("roomz");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(
+            dir.join("master.m3u8"),
+            "#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:57\n#EXTINF:2.000,\nseg057.ts\n",
+        )
+        .unwrap();
+        fs::write(dir.join("seg057.ts"), b"old").unwrap();
+        let mut room = RoomHls::start("roomz", &root).unwrap();
+        assert!(room.write_video(Some("h"), 0, true, IDR));
+        assert!(
+            dir.join("seg057.ts").exists(),
+            "must not evict linger Compatible segs before a closed playlist"
+        );
+        let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+        assert!(master.contains("seg057.ts"), "{master}");
+
+        assert!(room.write_video(Some("h"), TWO_SECS_90KHZ, true, IDR));
+        let master = fs::read_to_string(dir.join("master.m3u8")).unwrap();
+        assert!(master.contains("seg000.ts"), "{master}");
+        assert!(!master.contains("seg057.ts"), "{master}");
+        assert!(!dir.join("seg057.ts").exists());
+
+        room.stop();
+        let _ = fs::remove_dir_all(&root);
+    }
+
 
     #[test]
     fn mid_layer_only_writes_master_not_pip() {

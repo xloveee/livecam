@@ -327,6 +327,10 @@ impl HlsSink {
         let path = self.hls_dir.join(self.playlist_scratch.as_str());
         match File::create(&path) {
             Ok(mut f) => {
+                self.continuity_counter_pat = 0;
+                self.continuity_counter_pmt = 0;
+                self.continuity_counter_vid = 0;
+                self.continuity_counter_aud = 0;
                 self.write_pat_pmt(&mut f);
                 self.current_segment = Some(f);
                 self.segment_start_pts = pts;
@@ -399,7 +403,7 @@ impl HlsSink {
         self.playlist_scratch.clear();
         let _ = write!(
             self.playlist_scratch,
-            "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{}\n",
+            "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-INDEPENDENT-SEGMENTS\n#EXT-X-TARGETDURATION:{}\n#EXT-X-MEDIA-SEQUENCE:{}\n",
             target_duration, first_index
         );
 
@@ -463,7 +467,15 @@ impl HlsSink {
     }
 
     fn write_pes(&mut self, pts_90khz: u64, is_rap: bool, annex_b: &[u8]) -> bool {
-        self.write_media_pes(VIDEO_PID, pts_90khz, is_rap, 0xE0, annex_b)
+        // hls.js MSE fails bufferAppendError on Annex-B without AUD.
+        const AUD: &[u8] = &[0, 0, 0, 1, 0x09, 0xF0];
+        if access_unit_has_aud(annex_b) {
+            return self.write_media_pes(VIDEO_PID, pts_90khz, is_rap, 0xE0, annex_b);
+        }
+        let mut with_aud = Vec::with_capacity(AUD.len() + annex_b.len());
+        with_aud.extend_from_slice(AUD);
+        with_aud.extend_from_slice(annex_b);
+        self.write_media_pes(VIDEO_PID, pts_90khz, is_rap, 0xE0, &with_aud)
     }
 
     fn write_audio_pes(&mut self, pts_90khz: u64, adts: &[u8]) -> bool {
@@ -723,6 +735,16 @@ pub(crate) fn for_each_annex_b_nal(data: &[u8], mut f: impl FnMut(&[u8])) {
             f(&data[s..e]);
         }
     }
+}
+
+pub(crate) fn access_unit_has_aud(data: &[u8]) -> bool {
+    let mut aud = false;
+    for_each_annex_b_nal(data, |nal| {
+        if nal_type(nal) == 9 {
+            aud = true;
+        }
+    });
+    aud
 }
 
 pub(crate) fn access_unit_has_sps_pps(data: &[u8]) -> bool {
@@ -1128,6 +1150,9 @@ mod tests {
         assert!(ts_has_nal(&seg1, 7), "segment must start with SPS");
         assert!(ts_has_nal(&seg1, 8), "segment must include PPS");
         assert!(ts_has_nal(&seg1, 5), "segment must include IDR");
+        assert!(ts_has_nal(&seg1, 9), "hls.js needs AUD (NAL 9) before the AU");
+        let master = fs::read_to_string(root.join("roomsps").join("master.m3u8")).unwrap();
+        assert!(master.contains("#EXT-X-INDEPENDENT-SEGMENTS"), "{master}");
 
         room.stop();
         let _ = fs::remove_dir_all(&root);

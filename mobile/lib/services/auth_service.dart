@@ -42,16 +42,7 @@ class AuthService {
     );
   }
 
-  Future<bool> checkSession(ServerProfile server, String token) async {
-    final url = Uri.parse(
-      '${server.normalizedBaseUrl}/api/auth/broadcast?stream_key=${Uri.encodeComponent(server.streamKey)}',
-    );
-    final response = await _client.get(
-      url,
-      headers: {'Authorization': 'Bearer $token'},
-    );
-    return response.statusCode == 200;
-  }
+  // L6: removed checkSession — never put stream_key in a query string.
 
   Future<RoomInfo> fetchRoomInfo(ServerProfile server, {String? roomId}) async {
     final id = roomId ?? server.streamKey;

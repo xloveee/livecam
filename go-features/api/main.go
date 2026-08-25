@@ -59,6 +59,27 @@ func logRoomRef(id string) string {
 }
 
 
+// noDirListing blocks http.FileServer index pages (L4).
+type noDirListing struct{ http.FileSystem }
+
+func (n noDirListing) Open(name string) (http.File, error) {
+	f, err := n.FileSystem.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	st, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return nil, err
+	}
+	if st.IsDir() {
+		f.Close()
+		return nil, os.ErrNotExist
+	}
+	return f, nil
+}
+
+
 func main() {
 	initConfig()
 
@@ -136,7 +157,8 @@ func main() {
 	mux.HandleFunc("/api/active", activeProxyHandler)
 	mux.HandleFunc("/api/config", configHandler)
 	mux.HandleFunc("/api/health", healthHandler)
-	staticFS := http.FileServer(http.Dir(clientDir))
+	// L4: files only — no directory listing for /css/ and /js/.
+	staticFS := http.FileServer(noDirListing{http.Dir(clientDir)})
 	mux.Handle("/css/", staticFS)
 	mux.Handle("/js/", staticFS)
 

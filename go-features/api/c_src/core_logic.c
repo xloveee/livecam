@@ -579,6 +579,7 @@ void generate_session_token(const char *stream_key, char *out_hex)
     if (g_session_secret_set == 0 || g_session_secret_len < 16) {
         return;
     }
+    /* L5: assert format inside C — never assume a 32-byte key. */
     if (is_format_valid(stream_key) == 0) {
         return;
     }

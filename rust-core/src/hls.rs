@@ -333,10 +333,11 @@ impl HlsSink {
     }
 
     fn open_segment(&mut self, pts: u64) -> bool {
+        // L2: write segNNN.ts.tmp; rename to .ts only in finalize (before playlist).
         self.playlist_scratch.clear();
         let _ = write!(
             self.playlist_scratch,
-            "{}{:03}.ts",
+            "{}{:03}.ts.tmp",
             self.segment_prefix, self.segment_index
         );
         let path = self.hls_dir.join(self.playlist_scratch.as_str());
@@ -363,6 +364,18 @@ impl HlsSink {
             let _ = f.flush();
         }
         self.current_segment = None;
+        // Publish closed bytes under the playlist name.
+        let tmp_name = format!("{}{:03}.ts.tmp", self.segment_prefix, self.segment_index);
+        let final_name = format!("{}{:03}.ts", self.segment_prefix, self.segment_index);
+        let tmp = self.hls_dir.join(&tmp_name);
+        let final_path = self.hls_dir.join(&final_name);
+        if tmp.exists() {
+            if let Err(e) = fs::rename(&tmp, &final_path) {
+                tracing::warn!("HLS: failed to publish segment {:?}: {}", final_path, e);
+                let _ = fs::remove_file(&tmp);
+                return;
+            }
+        }
         self.segment_durations.push(duration);
 
         self.segment_index += 1;

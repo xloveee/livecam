@@ -45,14 +45,22 @@ static size_t extract_word(const char *text, size_t text_len, size_t pos,
 
 static int32_t parse_positive_int(const char *s, int32_t default_val)
 {
+    /* L7: reject leftover digits past the consumed prefix; cap at 3600s. */
     if (s == NULL || s[0] == '\0') { return default_val; }
 
     int32_t result = 0;
-    for (int32_t i = 0; s[i] != '\0' && i < 10; i++) {
+    int32_t i = 0;
+    for (; s[i] != '\0' && i < 10; i++) {
         if (s[i] < '0' || s[i] > '9') { return default_val; }
         int32_t digit = s[i] - '0';
         if (result > (2147483647 - digit) / 10) { return default_val; }
         result = result * 10 + digit;
+    }
+    if (s[i] != '\0') {
+        return default_val;
+    }
+    if (result > 3600) {
+        return 3600;
     }
     return result;
 }

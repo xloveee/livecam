@@ -1124,12 +1124,23 @@ function renderDebug(d) {
     debugContent.innerHTML = html;
 }
 
+function escDebug(s) {
+    // L1: never interpolate player/HLS error strings as HTML.
+    return String(s == null ? '' : s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
 function section(label, rows) {
-    return '<div class="debug-section"><div class="debug-section-label">' + label + '</div>' + rows.join('') + '</div>';
+    return '<div class="debug-section"><div class="debug-section-label">' + escDebug(label) + '</div>' + rows.join('') + '</div>';
 }
 
 function row(key, val, cls) {
-    return '<div class="debug-row"><span class="debug-key">' + key + '</span><span class="debug-val' + (cls ? ' ' + cls : '') + '">' + val + '</span></div>';
+    var c = cls ? ' ' + escDebug(cls) : '';
+    return '<div class="debug-row"><span class="debug-key">' + escDebug(key) + '</span><span class="debug-val' + c + '">' + escDebug(val) + '</span></div>';
 }
 
 function debugTryHLS() {

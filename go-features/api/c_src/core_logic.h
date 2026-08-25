@@ -8,7 +8,7 @@
 #define MAX_IP_ADDR_LEN      45
 #define MAX_ALLOWED_KEYS     64
 #define VIEWER_CAP_UNLIMITED 0
-#define SESSION_TOKEN_HEX_LEN 64
+#define SESSION_TOKEN_HEX_LEN 176
 
 void    init_stream_key_whitelist(const char *csv);
 void    init_session_secret(const char *secret);

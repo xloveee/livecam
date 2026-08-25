@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"strings"
 	"testing"
 )
 
@@ -175,5 +176,21 @@ func TestWhitelistTrimAndFailClosed(t *testing.T) {
 	}
 	if err := applyPublishPolicy(testKey, "studio-password", false); err != nil {
 		t.Fatalf("ok: %v", err)
+	}
+}
+
+func TestBroadcastPasswordTooLongFailsClosed(t *testing.T) {
+	long := strings.Repeat("x", 129)
+	if err := applyPublishPolicy(testKey, long, false); err != errBroadcastPasswordTooLong {
+		t.Fatalf("got %v want errBroadcastPasswordTooLong", err)
+	}
+	if err := applyPublishPolicy(testKey, long, true); err != errBroadcastPasswordTooLong {
+		t.Fatalf("allowOpen still: %v", err)
+	}
+	if err := applyPublishPolicy(testKey, "studio-password", false); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+	if !initBroadcastPasswordOK() {
+		t.Fatal("password should be set after ok init")
 	}
 }

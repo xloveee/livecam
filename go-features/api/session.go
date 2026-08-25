@@ -30,11 +30,14 @@ func applySessionSecret(secret string) error {
 	return nil
 }
 
-func initBroadcastPassword(password string) bool {
+func initBroadcastPassword(password string) error {
 	cs := C.CString(password)
-	C.init_broadcast_password(cs)
+	ok := C.init_broadcast_password(cs) == 1
 	C.free(unsafe.Pointer(cs))
-	return C.broadcast_password_is_set() == 1
+	if !ok {
+		return errBroadcastPasswordTooLong
+	}
+	return nil
 }
 
 func initStreamKeyWhitelist(csv string) int {
@@ -46,7 +49,9 @@ func initStreamKeyWhitelist(csv string) int {
 
 func applyPublishPolicy(keys, password string, allowOpen bool) error {
 	n := initStreamKeyWhitelist(keys)
-	initBroadcastPassword(password)
+	if err := initBroadcastPassword(password); err != nil {
+		return err
+	}
 	if allowOpen {
 		return nil
 	}
@@ -105,10 +110,15 @@ func validateSessionTokenForKey(token, streamKey string) bool {
 
 func sessionTokenHexLen() int { return int(C.SESSION_TOKEN_HEX_LEN) }
 
+func initBroadcastPasswordOK() bool {
+	return C.broadcast_password_is_set() == 1
+}
+
 var (
-	errSessionSecretRequired = errors.New("SESSION_SECRET is required")
-	errSessionSecretTooWeak  = errors.New("SESSION_SECRET must be at least 16 bytes")
-	errOpenPublish           = errors.New("ALLOWED_STREAM_KEYS is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
-	errOpenBroadcast         = errors.New("BROADCAST_PASSWORD is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
-	errWhitelistParse        = errors.New("ALLOWED_STREAM_KEYS is non-empty but no valid 32-char keys loaded")
+	errSessionSecretRequired    = errors.New("SESSION_SECRET is required")
+	errSessionSecretTooWeak     = errors.New("SESSION_SECRET must be at least 16 bytes")
+	errOpenPublish              = errors.New("ALLOWED_STREAM_KEYS is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
+	errOpenBroadcast            = errors.New("BROADCAST_PASSWORD is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
+	errWhitelistParse           = errors.New("ALLOWED_STREAM_KEYS is non-empty but no valid 32-char keys loaded")
+	errBroadcastPasswordTooLong = errors.New("BROADCAST_PASSWORD must be 1..128 bytes")
 )

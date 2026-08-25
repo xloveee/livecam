@@ -14,7 +14,7 @@ int32_t init_stream_key_whitelist(const char *csv);
 int32_t stream_key_whitelist_count(void);
 int32_t broadcast_password_is_set(void);
 int32_t init_session_secret(const char *secret);
-void    init_broadcast_password(const char *password);
+int32_t init_broadcast_password(const char *password);
 int32_t check_broadcast_password(const char *submitted);
 int32_t validate_stream_key(const char *key);
 int32_t check_viewer_rate_limit(const char *ip_address);

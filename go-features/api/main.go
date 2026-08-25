@@ -160,10 +160,12 @@ func initConfig() {
 	} else {
 		log.Printf("Stream key whitelist loaded: %d keys", int(C.stream_key_whitelist_count()))
 	}
-	if envAllowOpenPublish() && C.broadcast_password_is_set() == 0 {
+	if C.broadcast_password_is_set() == 1 {
+		log.Printf("Broadcast page password: enabled")
+	} else if envAllowOpenPublish() {
 		log.Printf("ALLOW_OPEN_PUBLISH: broadcast page password disabled (open mode)")
 	} else {
-		log.Printf("Broadcast page password: enabled")
+		log.Printf("Broadcast page password: unset")
 	}
 
 	stunURL := os.Getenv("STUN_URL")

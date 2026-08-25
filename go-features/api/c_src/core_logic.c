@@ -233,28 +233,29 @@ int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers)
 static char g_broadcast_password[BROADCAST_PASSWORD_MAX_LEN + 1] = {0};
 static size_t g_broadcast_password_len = 0;
 
-void init_broadcast_password(const char *password)
+int32_t init_broadcast_password(const char *password)
 {
     g_broadcast_password_len = 0;
     g_broadcast_password[0] = '\0';
-    if (password == NULL) {
-        return;
+    if (password == NULL || password[0] == '\0') {
+        return 1;
     }
     const size_t len = bounded_strlen(password, BROADCAST_PASSWORD_MAX_LEN + 1);
-    if (len == 0 || len > BROADCAST_PASSWORD_MAX_LEN) {
-        return;
+    if (len == 0) {
+        return 1;
+    }
+    if (len > BROADCAST_PASSWORD_MAX_LEN) {
+        /* H24: do not silently clear and open the gate. */
+        return 0;
     }
     for (size_t i = 0; i < len; i++) {
         g_broadcast_password[i] = password[i];
     }
     g_broadcast_password[len] = '\0';
     g_broadcast_password_len = len;
+    return 1;
 }
 
-/*
- * Constant-time check of the broadcast page password.
- * Returns 1 if no password is set (open mode) or if match, 0 if denied.
- */
 int32_t stream_key_whitelist_count(void)
 {
     return g_whitelist_count;

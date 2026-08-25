@@ -60,6 +60,10 @@ func NewHandler(hub *Hub, auth AuthFunc, access RoomAccessFunc) http.HandlerFunc
 				role = RoleBroadcaster
 			}
 		}
+		modToken := modTokenFromRequest(r)
+		if role != RoleBroadcaster && !isGuest && hub.ValidModToken(roomID, modToken) {
+			role = RoleMod
+		}
 
 		ip := ClientIP(r)
 		if role != RoleBroadcaster && hub.IsIPBanned(roomID, ip) {
@@ -78,6 +82,9 @@ func NewHandler(hub *Hub, auth AuthFunc, access RoomAccessFunc) http.HandlerFunc
 		}
 
 		client := newClient(hub, conn, roomID, nick, role, ip)
+		if role == RoleMod {
+			client.modToken = modToken
+		}
 
 		replaced, err := hub.Join(client)
 		if err != nil {
@@ -104,4 +111,16 @@ func NewHandler(hub *Hub, auth AuthFunc, access RoomAccessFunc) http.HandlerFunc
 		go client.writePump()
 		go client.readPump()
 	}
+}
+
+func modTokenFromRequest(r *http.Request) string {
+	if t := strings.TrimSpace(r.Header.Get("X-Chat-Mod")); t != "" {
+		return t
+	}
+	if c, err := r.Cookie("chat_mod"); err == nil {
+		if t := strings.TrimSpace(c.Value); t != "" {
+			return t
+		}
+	}
+	return strings.TrimSpace(r.URL.Query().Get("mod_token"))
 }

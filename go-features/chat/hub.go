@@ -23,6 +23,7 @@ type Room struct {
 	banned      map[string]bool
 	bannedIPs   map[string]bool
 	mods        map[string]bool
+	modTokens   map[string]string // token -> nick (hint); token is the proof
 	nickIPs     map[string]map[string]bool
 	broadcaster *Client
 	slowMode    int32
@@ -177,6 +178,7 @@ func (h *Hub) getOrCreateRoom(roomID string) *Room {
 			banned:    make(map[string]bool),
 			bannedIPs: make(map[string]bool),
 			mods:      make(map[string]bool),
+			modTokens: make(map[string]string),
 			nickIPs:   make(map[string]map[string]bool),
 			flood:     make(map[string]*FloodTracker),
 		}
@@ -264,6 +266,10 @@ func (h *Hub) Join(c *Client) (replaced bool, err error) {
 		if old.role == RoleBroadcaster && c.role != RoleBroadcaster {
 			return false, errNickTaken
 		}
+		if old.role == RoleMod && !sameModToken(old, c) {
+			// Persist nick is not proof. Do not kick a live staff socket.
+			return false, errNickTaken
+		}
 		if old.role == RoleBroadcaster && c.role == RoleBroadcaster && onlyBroadcasterLocked(room, old) {
 			// Keep the live streamer socket. Extra Broadcaster tabs share
 			// the room without close+replace (that loop is the Connected flicker).
@@ -293,8 +299,11 @@ func (h *Hub) Join(c *Client) (replaced bool, err error) {
 
 	if c.role == RoleBroadcaster {
 		room.broadcaster = c
-	} else if room.mods[c.nick] {
-		c.role = RoleMod
+	}
+	// Persist mods[nick] is a hint only — never proof of RoleMod (H16).
+	if c.role == RoleMod && c.modToken != "" {
+		room.modTokens[c.modToken] = c.nick
+		room.mods[c.nick] = true
 	}
 	if c.role == RoleBroadcaster || c.role == RoleMod {
 		sendModerationLocked(room)
@@ -313,6 +322,19 @@ func (h *Hub) Join(c *Client) (replaced bool, err error) {
 	}
 
 	return false, nil
+}
+
+func sameModToken(old, c *Client) bool {
+	if old == nil || c == nil {
+		return false
+	}
+	if c.role != RoleMod || old.role != RoleMod {
+		return false
+	}
+	if old.modToken == "" || c.modToken == "" {
+		return false
+	}
+	return old.modToken == c.modToken
 }
 
 func onlyBroadcasterLocked(room *Room, incumbent *Client) bool {
@@ -607,10 +629,17 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 			return
 		}
 		room.mods[nick] = true
+		token := mintModToken()
+		room.modTokens[token] = nick
 		if target, ok := room.nicks[nick]; ok {
 			target.role = RoleMod
+			target.modToken = token
 		}
 		persist = h.stageModerationLocked(room)
+		sendToClient(c, OutboundMsg{Type: "mod_token", Nick: nick, Text: token})
+		if target, ok := room.nicks[nick]; ok {
+			sendToClient(target, OutboundMsg{Type: "mod_token", Nick: nick, Text: token})
+		}
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",
 			Text: nick + " is now a moderator.",
@@ -619,8 +648,14 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 	case CmdUnmod:
 		nick := cmd.Arg1
 		delete(room.mods, nick)
+		for tok, n := range room.modTokens {
+			if n == nick {
+				delete(room.modTokens, tok)
+			}
+		}
 		if target, ok := room.nicks[nick]; ok && target.role != RoleBroadcaster {
 			target.role = RoleViewer
+			target.modToken = ""
 		}
 		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{

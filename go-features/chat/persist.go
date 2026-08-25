@@ -1,6 +1,8 @@
 package chat
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"log"
 	"os"
@@ -14,12 +16,27 @@ type roomModState struct {
 	BannedNicks map[string]bool
 	BannedIPs   map[string]bool
 	Mods        map[string]bool
+	ModTokens   map[string]string // token -> nick
 }
 
 type roomModFile struct {
-	BannedNicks []string `json:"banned_nicks"`
-	BannedIPs   []string `json:"banned_ips"`
-	Mods        []string `json:"mods"`
+	BannedNicks []string         `json:"banned_nicks"`
+	BannedIPs   []string         `json:"banned_ips"`
+	Mods        []string         `json:"mods"`
+	ModTokens   []modTokenRecord `json:"mod_tokens,omitempty"`
+}
+
+type modTokenRecord struct {
+	Token string `json:"token"`
+	Nick  string `json:"nick"`
+}
+
+func mintModToken() string {
+	var buf [16]byte
+	if _, err := rand.Read(buf[:]); err != nil {
+		return ""
+	}
+	return hex.EncodeToString(buf[:])
 }
 
 func safeRoomFile(roomID string) bool {
@@ -93,10 +110,17 @@ func readModFile(path string) (*roomModState, error) {
 	if err := json.Unmarshal(raw, &f); err != nil {
 		return nil, err
 	}
+	tokens := make(map[string]string, len(f.ModTokens))
+	for _, e := range f.ModTokens {
+		if e.Token != "" && e.Nick != "" {
+			tokens[e.Token] = e.Nick
+		}
+	}
 	return &roomModState{
 		BannedNicks: sliceToSet(f.BannedNicks),
 		BannedIPs:   sliceToSet(f.BannedIPs),
 		Mods:        sliceToSet(f.Mods),
+		ModTokens:   tokens,
 	}, nil
 }
 
@@ -153,6 +177,12 @@ func (h *Hub) applyPersist(room *Room) {
 	for k := range st.Mods {
 		room.mods[k] = true
 	}
+	if room.modTokens == nil {
+		room.modTokens = make(map[string]string)
+	}
+	for tok, nick := range st.ModTokens {
+		room.modTokens[tok] = nick
+	}
 }
 
 func (h *Hub) stageModerationLocked(room *Room) *roomModState {
@@ -165,6 +195,7 @@ func (h *Hub) stageModerationLocked(room *Room) *roomModState {
 		BannedNicks: copyBoolMap(room.banned),
 		BannedIPs:   copyBoolMap(room.bannedIPs),
 		Mods:        copyBoolMap(room.mods),
+		ModTokens:   copyStringMap(room.modTokens),
 	}
 	h.persistMu.Lock()
 	h.persist[room.id] = st
@@ -186,10 +217,17 @@ func (h *Hub) writePersistFile(roomID string, st *roomModState) {
 		log.Printf("[chat] persist mkdir: %v", err)
 		return
 	}
+	tokens := make([]modTokenRecord, 0, len(st.ModTokens))
+	for tok, nick := range st.ModTokens {
+		if tok != "" && nick != "" {
+			tokens = append(tokens, modTokenRecord{Token: tok, Nick: nick})
+		}
+	}
 	f := roomModFile{
 		BannedNicks: setToSorted(st.BannedNicks),
 		BannedIPs:   setToSorted(st.BannedIPs),
 		Mods:        setToSorted(st.Mods),
+		ModTokens:   tokens,
 	}
 	raw, err := json.MarshalIndent(f, "", "  ")
 	if err != nil {
@@ -240,4 +278,36 @@ func (h *Hub) IsWHEPBanned(roomID, clientIP, sdp string) bool {
 		}
 	}
 	return false
+}
+
+func copyStringMap(m map[string]string) map[string]string {
+	out := make(map[string]string, len(m))
+	for k, v := range m {
+		if k != "" && v != "" {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func (h *Hub) ValidModToken(roomID, token string) bool {
+	if token == "" {
+		return false
+	}
+	h.persistMu.Lock()
+	st := h.persist[roomID]
+	ok := st != nil && st.ModTokens[token] != ""
+	h.persistMu.Unlock()
+	if ok {
+		return true
+	}
+	h.mu.Lock()
+	room := h.rooms[roomID]
+	h.mu.Unlock()
+	if room == nil {
+		return false
+	}
+	room.mu.Lock()
+	defer room.mu.Unlock()
+	return room.modTokens[token] != ""
 }

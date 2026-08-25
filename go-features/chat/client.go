@@ -34,8 +34,9 @@ type Client struct {
 	roomID  string
 	nick    string
 	role    string
-	ip      string
-	send    chan []byte
+	ip       string
+	modToken string
+	send     chan []byte
 	lastMsg int64
 	done    chan struct{}
 }

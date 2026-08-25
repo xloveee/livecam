@@ -476,3 +476,100 @@ func TestGuestSeesRiverAndHistory(t *testing.T) {
 		t.Fatalf("late guest should replay river, got %+v", hist)
 	}
 }
+
+func TestPersistNickDoesNotGrantMod(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHubWithDir(dir)
+	host := testClient(h, "r1", "Host", RoleBroadcaster)
+	alice := testClient(h, "r1", "Alice", RoleViewer)
+	if _, err := h.Join(host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Join(alice); err != nil {
+		t.Fatal(err)
+	}
+	h.HandleCommand(host, ChatCommand{Type: CmdMod, Arg1: "Alice"})
+	if alice.role != RoleMod {
+		t.Fatalf("live /mod should promote, got %s", alice.role)
+	}
+
+	h2 := NewHubWithDir(dir)
+	thief := testClient(h2, "r1", "Alice", RoleViewer)
+	if _, err := h2.Join(thief); err != nil {
+		t.Fatal(err)
+	}
+	if thief.role == RoleMod {
+		t.Fatal("persist nick must not grant RoleMod")
+	}
+}
+
+func TestViewerCannotStealModNick(t *testing.T) {
+	h := NewHub()
+	host := testClient(h, "r1", "Host", RoleBroadcaster)
+	mod := testClient(h, "r1", "Alice", RoleViewer)
+	if _, err := h.Join(host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Join(mod); err != nil {
+		t.Fatal(err)
+	}
+	h.HandleCommand(host, ChatCommand{Type: CmdMod, Arg1: "Alice"})
+	thief := testClient(h, "r1", "Alice", RoleViewer)
+	if _, err := h.Join(thief); err != errNickTaken {
+		t.Fatalf("steal mod nick: %v want errNickTaken", err)
+	}
+	select {
+	case <-mod.done:
+		t.Fatal("thief must not close the live mod socket")
+	default:
+	}
+}
+
+func TestModTokenReconnectReplacesOwnSocket(t *testing.T) {
+	h := NewHub()
+	host := testClient(h, "r1", "Host", RoleBroadcaster)
+	mod := testClient(h, "r1", "Alice", RoleViewer)
+	if _, err := h.Join(host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Join(mod); err != nil {
+		t.Fatal(err)
+	}
+	h.HandleCommand(host, ChatCommand{Type: CmdMod, Arg1: "Alice"})
+	if mod.modToken == "" {
+		t.Fatal("expected minted mod token")
+	}
+	again := testClient(h, "r1", "Alice", RoleMod)
+	again.modToken = mod.modToken
+	if _, err := h.Join(again); err != nil {
+		t.Fatal(err)
+	}
+	if again.role != RoleMod {
+		t.Fatalf("role %s", again.role)
+	}
+}
+
+func TestValidModTokenAfterPersist(t *testing.T) {
+	dir := t.TempDir()
+	h := NewHubWithDir(dir)
+	host := testClient(h, "r1", "Host", RoleBroadcaster)
+	alice := testClient(h, "r1", "Alice", RoleViewer)
+	if _, err := h.Join(host); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.Join(alice); err != nil {
+		t.Fatal(err)
+	}
+	h.HandleCommand(host, ChatCommand{Type: CmdMod, Arg1: "Alice"})
+	tok := alice.modToken
+	if tok == "" {
+		t.Fatal("no token")
+	}
+	h2 := NewHubWithDir(dir)
+	if !h2.ValidModToken("r1", tok) {
+		t.Fatal("persisted token should validate")
+	}
+	if h2.ValidModToken("r1", "nope") {
+		t.Fatal("junk token must fail")
+	}
+}

@@ -1,5 +1,18 @@
 # Server Configuration Guide
 
+**Pinned VPS install** (fresh Ubuntu/Debian, DNS A first): see **[deploy/README.md](deploy/README.md)**. Do not `curl | bash`.
+
+```bash
+export INSTALL_REF=5129a60e21aef3ba49408d598a90b9d8d101ee18
+git clone https://github.com/xloveee/livecam.git /opt/livecam
+cd /opt/livecam && git checkout "$INSTALL_REF"
+sudo ./deploy/install.sh your.domain you@email.com
+# dry-run (no root, no certbot, no public IP):
+INSTALL_DRY_RUN=1 ./deploy/bootstrap.sh example.test admin@example.test
+```
+
+`indep.stream` in the examples below is a **demo hostname only**. The installer does not require it — use the domain you pointed at the VPS.
+
 Step-by-step guide for deploying the Independent Broadcasting platform on a fresh VPS (DigitalOcean, Hetzner, Vultr, AWS EC2, or any bare-metal server running Ubuntu/Debian).
 
 ## Prerequisites

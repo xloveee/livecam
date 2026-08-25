@@ -209,18 +209,47 @@ function renderPanelsFromConfig(panels) {
 }
 
 function addPanelField(imgUrl, linkUrl) {
+    // M9: build nodes + set .value — never interpolate URLs into innerHTML.
     var div = document.createElement('div');
     div.className = 'panel-item provider-card';
     div.style.position = 'relative';
-    div.innerHTML = `
-        <button type="button" onclick="this.parentElement.remove(); saveDonationConfig('panels')" style="position:absolute;top:4px;right:4px;background:transparent;color:#ef5350;padding:0;font-size:1.2rem;line-height:1;">&times;</button>
-        <div class="provider-card-fields">
-            <label style="font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;">Image URL</label>
-            <input type="text" class="panel-img" placeholder="https://example.com/banner.png" value="` + (imgUrl || '') + `">
-            <label style="font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;margin-top:0.3rem;">Link (Optional)</label>
-            <input type="text" class="panel-link" placeholder="https://mywebsite.com" value="` + (linkUrl || '') + `">
-        </div>
-    `;
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = '×';
+    close.style.cssText = 'position:absolute;top:4px;right:4px;background:transparent;color:#ef5350;padding:0;font-size:1.2rem;line-height:1;';
+    close.addEventListener('click', function() {
+        div.remove();
+        saveDonationConfig('panels');
+    });
+
+    var fields = document.createElement('div');
+    fields.className = 'provider-card-fields';
+
+    var imgLabel = document.createElement('label');
+    imgLabel.style.cssText = 'font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;';
+    imgLabel.textContent = 'Image URL';
+    var imgInput = document.createElement('input');
+    imgInput.type = 'text';
+    imgInput.className = 'panel-img';
+    imgInput.placeholder = 'https://example.com/banner.png';
+    imgInput.value = imgUrl || '';
+
+    var linkLabel = document.createElement('label');
+    linkLabel.style.cssText = 'font-size:0.7rem;color:#ccc;margin-bottom:0.1rem;margin-top:0.3rem;';
+    linkLabel.textContent = 'Link (Optional)';
+    var linkInput = document.createElement('input');
+    linkInput.type = 'text';
+    linkInput.className = 'panel-link';
+    linkInput.placeholder = 'https://mywebsite.com';
+    linkInput.value = linkUrl || '';
+
+    fields.appendChild(imgLabel);
+    fields.appendChild(imgInput);
+    fields.appendChild(linkLabel);
+    fields.appendChild(linkInput);
+    div.appendChild(close);
+    div.appendChild(fields);
     panelsListEl.appendChild(div);
     div.querySelectorAll('input').forEach(function(inp) {
         inp.addEventListener('input', function() { saveDonationConfig('panels'); });

@@ -217,6 +217,7 @@ func (h *Handler) handleInitiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// M8/H7: trusted-proxy ClientIP — never raw X-Forwarded-For alone.
 	ip := chat.ClientIP(r)
 	if ip == "" {
 		ip = r.RemoteAddr

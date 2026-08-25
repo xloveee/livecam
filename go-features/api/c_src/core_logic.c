@@ -6,6 +6,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/random.h>
+#include <pthread.h>
 
 static char  g_whitelist[MAX_ALLOWED_KEYS][STREAM_KEY_EXACT_LEN + 1];
 static int32_t g_whitelist_count = 0;
@@ -135,6 +136,7 @@ typedef struct {
 } rate_entry_t;
 
 static rate_entry_t g_rate_table[RATE_TABLE_SIZE];
+static pthread_mutex_t g_rate_mu = PTHREAD_MUTEX_INITIALIZER;
 
 static uint32_t fnv1a_hash(const char *data, size_t len)
 {
@@ -170,6 +172,8 @@ int32_t check_viewer_rate_limit(const char *ip_address)
     const uint32_t idx = h % RATE_TABLE_SIZE;
     const int64_t now = (int64_t)time(NULL);
 
+    /* M10: serialize bucket updates — table was racy across viewers. */
+    pthread_mutex_lock(&g_rate_mu);
     rate_entry_t *const entry = &g_rate_table[idx];
 
     if (entry->occupied == 0 || entry->ip_hash != h ||
@@ -178,6 +182,7 @@ int32_t check_viewer_rate_limit(const char *ip_address)
         entry->tokens = RATE_MAX_TOKENS - 1;
         entry->last_refill_sec = now;
         entry->occupied = 1;
+        pthread_mutex_unlock(&g_rate_mu);
         return 1;
     }
 
@@ -195,8 +200,11 @@ int32_t check_viewer_rate_limit(const char *ip_address)
 
     if (entry->tokens > 0) {
         entry->tokens--;
+        pthread_mutex_unlock(&g_rate_mu);
         return 1;
     }
+
+    pthread_mutex_unlock(&g_rate_mu);
 
     return 0;
 }

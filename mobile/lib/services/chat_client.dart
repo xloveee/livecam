@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/server_profile.dart';
@@ -54,18 +56,56 @@ class ChatClient {
     return RegExp(r'^[a-zA-Z0-9_]+$').hasMatch(nick);
   }
 
+  String? _roomPassword;
+
   void connect({
     required ServerProfile server,
     required String roomId,
     required String nick,
     String? authToken,
+    String? roomPassword,
   }) {
     _manualClose = false;
     _server = server;
     _roomId = roomId;
     _nick = nick;
     _authToken = authToken;
+    _roomPassword = roomPassword;
     _openSocket();
+  }
+
+  /// Build handshake headers (H20): Bearer auth + room password header.
+  /// Invite must not ride on the query string.
+  Map<String, String> handshakeHeaders({String? authToken, String? roomPassword}) {
+    final headers = <String, String>{};
+    final token = authToken ?? _authToken;
+    if (token != null && token.isNotEmpty) {
+      headers['Authorization'] = 'Bearer $token';
+    }
+    final invite = roomPassword ?? _roomPassword;
+    if (invite != null && invite.isNotEmpty) {
+      headers['X-Room-Password'] = invite;
+    }
+    return headers;
+  }
+
+  Uri handshakeUri({
+    ServerProfile? server,
+    String? roomId,
+    String? nick,
+  }) {
+    final s = server ?? _server!;
+    final id = roomId ?? _roomId!;
+    final n = nick ?? _nick!;
+    final base = Uri.parse(s.normalizedBaseUrl);
+    final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';
+    return Uri(
+      scheme: wsScheme,
+      host: base.host,
+      port: base.hasPort ? base.port : null,
+      path: '/api/chat/$id',
+      queryParameters: {'nick': n},
+    );
   }
 
   void _openSocket() {
@@ -75,17 +115,15 @@ class ChatClient {
     final nick = _nick;
     if (server == null || roomId == null || nick == null) return;
 
-    final base = Uri.parse(server.normalizedBaseUrl);
-    final wsScheme = base.scheme == 'https' ? 'wss' : 'ws';
-    final uri = Uri(
-      scheme: wsScheme,
-      host: base.host,
-      port: base.hasPort ? base.port : null,
-      path: '/api/chat/$roomId',
-      queryParameters: {'nick': nick},
-    );
+    final uri = handshakeUri();
+    final headers = handshakeHeaders();
 
-    _channel = WebSocketChannel.connect(uri);
+    // H20: IO channel so we can send Authorization / X-Room-Password.
+    _channel = IOWebSocketChannel.connect(
+      uri,
+      headers: headers.isEmpty ? null : headers,
+      customClient: HttpClient()..connectionTimeout = const Duration(seconds: 15),
+    );
     _connection.add(false);
 
     _channel!.stream.listen(

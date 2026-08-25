@@ -2,435 +2,246 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- If the app is behind a path prefix (e.g. https://host/myapp/broadcast), set content="/myapp" so API calls resolve correctly. -->
     <meta name="livecam-api-root" content="">
     <title>Broadcast — livecam</title>
-    <link rel="stylesheet" href="/css/broadcast.css?v=liveslot-20260822r1">
+    <link rel="stylesheet" href="/css/broadcast.css">
 </head>
 <body>
-<div id="app">
-    <div class="studio-grid">
-        <section class="studio-stage" aria-label="Program stage">
-            <header class="studio-top">
-                <div class="studio-top-row">
-                    <div class="studio-brand">Studio</div>
-                    <div class="controls-bar">
-                        <div class="live-control-slot">
-                            <button id="btn-start" type="button">Go Live</button>
-                            <button id="btn-stop" type="button">Stop</button>
-                        </div>
-                        <button id="btn-dock-toggle" type="button" class="toolbar-chip" title="Settings" aria-label="Settings" aria-expanded="true" aria-controls="studio-dock">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0 1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                        </button>
-                        <span id="status">Ready</span>
-                        <span class="viewer-badge" id="viewer-count"></span>
-                        <div class="health-indicator" id="health-indicator">
-                            <span class="health-dot" id="health-dot"></span>
-                            <span class="health-label" id="health-label"></span>
-                            <span class="health-detail" id="health-detail"></span>
-                            <div class="health-tooltip" id="health-tooltip"></div>
-                        </div>
-                    </div>
-                </div>
-                <nav class="studio-toolbar" role="toolbar" aria-label="Scene tools">
-                    <div class="toolbar-actions">
-                    <button type="button" class="toolbar-chip toolbar-action" onclick="addScreenshare()" title="Share screen" aria-label="Share screen">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
-                    </button>
-                    <label class="toolbar-max" for="max-viewers-bar" title="Max viewers (0 = unlimited)">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        <input type="number" id="max-viewers-bar" value="0" min="0" max="10000" title="Max viewers (0 = unlimited)" aria-label="Max viewers">
-                    </label>
-                    </div>
-                    <div class="toolbar-preview-right">
-                    <button type="button" class="toolbar-chip toolbar-snap" id="btn-snap-toggle" aria-pressed="true" title="Snap to 5% grid while dragging (Alt or Ctrl bypasses)" aria-label="Snap">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip" id="btn-snap-source" title="Snap source to the 5% grid" aria-label="Snap source">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="8" y="8" width="12" height="12" rx="1"/><polyline points="3 9 3 3 9 3"/><polyline points="15 3 21 3 21 9"/><polyline points="21 15 21 21 15 21"/><polyline points="9 21 3 21 3 15"/></svg>
-                    </button>
-                    <span class="toolbar-sep" aria-hidden="true"></span>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="left" title="Left — align selected source to the left of the plate" aria-label="Left">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="5" y1="4" x2="5" y2="20"/><line x1="9" y1="7" x2="20" y2="7"/><line x1="9" y1="12" x2="16" y2="12"/><line x1="9" y1="17" x2="20" y2="17"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="center" title="Center — align selected source to the horizontal center" aria-label="Center">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="4" x2="12" y2="20"/><line x1="6" y1="7" x2="18" y2="7"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="6" y1="17" x2="18" y2="17"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="right" title="Right — align selected source to the right of the plate" aria-label="Right">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="19" y1="4" x2="19" y2="20"/><line x1="4" y1="7" x2="15" y2="7"/><line x1="8" y1="12" x2="15" y2="12"/><line x1="4" y1="17" x2="15" y2="17"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="top" title="Top — align selected source to the top of the plate" aria-label="Top">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="5" x2="20" y2="5"/><line x1="7" y1="9" x2="7" y2="20"/><line x1="12" y1="9" x2="12" y2="16"/><line x1="17" y1="9" x2="17" y2="20"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="middle" title="Middle — align selected source to the vertical middle" aria-label="Middle">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="12" x2="20" y2="12"/><line x1="7" y1="5" x2="7" y2="19"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="17" y1="5" x2="17" y2="19"/></svg>
-                    </button>
-                    <button type="button" class="toolbar-chip toolbar-align" data-align="bottom" title="Bottom — align selected source to the bottom of the plate" aria-label="Bottom">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="19" x2="20" y2="19"/><line x1="7" y1="4" x2="7" y2="15"/><line x1="12" y1="8" x2="12" y2="15"/><line x1="17" y1="4" x2="17" y2="15"/></svg>
-                    </button>
-                    <span class="toolbar-sep" aria-hidden="true"></span>
-                    <button type="button" class="toolbar-chip toolbar-hide" id="btn-hide-gui" aria-pressed="false" title="Hide GUI overlays on preview" aria-label="Hide GUI">
-                        <svg class="ico-gui-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        <svg class="ico-gui-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>
-                    </button>
-                    </div>
-                </nav>
-            </header>
-            <div class="studio-preview">
-                <div class="preview-container" id="preview-container">
-                    <div class="preview-stage">
-                    <div class="preview-viewport" id="preview-viewport">
-                    <div class="preview-mirror" id="preview-mirror">
-                        <video id="preview" autoplay muted playsinline webkit-playsinline></video>
-                        <canvas id="mix-canvas" width="1280" height="720" aria-hidden="true"></canvas>
-                        <div class="scene-dom" id="scene-dom">
-                            <div class="donation-toast" id="donation-toast" hidden></div>
-                        </div>
-                    </div>
-                    <div class="program-plate-badge" id="program-plate-badge">1280×720</div>
-                    </div>
-                    <div class="scene-handles" id="scene-handles" aria-hidden="true"></div>
-                    </div>
-                    <video id="file-source" class="file-source-capture" loop muted playsinline webkit-playsinline></video>
-                    <div class="scene-offscreen" id="scene-offscreen" aria-hidden="true"></div>
-                    <div class="live-badge" id="live-badge">LIVE</div>
-                    <div class="stats-overlay" id="stats"></div>
-                </div>
-                <aside class="studio-dock" id="studio-dock" aria-label="Studio controls">
-                    <div class="dock-panel">
-                        <header class="dock-panel-head">
-                            <nav class="dock-tabs" role="tablist">
-                                <button type="button" class="dock-tab active" data-tab="sources" onclick="switchStudioTab('sources', this)">Sources</button>
-                                <button type="button" class="dock-tab" data-tab="overlays" onclick="switchStudioTab('overlays', this)">Overlay</button>
-                                <button type="button" class="dock-tab" data-tab="stream" onclick="switchStudioTab('stream', this)">Stream</button>
-                                <button type="button" class="dock-tab" data-tab="room" onclick="switchStudioTab('room', this)">Room</button>
-                                <button type="button" class="dock-tab" data-tab="donations" onclick="switchStudioTab('donations', this)">Donate</button>
-                                <button type="button" class="dock-tab" data-tab="invite" onclick="switchStudioTab('invite', this)">Invite</button>
-                            </nav>
-                        </header>
-                        <div class="dock-body">
 
-                <div class="settings-page active" id="settings-sources">
-                    <div class="source-rows">
-                        <div class="source-row source-row-cam">
-                            <span class="source-ico" title="Camera" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                            </span>
-                            <button type="button" class="source-add source-add-plus" id="btn-add-cam" onclick="addExtraCamera()" title="Add camera" aria-label="Add camera">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            </button>
-                            <select id="camera-select" title="Camera" aria-label="Camera"><option value="">Loading...</option></select>
-                        </div>
-                        <div class="source-row">
-                            <span class="source-ico" title="Microphone" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="11" rx="3"/><path d="M5 10v1a7 7 0 0 0 14 0v-1"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="8" y1="22" x2="16" y2="22"/></svg>
-                            </span>
-                            <select id="mic-select" title="Microphone" aria-label="Microphone"><option value="">Loading...</option></select>
-                        </div>
-                        <div class="source-row">
-                            <span class="source-ico" title="Screen recording size" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-                            </span>
-                            <select id="screen-resolution" title="Screen recording size" aria-label="Screen recording size">
-                                <option value="native">Native</option>
-                                <option value="1920x1080">1920×1080</option>
-                                <option value="1280x720" selected>1280×720</option>
-                                <option value="854x480">854×480</option>
-                            </select>
-                        </div>
-                        <div class="source-row">
-                            <span class="source-ico" title="Add video file as a layer" aria-hidden="true">
-                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M10 9.5v7l6-3.5-6-3.5z"/></svg>
-                            </span>
-                            <input type="file" id="layer-file-input" accept="video/mp4,video/webm,video/*" title="Add video file as a layer" aria-label="Add video file as a layer">
-                        </div>
-                    </div>
-                    <select id="extra-cam-select" hidden title="Extra camera" aria-label="Extra camera" tabindex="-1" aria-hidden="true"><option value="">Choose…</option></select>
-                    <div class="source-add-strip" role="group" aria-label="Add source">
-                        <button type="button" class="source-add" id="btn-add-screen" onclick="addScreenshare()" title="Share screen" aria-label="Share screen">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/><line x1="12" y1="7" x2="12" y2="13"/><line x1="9" y1="10" x2="15" y2="10"/></svg>
-                        </button>
-                        <label class="source-add source-add-toggle" title="Use video file (H.264 Preview path)">
-                            <input type="checkbox" id="use-video-file" aria-label="Use video file (H.264 Preview path)">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2.2"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/><line x1="17" y1="17" x2="22" y2="17"/></svg>
-                        </label>
-                        <input type="file" id="video-file-input" class="source-add-pick" accept="video/mp4,video/webm,video/*" disabled title="Video file" aria-label="Video file">
-                    </div>
-                    <div class="layer-stack-head" title="Top = front">Layers</div>
-                    <ul class="layer-list" id="source-layer-list"></ul>
-                </div>
+    <div class="broadcast-layout">
+    <div class="main-content">
+        <h1>Go Live</h1>
+        <div class="subtitle">Broadcast from your browser — phone or desktop</div>
 
-                <div class="settings-page" id="settings-overlays">
-                    <div class="settings-page-title">Overlays</div>
-                    <div class="field-hint" style="margin-bottom:0.45rem;">Not locked to a corner. Add text or an image, then drag and resize it on the preview. Dock is the list; placement is on the canvas.</div>
-                    <div class="row">
-                        <div>
-                            <label for="overlay-text">Text</label>
-                            <input type="text" id="overlay-text" maxlength="80" placeholder="Lower third" autocomplete="off">
-                        </div>
-                        <div class="row-actions">
-                            <button type="button" class="btn-secondary" onclick="addTextOverlay()">Add text</button>
-                        </div>
-                    </div>
-                    <div class="row row-full" style="margin-top:0.4rem;">
-                        <div>
-                            <label for="overlay-image">Image overlay</label>
-                            <input type="file" id="overlay-image" accept="image/png,image/jpeg,image/gif,image/webp">
-                            <div class="field-hint">Drawn on the mix. Drag/resize on the preview. z-order and show/hide are per layer. WHIP publishes the composite.</div>
-                        </div>
-                    </div>
-                    <div class="layer-stack-head">Overlay stack · top = front</div>
-                    <ul class="layer-list" id="overlay-layer-list"></ul>
-                </div>
-
-                <div class="settings-page" id="settings-stream">
-                    <div class="settings-page-title">Stream setup</div>
-                    <div class="row">
-                        <div>
-                            <label for="resolution">Resolution</label>
-                            <select id="resolution">
-                                <option value="1280x720">720p</option>
-                                <option value="1920x1080">1080p</option>
-                                <option value="854x480">480p</option>
-                                <option value="640x360">360p</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label for="bitrate">Max Bitrate</label>
-                            <select id="bitrate">
-                                <option value="0">Auto</option>
-                                <option value="2500">2500 kbps</option>
-                                <option value="1500" selected>1500 kbps</option>
-                                <option value="800">800 kbps</option>
-                                <option value="500">500 kbps</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="row" style="margin-top:0.4rem;">
-                        <div>
-                            <label>Stream Key</label>
-                            <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
-                        </div>
-                    </div>
-                    <div class="row row-full" style="margin-top:0.5rem;">
-                        <div>
-                            <label>Viewer modes</label>
-                            <label class="file-source-label" for="dist-live">
-                                <input type="checkbox" id="dist-live" checked onchange="saveDistributionConfig()">
-                                Live — real-time WebRTC (WHEP)
-                            </label>
-                            <label class="file-source-label" for="dist-hls">
-                                <input type="checkbox" id="dist-hls" checked onchange="saveDistributionConfig()">
-                                Compatible — HLS over HTTP
-                            </label>
-                            <label class="file-source-label" for="dist-pip">
-                                <input type="checkbox" id="dist-pip" onchange="saveDistributionConfig()">
-                                Preview — small PiP from rid l
-                            </label>
-                            <label class="file-source-label" for="dist-simulcast">
-                                <input type="checkbox" id="dist-simulcast" checked onchange="saveDistributionConfig()">
-                                High + Preview (simulcast rid h + l)
-                            </label>
-                            <label for="dist-default" style="margin-top:0.5rem;">Default for new viewers</label>
-                            <select id="dist-default" onchange="saveDistributionConfig()">
-                                <option value="live">Live</option>
-                                <option value="hls">Compatible</option>
-                                <option value="pip">Preview</option>
-                            </select>
-                            <div class="field-hint">Two encoded layers only: High (h) and Preview (l). No mid layer. Preview needs High + Preview on.</div>
-                            <div id="dist-status" class="field-hint" style="min-height:1.1rem;"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="settings-page" id="settings-room">
-                    <div class="settings-page-title">Room</div>
-                    <div class="row">
-                        <div>
-                            <label for="max-viewers">Max Viewers (0 = unlimited)</label>
-                            <input type="number" id="max-viewers" value="0" min="0" max="10000">
-                        </div>
-                        <div>
-                            <label for="room-password">Invite secret (room password)</label>
-                            <input type="text" id="room-password" placeholder="Required on invite link" autocomplete="off" spellcheck="false">
-                        </div>
-                    </div>
-                    <div class="row row-full" style="margin-top:0.5rem;">
-                        <div>
-                            <label for="offline-banner-text">Offline banner (when not live)</label>
-                            <textarea id="offline-banner-text" rows="3" maxlength="512" placeholder="Optional message for viewers on /watch" autocomplete="off"></textarea>
-                            <label for="offline-banner-image" style="margin-top:0.5rem;">Banner image URL (optional)</label>
-                            <input type="url" id="offline-banner-image" maxlength="2048" placeholder="https://example.com/banner.png" autocomplete="off" spellcheck="false">
-                            <label for="offline-banner-upload" style="margin-top:0.5rem;">Or upload image (max 2 MB)</label>
-                            <input type="file" id="offline-banner-upload" accept="image/png,image/jpeg,image/gif,image/webp">
-                            <div class="field-hint">Shown on /watch when offline. Upload overwrites the previous image for this room.</div>
-                            <div id="offline-banner-status" class="field-hint" style="min-height:1.1rem;"></div>
-                        </div>
-                    </div>
-                    <div class="settings-page-title" style="margin-top:0.8rem;">Moderation</div>
-                    <div class="field-hint">Banned public IPs and moderators persist across restarts. Click a chat row or ⋯ to Ban IP / Make mod. LAN and loopback addresses are not banned.</div>
-                    <div class="mod-list-block">
-                        <div class="mod-list-label">Banned IPs</div>
-                        <ul class="mod-list" id="room-banned-ips"></ul>
-                    </div>
-                    <div class="mod-list-block">
-                        <div class="mod-list-label">Moderators</div>
-                        <ul class="mod-list" id="room-mods-list"></ul>
-                    </div>
-                    <div class="settings-page-title" style="margin-top:0.8rem;">Below-stream panels</div>
-                    <div id="panels-list" class="panels-list"></div>
-                    <button type="button" onclick="addPanelField()" class="btn-secondary">+ Add Panel</button>
-                    <div class="row-info" id="panels-status"></div>
-                </div>
-
-                <div class="settings-page" id="settings-donations">
-                    <div class="settings-page-title">Payment providers</div>
-                    <div class="field-hint" style="margin-bottom:0.6rem;">Enable PayPal and/or Cash App. Donations appear in chat and as a studio toast on the mix. No new payment provider.</div>
-
-                    <div class="provider-card">
-                        <div class="provider-card-header">
-                            <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
-                            <label for="stripe-toggle">Stripe (Card payments)</label>
-                        </div>
-                        <div class="provider-card-fields">
-                            <input type="text" id="stripe-key" placeholder="Secret key (sk_live_...)" autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div class="provider-card">
-                        <div class="provider-card-header">
-                            <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
-                            <label for="paypal-toggle">PayPal</label>
-                        </div>
-                        <div class="provider-card-fields">
-                            <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div class="provider-card">
-                        <div class="provider-card-header">
-                            <input type="checkbox" id="cashapp-toggle" onchange="saveDonationConfig('cashapp')">
-                            <label for="cashapp-toggle">Cash App</label>
-                        </div>
-                        <div class="provider-card-fields">
-                            <input type="text" id="cashapp-handle" placeholder="$cashtag" autocomplete="off">
-                        </div>
-                        <div class="provider-card-hint">Viewers open cash.app/$Handle. No merchant API keys.</div>
-                    </div>
-
-                    <div class="provider-card">
-                        <div class="provider-card-header">
-                            <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
-                            <label for="crypto-toggle">Crypto (BTC / ETH)</label>
-                        </div>
-                        <div class="provider-card-fields">
-                            <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off">
-                            <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div class="provider-card">
-                        <div class="provider-card-header">
-                            <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
-                            <label for="bank-toggle">Bank / YowPay</label>
-                        </div>
-                        <div class="provider-card-fields">
-                            <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off">
-                            <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off">
-                            <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off">
-                        </div>
-                    </div>
-
-                    <div class="row-info" id="donation-status"></div>
-                </div>
-
-                <div class="settings-page" id="settings-invite">
-                    <div class="settings-page-title">Invite links</div>
-                    <div class="field-hint">Short links 302 to this room’s invite watch URL. They are not a public watch path. Uninvited viewers still hit the room password / max viewers gate.</div>
-                    <label for="invite-url">Invite URL</label>
-                    <input type="text" id="invite-url" readonly>
-                    <div class="row-actions" style="margin-top:0.4rem;">
-                        <button type="button" class="btn-secondary" id="btn-copy-invite">Copy invite</button>
-                        <button type="button" class="btn-secondary" id="btn-create-short">Create short link</button>
-                    </div>
-                    <div class="field-hint" id="invite-status"></div>
-                    <ul class="layer-list" id="short-link-list"></ul>
-                </div>
-
-                        </div>
-                    </div>
-                </aside>
+        <div class="preview-container">
+            <div class="preview-mirror">
+                <video id="preview" autoplay muted playsinline webkit-playsinline></video>
             </div>
-        </section>
+            <div class="live-badge" id="live-badge">LIVE</div>
+            <div class="stats-overlay" id="stats"></div>
+        </div>
 
-        <aside class="chat-panel" aria-label="Chat">
-            <div class="chat-header">
-                <span>Chat</span>
-                <span class="chat-status" id="chat-status">Disconnected</span>
+        <div class="controls-bar">
+            <button id="btn-start">Go Live</button>
+            <button id="btn-stop">Stop</button>
+            <span id="status">Ready</span>
+            <span class="viewer-badge" id="viewer-count"></span>
+            <div class="health-indicator" id="health-indicator">
+                <span class="health-dot" id="health-dot"></span>
+                <span class="health-label" id="health-label"></span>
+                <span class="health-detail" id="health-detail"></span>
+                <div class="health-tooltip" id="health-tooltip"></div>
             </div>
-            <div class="chat-messages" id="chat-messages"></div>
-            <div class="chat-mod-bar" id="chat-mod-bar">
-                <button type="button" onclick="chatModCmd('/clear')">Clear Chat</button>
-                <button type="button" onclick="chatModCmd('/slow 5')">Slow 5s</button>
-                <button type="button" onclick="chatModCmd('/slow 0')">Slow Off</button>
-                <button type="button" onclick="chatModCmd('/subscribers')">Sub Mode</button>
-                <button type="button" onclick="toggleDonationHistory()" style="background:#2a2000;color:#ffb300;">Donations</button>
-            </div>
-            <div class="chat-mod-lists" id="chat-mod-lists">
-                <div class="mod-list-block">
-                    <div class="mod-list-label">Banned IPs</div>
-                    <ul class="mod-list" id="chat-banned-ips"></ul>
+        </div>
+
+        <div class="settings-toggle" id="settings-toggle" onclick="toggleSettings()">
+            <span class="arrow">&#9654;</span>
+            <span>Settings</span>
+            <div class="settings-divider"></div>
+        </div>
+
+        <div class="settings-overlay" id="settings-overlay">
+            <div class="settings-overlay-backdrop" onclick="closeSettings()"></div>
+            <div class="settings-overlay-panel">
+                <div class="settings-overlay-header">
+                    <span>Settings</span>
+                    <button type="button" class="settings-close" onclick="closeSettings()">&#215;</button>
                 </div>
-                <div class="mod-list-block">
-                    <div class="mod-list-label">Mods</div>
-                    <ul class="mod-list" id="chat-mods-list"></ul>
+                <div class="settings-tabs">
+                    <button class="settings-tab active" onclick="switchSettingsTab('stream', this)">
+                        <span class="settings-tab-icon">&#9881;</span>Stream
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('room', this)">
+                        <span class="settings-tab-icon">&#9711;</span>Room
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('donations', this)">
+                        <span class="settings-tab-icon">&#9733;</span>Donations
+                    </button>
+                    <button class="settings-tab" onclick="switchSettingsTab('panels', this)">
+                        <span class="settings-tab-icon">&#128240;</span>Panels
+                    </button>
+                </div>
+                <div class="settings-body">
+
+                    <div class="settings-page active" id="settings-stream">
+                        <div class="settings-page-title">Stream Setup</div>
+                        <div class="row">
+                            <div>
+                                <label for="camera-select">Camera</label>
+                                <select id="camera-select"><option value="">Loading...</option></select>
+                            </div>
+                            <div>
+                                <label for="mic-select">Microphone</label>
+                                <select id="mic-select"><option value="">Loading...</option></select>
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top:0.4rem;">
+                            <div>
+                                <label for="resolution">Resolution</label>
+                                <select id="resolution">
+                                    <option value="1280x720">720p</option>
+                                    <option value="1920x1080">1080p</option>
+                                    <option value="854x480">480p</option>
+                                    <option value="640x360">360p</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label for="bitrate">Max Bitrate</label>
+                                <select id="bitrate">
+                                    <option value="0">Auto</option>
+                                    <option value="2500">2500 kbps</option>
+                                    <option value="1500" selected>1500 kbps</option>
+                                    <option value="800">800 kbps</option>
+                                    <option value="500">500 kbps</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="row" style="margin-top:0.4rem;">
+                            <div>
+                                <label>Stream Key</label>
+                                <input type="text" id="stream-key" readonly style="opacity:0.5;cursor:default;">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-page" id="settings-room">
+                        <div class="settings-page-title">Room Settings</div>
+                        <div class="row">
+                            <div>
+                                <label for="max-viewers">Max Viewers (0 = unlimited)</label>
+                                <input type="number" id="max-viewers" value="0" min="0" max="10000">
+                            </div>
+                            <div>
+                                <label for="room-password">Room Password</label>
+                                <input type="text" id="room-password" placeholder="Open (no password)" autocomplete="off" spellcheck="false">
+                            </div>
+                        </div>
+                        <div class="row row-full" style="margin-top:0.5rem;">
+                            <div>
+                                <label for="offline-banner-text">Offline banner (when not live)</label>
+                                <textarea id="offline-banner-text" rows="3" maxlength="512" placeholder="Optional message for viewers on /watch — e.g. schedule or “Back soon”" autocomplete="off"></textarea>
+                                <label for="offline-banner-image" style="margin-top:0.5rem;">Banner image URL (optional)</label>
+                                <input type="url" id="offline-banner-image" maxlength="2048" placeholder="https://example.com/banner.png" autocomplete="off" spellcheck="false">
+                                <label for="offline-banner-upload" style="margin-top:0.5rem;">Or upload image (max 2 MB)</label>
+                                <input type="file" id="offline-banner-upload" accept="image/png,image/jpeg,image/gif,image/webp">
+                                <div class="field-hint">Upload overwrites the previous image for this room. Shown on /watch over the video when offline. You can paste a URL instead, or leave both empty for text only.</div>
+                                <div id="offline-banner-status" class="field-hint" style="min-height:1.1rem;"></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="settings-page" id="settings-donations">
+                        <div class="settings-page-title">Payment Providers</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Enable at least one provider below. Viewers will see a <strong style="color:#ffb300;">Donate</strong> button in chat and can choose from your enabled methods. Payments are processed externally — donations appear highlighted in the live chat.</div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="stripe-toggle" onchange="saveDonationConfig('stripe')">
+                                <label for="stripe-toggle">Stripe (Card payments)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="stripe-key" placeholder="Secret key (sk_live_...)" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="paypal-toggle" onchange="saveDonationConfig('paypal')">
+                                <label for="paypal-toggle">PayPal</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="paypal-email" placeholder="PayPal.me username" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="crypto-toggle" onchange="saveDonationConfig('crypto')">
+                                <label for="crypto-toggle">Crypto (BTC / ETH)</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="crypto-btc" placeholder="BTC address" autocomplete="off">
+                                <input type="text" id="crypto-eth" placeholder="ETH address" autocomplete="off">
+                            </div>
+                        </div>
+
+                        <div class="provider-card">
+                            <div class="provider-card-header">
+                                <input type="checkbox" id="bank-toggle" onchange="saveDonationConfig('bank')">
+                                <label for="bank-toggle">Bank / YowPay</label>
+                            </div>
+                            <div class="provider-card-fields">
+                                <input type="text" id="bank-url" placeholder="https://yowpay.com" autocomplete="off">
+                                <input type="text" id="bank-merchant" placeholder="Merchant ID" autocomplete="off">
+                                <input type="text" id="bank-apikey" placeholder="API key (optional)" autocomplete="off">
+                            </div>
+                            <div class="provider-card-hint">Visit <a href="https://yowpay.com" target="_blank" rel="noopener">yowpay.com</a> to create a merchant account.</div>
+                        </div>
+
+                        <div class="row-info" id="donation-status"></div>
+                    </div>
+
+                    <div class="settings-page" id="settings-panels">
+                        <div class="settings-page-title">Below-Stream Panels</div>
+                        <div style="font-size:0.7rem;color:#888;margin-bottom:0.6rem;line-height:1.4;">Add image banners and links to display below your stream.</div>
+                        <div id="panels-list" class="panels-list"></div>
+                        <button type="button" onclick="addPanelField()" style="background:#1e88e5;margin-bottom:0.5rem;font-size:0.75rem;padding:0.4rem 0.8rem;">+ Add Panel</button>
+                        <div class="row-info" id="panels-status"></div>
+                    </div>
+
                 </div>
             </div>
-            <div id="donation-history" style="display:none;max-height:80px;overflow-y:auto;padding:0.3rem 0.4rem;border-top:1px solid #1a1a1a;font-size:0.7rem;color:#888;scrollbar-width:thin;scrollbar-color:#333 transparent;">
-                <div id="donation-history-list"></div>
+        </div>
+    </div>
+
+    <div class="chat-panel">
+        <div class="chat-header">
+            <span>Chat</span>
+            <span class="chat-status" id="chat-status">Disconnected</span>
+        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-mod-bar" id="chat-mod-bar">
+            <button onclick="chatModCmd('/clear')">Clear Chat</button>
+            <button onclick="chatModCmd('/slow 5')">Slow 5s</button>
+            <button onclick="chatModCmd('/slow 0')">Slow Off</button>
+            <button onclick="chatModCmd('/subscribers')">Sub Mode</button>
+            <button onclick="toggleDonationHistory()" style="background:#2a2000;color:#ffb300;">Donations</button>
+        </div>
+        <div id="donation-history" style="display:none;max-height:120px;overflow-y:auto;padding:0.3rem 0.4rem;border-top:1px solid #1a1a1a;font-size:0.7rem;color:#888;scrollbar-width:thin;scrollbar-color:#333 transparent;">
+            <div id="donation-history-list"></div>
+        </div>
+        <div class="chat-input-area">
+            <div class="chat-send" id="chat-send">
+                <input type="text" id="chat-input" placeholder="Send a message" maxlength="500" autocomplete="off" spellcheck="false">
+                <button id="btn-chat-send">Send</button>
             </div>
-            <div class="chat-input-area">
-                <div class="chat-cmd-palette" id="chat-cmd-palette" hidden role="listbox" aria-label="Chat commands"></div>
-                <div class="chat-send" id="chat-send">
-                    <input type="text" id="chat-input" placeholder="Send a message  ·  / commands" maxlength="500" autocomplete="off" spellcheck="false">
-                    <button type="button" id="btn-chat-send">Send</button>
-                </div>
-            </div>
-        </aside>
+        </div>
+    </div>
     </div>
 
     <footer class="livecam-sponsor-footer">Development sponsored by <a href="https://xlovecam.com" target="_blank" rel="noopener noreferrer">xlovecam.com</a></footer>
-</div>
 
-<script src="/js/broadcast-core.js?v=tbico-20260820r1"></script>
-<script src="/js/broadcast-scene.js?v=docktog-20260821r1"></script>
-<script src="/js/broadcast-chat.js?v=chatpanel-20260820r3"></script>
-<script src="/js/broadcast-donations.js?v=dock-20260818r1"></script>
-<script>
-    (async function init() {
-        try {
-            var resp = await fetch('/api/auth/broadcast', { credentials: 'same-origin' });
-            var data = null;
-            if (resp.ok) {
-                data = await resp.json();
-            } else {
-                // L10/H17: no ?stream_key= fallback — session or login only.
+    <script src="/js/broadcast-core.js"></script>
+    <script src="/js/broadcast-chat.js"></script>
+    <script src="/js/broadcast-donations.js"></script>
+    <script>
+        (async function init() {
+            try {
+                var resp = await fetch('/api/auth/broadcast');
+                if (!resp.ok) { window.location.reload(); return; }
+                var data = await resp.json();
+                authenticatedKey = data.stream_key;
+                publicSlug = data.public_slug || "";
+                streamKeyInput.value = data.stream_key;
+                chatConnect();
+                enumerateDevices();
+                loadDonationConfig();
+            } catch (e) {
                 window.location.reload();
-                return;
             }
-            authenticatedKey = data.stream_key;
-            publicSlug = data.public_slug || "";
-            streamKeyInput.value = data.stream_key;
-            chatConnect();
-            enumerateDevices();
-            loadDonationConfig();
-            if (typeof initStudioScene === 'function') initStudioScene();
-            if (typeof refreshInviteURL === 'function') refreshInviteURL();
-            if (typeof loadShortLinks === 'function') loadShortLinks();
-        } catch (e) {
-            window.location.reload();
-        }
-    })();
-</script>
+        })();
+    </script>
 </body>
 </html>

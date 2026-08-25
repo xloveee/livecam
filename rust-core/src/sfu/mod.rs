@@ -129,6 +129,8 @@ pub struct RoomInfo {
     pub viewer_count: u32,
     pub max_viewers: u32,
     pub password_hash: Option<String>,
+    /// M40: increments on password set/clear so leftover invite grants die.
+    pub grant_epoch: u64,
     pub is_live: bool,
     pub camera: Option<CameraLayout>,
     pub scene: Option<SceneLayout>,
@@ -142,6 +144,7 @@ impl Default for RoomInfo {
             viewer_count: 0,
             max_viewers: 0,
             password_hash: None,
+            grant_epoch: 0,
             is_live: false,
             camera: None,
             scene: None,

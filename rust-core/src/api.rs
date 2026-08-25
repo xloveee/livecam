@@ -450,6 +450,8 @@ pub struct RoomInfoResponse {
     pub viewer_count: u32,
     pub max_viewers: u32,
     pub has_password: bool,
+    #[serde(default)]
+    pub grant_epoch: u64,
     pub is_live: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub camera: Option<CameraLayout>,
@@ -470,6 +472,7 @@ pub async fn room_info_handler(
             viewer_count: 0,
             max_viewers: 0,
             has_password: false,
+            grant_epoch: 0,
             is_live: false,
             camera: None,
             scene: None,
@@ -480,6 +483,7 @@ pub async fn room_info_handler(
             viewer_count: 0,
             max_viewers: 0,
             has_password: false,
+            grant_epoch: 0,
             is_live: false,
             camera: None,
             scene: None,
@@ -498,6 +502,7 @@ pub async fn room_info_handler(
         viewer_count: info.viewer_count,
         max_viewers: info.max_viewers,
         has_password: info.password_hash.is_some(),
+        grant_epoch: info.grant_epoch,
         is_live: info.is_live,
         camera: info.camera,
         scene: info.scene,
@@ -562,7 +567,9 @@ pub async fn room_password_handler(
     let active = hash.is_some();
 
     if let Ok(mut s) = state.room_state.lock() {
-        s.entry(room_id.clone()).or_default().password_hash = hash;
+        let e = s.entry(room_id.clone()).or_default();
+        e.password_hash = hash;
+        e.grant_epoch = e.grant_epoch.saturating_add(1);
     }
     room_persist::persist_snapshot(&state.room_state, &state.persist_path);
 

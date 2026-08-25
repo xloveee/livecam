@@ -110,21 +110,21 @@ func checkRoomPassword(submitted, stored string) bool {
 	return C.check_room_password(cSubmitted, cStored) == 1
 }
 
-// H26: grant is a MAC over room+exp only — never needs plaintext from room_info.
-func signInviteGrant(room string, exp int64) string {
+// H26/M40: grant is a MAC over room+epoch+exp — never needs plaintext from room_info.
+func signInviteGrant(room string, epoch uint64, exp int64) string {
 	if len(inviteMACKey) != 32 {
 		return ""
 	}
 	mac := hmac.New(sha256.New, inviteMACKey)
-	fmt.Fprintf(mac, "%s|%d|grant", room, exp)
+	fmt.Fprintf(mac, "%s|%d|%d|grant", room, epoch, exp)
 	return fmt.Sprintf("%d.%s", exp, hex.EncodeToString(mac.Sum(nil)))
 }
 
-func mintInviteCookie(room, _password string) string {
-	return signInviteGrant(room, time.Now().Add(time.Duration(inviteCookieMaxAge)*time.Second).Unix())
+func mintInviteCookie(room string, epoch uint64) string {
+	return signInviteGrant(room, epoch, time.Now().Add(time.Duration(inviteCookieMaxAge)*time.Second).Unix())
 }
 
-func validInviteCookieValue(raw, room, _password string) bool {
+func validInviteCookieValue(raw, room string, epoch uint64) bool {
 	if raw == "" || room == "" {
 		return false
 	}
@@ -136,7 +136,7 @@ func validInviteCookieValue(raw, room, _password string) bool {
 	if err != nil || exp < time.Now().Unix() {
 		return false
 	}
-	expect := signInviteGrant(room, exp)
+	expect := signInviteGrant(room, epoch, exp)
 	return hmac.Equal([]byte(expect), []byte(raw))
 }
 
@@ -158,8 +158,8 @@ func roomPasswordOK(info roomInfoResult, r *http.Request, room string) bool {
 	if err != nil {
 		return false
 	}
-	// H26: cookie is a grant, not a password MAC.
-	return validInviteCookieValue(c.Value, room, "")
+	// H26/M40: cookie is a grant bound to rust grant_epoch.
+	return validInviteCookieValue(c.Value, room, info.GrantEpoch)
 }
 
 type hlsSession struct {
@@ -237,13 +237,13 @@ func viewerCapAllows(info roomInfoResult, current int32) bool {
 	return C.check_viewer_cap(C.int32_t(current), C.int32_t(info.MaxViewers)) == 1
 }
 
-func setHlsAuthCookies(w http.ResponseWriter, r *http.Request, room, password, sessionID string, mintGrant bool) {
+func setHlsAuthCookies(w http.ResponseWriter, r *http.Request, room string, epoch uint64, sessionID string, mintGrant bool) {
 	path := "/hls/" + room + "/"
 	secure := isSecureRequest(r)
 	if mintGrant {
 		http.SetCookie(w, &http.Cookie{
 			Name:     inviteCookieName,
-			Value:    mintInviteCookie(room, password),
+			Value:    mintInviteCookie(room, epoch),
 			Path:     path,
 			MaxAge:   inviteCookieMaxAge,
 			HttpOnly: true,
@@ -320,7 +320,7 @@ func hlsGateHandler(hlsDir string, hub *chat.Hub) http.Handler {
 				hlsViewers.touch(room, sessionID)
 			}
 			if r.Method == http.MethodGet {
-				setHlsAuthCookies(w, r, room, info.Password, sessionID, info.HasPassword)
+				setHlsAuthCookies(w, r, room, info.GrantEpoch, sessionID, info.HasPassword)
 			}
 		}
 

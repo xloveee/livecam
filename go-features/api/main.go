@@ -668,6 +668,7 @@ type roomInfoResult struct {
 	ViewerCount int32  `json:"viewer_count"`
 	MaxViewers  int32  `json:"max_viewers"`
 	HasPassword bool   `json:"has_password"`
+	GrantEpoch  uint64 `json:"grant_epoch"`
 	IsLive      bool   `json:"is_live"`
 	Password    string `json:"password,omitempty"`
 	Fetched     bool   `json:"-"`

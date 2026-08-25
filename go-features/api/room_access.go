@@ -72,7 +72,7 @@ func hlsFailClosed(next http.Handler, hub *chat.Hub) http.Handler {
 			if submitted != "" && rustCheckRoomPassword(room, submitted) {
 				passed = true
 			} else if r != nil {
-				if c, err := r.Cookie(inviteCookieName); err == nil && validInviteCookieValue(c.Value, room, "") {
+				if c, err := r.Cookie(inviteCookieName); err == nil && validInviteCookieValue(c.Value, room, info.GrantEpoch) {
 					passed = true
 				}
 			}
@@ -81,9 +81,28 @@ func hlsFailClosed(next http.Handler, hub *chat.Hub) http.Handler {
 			http.Error(w, "Incorrect room password", http.StatusForbidden)
 			return
 		}
-		// H26: mint grant after rust check or existing cookie — no info.Password.
-		if info.HasPassword && passed {
-			setHlsAuthCookies(w, r, room, "", "", true)
+		// M41: viewer cap + session on playlists (same live gate as M38).
+		sessionID := ""
+		if c, err := r.Cookie(hlsSessionCookie); err == nil {
+			sessionID = c.Value
+		}
+		known := hlsViewers.has(room, sessionID)
+		if isHlsPlaylist(file) {
+			if !known {
+				if !viewerCapAllows(info, mediaViewerTotal(info, room)) {
+					http.Error(w, "Room is at viewer capacity", http.StatusServiceUnavailable)
+					return
+				}
+				if r.Method == http.MethodGet {
+					sessionID = newHlsSessionID()
+					hlsViewers.touch(room, sessionID)
+				}
+			} else if r.Method == http.MethodGet {
+				hlsViewers.touch(room, sessionID)
+			}
+			if r.Method == http.MethodGet {
+				setHlsAuthCookies(w, r, room, info.GrantEpoch, sessionID, info.HasPassword && passed)
+			}
 		}
 		next.ServeHTTP(w, r)
 	})

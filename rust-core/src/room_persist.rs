@@ -17,9 +17,15 @@ pub struct PersistedRoom {
     pub password_hash: Option<String>,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub max_viewers: u32,
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub grant_epoch: u64,
 }
 
 fn is_zero(v: &u32) -> bool {
+    *v == 0
+}
+
+fn is_zero_u64(v: &u64) -> bool {
     *v == 0
 }
 
@@ -88,12 +94,13 @@ pub fn load_into(room_state: &RoomStateMap, path: &Path) -> usize {
     };
     let mut n = 0;
     for (id, pr) in store.rooms {
-        if pr.password_hash.is_none() && pr.max_viewers == 0 {
+        if pr.password_hash.is_none() && pr.max_viewers == 0 && pr.grant_epoch == 0 {
             continue;
         }
         let entry = map.entry(id).or_default();
         entry.password_hash = pr.password_hash;
         entry.max_viewers = pr.max_viewers;
+        entry.grant_epoch = pr.grant_epoch;
         entry.is_live = false;
         n += 1;
     }
@@ -107,7 +114,7 @@ pub fn save_from(room_state: &RoomStateMap, path: &Path) {
     };
     let mut store = PersistedStore::default();
     for (id, info) in map.iter() {
-        if info.password_hash.is_none() && info.max_viewers == 0 {
+        if info.password_hash.is_none() && info.max_viewers == 0 && info.grant_epoch == 0 {
             continue;
         }
         store.rooms.insert(
@@ -115,6 +122,7 @@ pub fn save_from(room_state: &RoomStateMap, path: &Path) {
             PersistedRoom {
                 password_hash: info.password_hash.clone(),
                 max_viewers: info.max_viewers,
+                grant_epoch: info.grant_epoch,
             },
         );
     }
@@ -298,6 +306,7 @@ mod tests {
             let e = map.entry("abcdefghijklmnopqrstuvwxyz012345".into()).or_default();
             e.password_hash = Some(hash_room_password("invite"));
             e.max_viewers = 12;
+            e.grant_epoch = 3;
             e.is_live = true;
         }
         save_from(&state, &path);
@@ -310,6 +319,7 @@ mod tests {
             Some(hash_room_password("invite").as_str())
         );
         assert_eq!(info.max_viewers, 12);
+        assert_eq!(info.grant_epoch, 3);
         assert!(!info.is_live);
         let _ = fs::remove_dir_all(dir);
     }

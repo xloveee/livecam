@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -59,8 +60,12 @@ func chatAllowedOrigins(r *http.Request) []string {
 	}
 
 	// H27: never trust client X-Forwarded-Host. Request Host is nginx $host / local.
+	// L11: https Host fallback when TLS is terminated on a loopback proxy
+	// (X-Forwarded-Proto from 127.0.0.1/::1 only). Prefer PUBLIC_BASE_URL.
 	proto := "http"
 	if r.TLS != nil {
+		proto = "https"
+	} else if trustedProxyProto(r) == "https" {
 		proto = "https"
 	}
 	host := strings.TrimSpace(strings.Split(r.Host, ",")[0])
@@ -68,4 +73,24 @@ func chatAllowedOrigins(r *http.Request) []string {
 		add(proto + "://" + host)
 	}
 	return out
+}
+
+// trustedProxyProto returns X-Forwarded-Proto only when the peer is loopback.
+func trustedProxyProto(r *http.Request) string {
+	if r == nil {
+		return ""
+	}
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+	ip := net.ParseIP(host)
+	if ip == nil || !ip.IsLoopback() {
+		return ""
+	}
+	p := strings.ToLower(strings.TrimSpace(strings.Split(r.Header.Get("X-Forwarded-Proto"), ",")[0]))
+	if p == "https" || p == "http" {
+		return p
+	}
+	return ""
 }

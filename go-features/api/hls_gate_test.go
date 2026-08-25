@@ -85,19 +85,22 @@ func TestRoomPasswordOKFailClosed(t *testing.T) {
 
 func TestInviteCookieRoundTrip(t *testing.T) {
 	room := "abcdefghijklmnopqrstuvwxyz012345"
-	tok := mintInviteCookie(room, "")
-	if !validInviteCookieValue(tok, room, "") {
+	tok := mintInviteCookie(room, 0)
+	if !validInviteCookieValue(tok, room, 0) {
 		t.Fatalf("fresh grant rejected: %s", tok)
 	}
-	if validInviteCookieValue(tok, "otherroom", "") {
+	if validInviteCookieValue(tok, "otherroom", 0) {
 		t.Fatal("grant accepted for other room")
 	}
-	if validInviteCookieValue("not-a-cookie", room, "") {
+	if validInviteCookieValue("not-a-cookie", room, 0) {
 		t.Fatal("garbage accepted")
 	}
-	expired := signInviteGrant(room, time.Now().Add(-time.Hour).Unix())
-	if validInviteCookieValue(expired, room, "") {
+	expired := signInviteGrant(room, 0, time.Now().Add(-time.Hour).Unix())
+	if validInviteCookieValue(expired, room, 0) {
 		t.Fatal("expired grant accepted")
+	}
+	if validInviteCookieValue(tok, room, 1) {
+		t.Fatal("M40: grant must die after epoch bump")
 	}
 }
 
@@ -173,7 +176,7 @@ func TestClampDistributionToPlaylists(t *testing.T) {
 
 func TestInviteCookieNotInURL(t *testing.T) {
 	// Cookie value is HMAC(room|exp|password), never the raw secret.
-	tok := mintInviteCookie("room", "super-secret-invite")
+	tok := mintInviteCookie("room", 0)
 	if tok == "super-secret-invite" {
 		t.Fatal("cookie stored raw password")
 	}

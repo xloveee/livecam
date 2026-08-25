@@ -37,19 +37,23 @@ func initBroadcastPassword(password string) bool {
 	return C.broadcast_password_is_set() == 1
 }
 
-func initStreamKeyWhitelist(csv string) {
+func initStreamKeyWhitelist(csv string) int {
 	cs := C.CString(csv)
-	C.init_stream_key_whitelist(cs)
+	n := int(C.init_stream_key_whitelist(cs))
 	C.free(unsafe.Pointer(cs))
+	return n
 }
 
 func applyPublishPolicy(keys, password string, allowOpen bool) error {
-	initStreamKeyWhitelist(keys)
+	n := initStreamKeyWhitelist(keys)
 	initBroadcastPassword(password)
 	if allowOpen {
 		return nil
 	}
-	if C.stream_key_whitelist_count() <= 0 {
+	if strings.TrimSpace(keys) != "" && n <= 0 {
+		return errWhitelistParse
+	}
+	if n <= 0 {
 		return errOpenPublish
 	}
 	if C.broadcast_password_is_set() != 1 {
@@ -106,4 +110,5 @@ var (
 	errSessionSecretTooWeak  = errors.New("SESSION_SECRET must be at least 16 bytes")
 	errOpenPublish           = errors.New("ALLOWED_STREAM_KEYS is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
 	errOpenBroadcast         = errors.New("BROADCAST_PASSWORD is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
+	errWhitelistParse        = errors.New("ALLOWED_STREAM_KEYS is non-empty but no valid 32-char keys loaded")
 )

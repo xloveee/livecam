@@ -55,25 +55,37 @@ static int32_t is_format_valid(const char *key)
  * static whitelist. Call once at startup. Passing NULL or "" leaves
  * the whitelist empty, which disables enforcement (open mode).
  */
-void init_stream_key_whitelist(const char *csv)
+int32_t init_stream_key_whitelist(const char *csv)
 {
     g_whitelist_count = 0;
 
     if (csv == NULL) {
-        return;
+        return 0;
     }
 
     const size_t csv_len = bounded_strlen(csv, MAX_ALLOWED_KEYS * (STREAM_KEY_EXACT_LEN + 1));
     if (csv_len == 0) {
-        return;
+        return 0;
     }
 
     size_t start = 0;
     for (size_t i = 0; i <= csv_len && g_whitelist_count < MAX_ALLOWED_KEYS; i++) {
         if (i == csv_len || csv[i] == ',') {
-            const size_t token_len = i - start;
+            size_t tok_start = start;
+            size_t tok_end = i;
+            while (tok_start < tok_end &&
+                   (csv[tok_start] == ' ' || csv[tok_start] == '\t' ||
+                    csv[tok_start] == '\n' || csv[tok_start] == '\r')) {
+                tok_start++;
+            }
+            while (tok_end > tok_start &&
+                   (csv[tok_end - 1] == ' ' || csv[tok_end - 1] == '\t' ||
+                    csv[tok_end - 1] == '\n' || csv[tok_end - 1] == '\r')) {
+                tok_end--;
+            }
+            const size_t token_len = tok_end - tok_start;
             if (token_len == STREAM_KEY_EXACT_LEN) {
-                memcpy(g_whitelist[g_whitelist_count], &csv[start], STREAM_KEY_EXACT_LEN);
+                memcpy(g_whitelist[g_whitelist_count], &csv[tok_start], STREAM_KEY_EXACT_LEN);
                 g_whitelist[g_whitelist_count][STREAM_KEY_EXACT_LEN] = '\0';
 
                 if (is_format_valid(g_whitelist[g_whitelist_count])) {
@@ -83,14 +95,9 @@ void init_stream_key_whitelist(const char *csv)
             start = i + 1;
         }
     }
+    return g_whitelist_count;
 }
 
-/*
- * Validate a stream key. When the whitelist is loaded (count > 0),
- * the key must match an entry exactly. When the whitelist is empty,
- * any format-valid key is accepted (local dev / open mode).
- * Returns 1 if valid, 0 if rejected.
- */
 int32_t validate_stream_key(const char *key)
 {
     if (is_format_valid(key) == 0) {

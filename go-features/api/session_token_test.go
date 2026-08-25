@@ -104,7 +104,7 @@ func TestApplyPublishPolicyFailClosed(t *testing.T) {
 	if err := applyPublishPolicy(testKey, "", false); err != errOpenBroadcast {
 		t.Fatalf("empty password: %v", err)
 	}
-	if err := applyPublishPolicy("not-a-32-char-key", "pw", false); err != errOpenPublish {
+	if err := applyPublishPolicy("not-a-32-char-key", "pw", false); err != errWhitelistParse {
 		t.Fatalf("bad key: %v", err)
 	}
 	if err := applyPublishPolicy(testKey, "studio-password", false); err != nil {
@@ -151,6 +151,29 @@ func TestApplySfuInternalSecret(t *testing.T) {
 		t.Fatalf("short: %v", err)
 	}
 	if err := applySfuInternalSecret("sixteen-byte-sfu!"); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+}
+
+func TestWhitelistTrimAndFailClosed(t *testing.T) {
+	padded := "  " + testKey + "  "
+	n := initStreamKeyWhitelist(padded)
+	if n != 1 {
+		t.Fatalf("trim load count %d want 1", n)
+	}
+	initSessionSecret(testSecret)
+	tok := generateSessionToken(testKey)
+	if _, ok := extractStreamKey(tok); !ok {
+		t.Fatal("trimmed whitelist should accept the key")
+	}
+
+	if err := applyPublishPolicy("not-a-32-char-key", "studio-password", false); err != errWhitelistParse {
+		t.Fatalf("bad key: %v want errWhitelistParse", err)
+	}
+	if err := applyPublishPolicy("   ", "studio-password", false); err != errOpenPublish {
+		t.Fatalf("whitespace-only: %v want errOpenPublish", err)
+	}
+	if err := applyPublishPolicy(testKey, "studio-password", false); err != nil {
 		t.Fatalf("ok: %v", err)
 	}
 }

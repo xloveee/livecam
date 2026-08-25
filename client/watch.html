@@ -6,7 +6,7 @@
     <meta name="description" content="Watch live — independent broadcasting platform powered by WebRTC.">
     <!-- If the app lives under a path prefix, set content="/prefix" so API paths resolve (same as /broadcast). -->
     <meta name="livecam-api-root" content="">
-    <meta name="livecam-watch-js" content="whep-codec-20260826r1">
+    <meta name="livecam-watch-js" content="whep-pt-20260826r2">
     <title>Live Stream — livecam</title>
     <link rel="stylesheet" href="/css/watch.css?v=live-rm-20260820r1">
 </head>
@@ -48,7 +48,7 @@
                 <div class="stream-viewport">
                     <!-- WHEP: user starts playback via native controls (iOS / many mobile WebViews). HLS Compatible/Preview calls play() after the manifest is parsed. -->
                     <div class="player-wrap" id="player-wrap">
-                        <video id="player" playsinline webkit-playsinline controls></video>
+                        <video id="player" playsinline webkit-playsinline muted autoplay controls></video>
                         <video id="player-facecam" class="player-facecam" playsinline webkit-playsinline muted autoplay hidden></video>
                         <div class="offline-overlay" id="offline-overlay" aria-live="polite">
                             <div class="offline-overlay-inner">
@@ -175,7 +175,7 @@
     </div>
 
     <script src="/js/hls.min.js?v=scene-20260820r1"></script>
-    <script src="/js/watch-core.js?v=whep-codec-20260826r1"></script>
+    <script src="/js/watch-core.js?v=whep-pt-20260826r2"></script>
     <script src="/js/chat.js?v=scene-20260820r1"></script>
     <script src="/js/donate.js?v=studio-20260818q1"></script>
     <script src="/js/watch-split.js?v=studio-20260818q1"></script>

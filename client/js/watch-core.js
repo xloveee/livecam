@@ -642,8 +642,13 @@ async function connectWHEP() {
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
         if (video && kind === 'video') {
+            video.muted = true;
             var playP = video.play();
-            if (playP && playP.catch) playP.catch(function () {});
+            if (playP && playP.then) {
+                playP.then(function () {
+                    video.muted = false;
+                }).catch(function () {});
+            }
         }
         /* Firefox / mobile often deliver recv tracks before iceConnectionState hits "connected". */
         if (viewerState === 'connecting') {

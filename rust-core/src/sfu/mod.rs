@@ -1191,13 +1191,11 @@ fn propagate(
                     continue;
                 };
 
-                let Some(pt) = writer.match_params(data.params) else {
-                    continue;
-                };
-                /* match_params searches the whole local codec list. A VP8-only
-                 * WHEP answer still has unused H.264 PTs locally — writing those
-                 * delivers RTP Firefox counts but never decodes. */
-                if !writer.payload_params().any(|p| p.pt() == pt) {
+                let want = data.params.spec().codec;
+                /* match_params scores the whole local list. Unused H.264 PTs on a
+                 * VP8 WHEP answer can win; writing them is RTP the browser will
+                 * not decode (black Live plate). Require the same codec. */
+                let Some(pt) = writer.payload_params().find(|p| p.spec().codec == want).map(|p| p.pt()) else {
                     continue;
                 };
 

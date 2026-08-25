@@ -12,6 +12,10 @@ func TestRoomAccessOKFailClosed(t *testing.T) {
 	if !roomAccessOK(roomInfoResult{Fetched: true}, false) {
 		t.Fatal("fetched public room should allow")
 	}
+	// H25: unknown room looks like unfetched (rust 404) — never public by default.
+	if roomAccessOK(roomInfoResult{Fetched: false, HasPassword: false}, false) {
+		t.Fatal("unknown/unfetched room must deny")
+	}
 	if roomAccessOK(roomInfoResult{Fetched: true, HasPassword: true}, false) {
 		t.Fatal("fetched password room must deny without a passing check")
 	}

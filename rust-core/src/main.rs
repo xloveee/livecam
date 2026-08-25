@@ -7,6 +7,7 @@ mod api;
 mod config;
 mod hls;
 mod sfu;
+mod room_persist;
 mod stun_loopback;
 
 use api::AppState;
@@ -63,6 +64,9 @@ async fn main() {
     let (quality_tx, quality_rx) = mpsc::unbounded_channel();
     let (disconnect_tx, disconnect_rx) = mpsc::unbounded_channel();
     let room_state = sfu::new_room_state();
+    let persist_file = room_persist::default_persist_path(&cfg.hls_dir);
+    room_persist::load_into(&room_state, &persist_file);
+    let persist_path = room_persist::new_persist_path(Some(persist_file));
 
     let udp_candidate_addr = cfg.udp_candidate_addr();
     let ice_candidate_addrs = cfg.ice_candidate_addrs();
@@ -83,6 +87,7 @@ async fn main() {
         udp_candidate_addr,
         ice_candidate_addrs,
         internal_secret: cfg.internal_secret.clone(),
+        persist_path,
     });
 
     let app = Router::new()

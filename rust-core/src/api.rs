@@ -15,6 +15,7 @@ use str0m::{Candidate, RtcConfig};
 use tokio::sync::mpsc;
 
 use crate::config::whep_ice_addrs;
+use crate::room_persist::{self, PersistPath, ROOM_PASSWORD_MAX_LEN};
 use crate::sfu::{
     CameraLayout, NewPeer, PeerDisconnect, PeerId, PeerRole, QualityChange, RoomStateMap, SceneLayer,
     SceneLayout,
@@ -29,6 +30,7 @@ pub struct AppState {
     pub udp_candidate_addr: SocketAddr,
     pub ice_candidate_addrs: Vec<SocketAddr>,
     pub internal_secret: String,
+    pub persist_path: PersistPath,
 }
 
 pub fn valid_http_room_id(id: &str) -> bool {
@@ -432,23 +434,18 @@ pub async fn room_info_handler(
         .ok()
         .and_then(|s| s.get(&room_id).cloned());
 
-    let resp = match info {
-        Some(info) => RoomInfoResponse {
-            viewer_count: info.viewer_count,
-            max_viewers: info.max_viewers,
-            has_password: info.password.is_some(),
-            is_live: info.is_live,
-            camera: info.camera,
-            scene: info.scene,
-        },
-        None => RoomInfoResponse {
-            viewer_count: 0,
-            max_viewers: 0,
-            has_password: false,
-            is_live: false,
-            camera: None,
-            scene: None,
-        },
+    let Some(info) = info else {
+        // H25: unknown room is not a public room (leftover HLS must not skip invite).
+        return StatusCode::NOT_FOUND.into_response();
+    };
+
+    let resp = RoomInfoResponse {
+        viewer_count: info.viewer_count,
+        max_viewers: info.max_viewers,
+        has_password: info.password_hash.is_some(),
+        is_live: info.is_live,
+        camera: info.camera,
+        scene: info.scene,
     };
 
     (StatusCode::OK, Json(resp)).into_response()
@@ -475,6 +472,7 @@ pub async fn viewer_limit_handler(
     if let Ok(mut s) = state.room_state.lock() {
         s.entry(room_id.clone()).or_default().max_viewers = body.max_viewers;
     }
+    room_persist::persist_snapshot(&state.room_state, &state.persist_path);
 
     tracing::info!("Viewer limit for room '{}' set to {}", room_id, body.max_viewers);
     (StatusCode::OK, "ok")
@@ -498,12 +496,20 @@ pub async fn room_password_handler(
     if !valid_http_room_id(&room_id) {
         return (StatusCode::BAD_REQUEST, "invalid room id");
     }
-    let pw = if body.password.is_empty() { None } else { Some(body.password.clone()) };
-    let active = pw.is_some();
+    if body.password.len() > ROOM_PASSWORD_MAX_LEN {
+        return (StatusCode::BAD_REQUEST, "password too long");
+    }
+    let hash = if body.password.is_empty() {
+        None
+    } else {
+        Some(room_persist::hash_room_password(&body.password))
+    };
+    let active = hash.is_some();
 
     if let Ok(mut s) = state.room_state.lock() {
-        s.entry(room_id.clone()).or_default().password = pw;
+        s.entry(room_id.clone()).or_default().password_hash = hash;
     }
+    room_persist::persist_snapshot(&state.room_state, &state.persist_path);
 
     tracing::info!("Room password for '{}': {}", room_id, if active { "set" } else { "cleared" });
     (StatusCode::OK, "ok")
@@ -641,7 +647,7 @@ pub async fn active_handler(
         .and_then(|s| {
             s.iter()
                 .find(|(_, info)| info.is_live)
-                .map(|(id, info)| (id.clone(), info.password.is_some()))
+                .map(|(id, info)| (id.clone(), info.password_hash.is_some()))
         });
 
     let resp = match active {
@@ -688,13 +694,18 @@ pub async fn check_room_password_handler(
     if !valid_http_room_id(&room_id) {
         return (StatusCode::BAD_REQUEST, Json(CheckRoomPasswordResponse { ok: false })).into_response();
     }
+    if body.password.len() > ROOM_PASSWORD_MAX_LEN {
+        return (StatusCode::BAD_REQUEST, Json(CheckRoomPasswordResponse { ok: false })).into_response();
+    }
     let stored = state
         .room_state
         .lock()
         .ok()
-        .and_then(|s| s.get(&room_id).and_then(|i| i.password.clone()));
+        .and_then(|s| s.get(&room_id).and_then(|i| i.password_hash.clone()));
     let ok = match stored {
-        Some(pw) => pw == body.password,
+        Some(hash) => {
+            room_persist::constant_eq_hex(&hash, &room_persist::hash_room_password(&body.password))
+        }
         None => body.password.is_empty(),
     };
     (StatusCode::OK, Json(CheckRoomPasswordResponse { ok })).into_response()

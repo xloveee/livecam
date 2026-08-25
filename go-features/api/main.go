@@ -658,6 +658,10 @@ func fetchRoomInfo(roomID string) roomInfoResult {
 		return roomInfoResult{}
 	}
 	defer resp.Body.Close()
+	// H25: unknown room is HTTP 404 from rust — not a public Fetched room.
+	if resp.StatusCode != http.StatusOK {
+		return roomInfoResult{}
+	}
 
 	var info roomInfoResult
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {

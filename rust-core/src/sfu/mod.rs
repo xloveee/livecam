@@ -116,7 +116,7 @@ pub struct SceneLayout {
 pub struct RoomInfo {
     pub viewer_count: u32,
     pub max_viewers: u32,
-    pub password: Option<String>,
+    pub password_hash: Option<String>,
     pub is_live: bool,
     pub camera: Option<CameraLayout>,
     pub scene: Option<SceneLayout>,
@@ -127,7 +127,7 @@ impl Default for RoomInfo {
         Self {
             viewer_count: 0,
             max_viewers: 0,
-            password: None,
+            password_hash: None,
             is_live: false,
             camera: None,
             scene: None,

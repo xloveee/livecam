@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// roomAccessOK is the H18 gate: a rust-down zero value is not an open room.
+// roomAccessOK is the H18/H25 gate: rust-down or unknown room (unfetched) is not open.
 func roomAccessOK(info roomInfoResult, passwordPassed bool) bool {
 	if !info.Fetched {
 		return false

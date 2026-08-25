@@ -1,3 +1,19 @@
+function safeDonationURL(u) {
+    // M25: https or same-origin path only — block javascript:/data:.
+    if (typeof u !== 'string') return '';
+    u = String(u).trim();
+    if (!u) return '';
+    if (u.charAt(0) === '/' && u.charAt(1) !== '/') return u;
+    try {
+        var parsed = new URL(u, window.location.href);
+        if (parsed.protocol === 'https:') return parsed.href;
+        if (parsed.protocol === 'http:' && (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1')) {
+            return parsed.href;
+        }
+    } catch (e) { /* ignore */ }
+    return '';
+}
+
 /* donate.js — donation rendering, modal, and below-stream panel */
 
 var donateOverlay = document.getElementById('donate-overlay');
@@ -81,21 +97,26 @@ function fetchDonateMethods() {
                 var hasValidPanels = false;
                 data.panels.panels.forEach(function (p) {
                     if (!p.image_url) return;
+                    var safeImg = safeDonationURL(p.image_url);
+                    var safeLink = safeDonationURL(p.link_url || '');
+                    if (!safeImg) return;
                     hasValidPanels = true;
                     var cell = document.createElement('div');
                     cell.className = 'panel-banner-cell';
-                    var a = document.createElement('a');
-                    if (p.link_url) {
-                        a.href = p.link_url;
-                        a.target = '_blank';
-                        a.rel = 'noopener noreferrer';
-                    }
                     var img = document.createElement('img');
-                    img.src = p.image_url;
+                    img.src = safeImg;
                     img.alt = '';
                     img.loading = 'lazy';
-                    a.appendChild(img);
-                    cell.appendChild(a);
+                    if (safeLink) {
+                        var a = document.createElement('a');
+                        a.href = safeLink;
+                        a.target = '_blank';
+                        a.rel = 'noopener noreferrer';
+                        a.appendChild(img);
+                        cell.appendChild(a);
+                    } else {
+                        cell.appendChild(img);
+                    }
                     panelsGrid.appendChild(cell);
                 });
                 if (hasValidPanels) {

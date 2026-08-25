@@ -30,6 +30,7 @@ type Room struct {
 	subOnly     bool
 	history     [][]byte
 	flood       map[string]*FloodTracker
+	timeouts    map[string]int64 // nick -> unix unmute (M21)
 }
 
 type Hub struct {
@@ -184,6 +185,7 @@ func (h *Hub) getOrCreateRoom(roomID string) *Room {
 			modTokens: make(map[string]string),
 			nickIPs:   make(map[string]map[string]bool),
 			flood:     make(map[string]*FloodTracker),
+					timeouts:  make(map[string]int64),
 		}
 		h.applyPersist(r)
 		h.rooms[roomID] = r
@@ -427,6 +429,19 @@ func (h *Hub) HandleMessage(c *Client, text string) {
 
 	room.mu.Lock()
 	room.pruneFloodLocked(now)
+	// M21: honor /timeout duration (nick keyed).
+	if until, ok := room.timeouts[c.nick]; ok && until > now {
+		left := until - now
+		room.mu.Unlock()
+		sendToClient(c, OutboundMsg{Type: "system", Text: floodMuteNotice(int(left))})
+		return
+	}
+	// M21: subscriber-only — until real subs exist, restrict chat to staff.
+	if room.subOnly && c.role != RoleBroadcaster && c.role != RoleMod {
+		room.mu.Unlock()
+		sendToClient(c, OutboundMsg{Type: "system", Text: "Subscriber-only mode is enabled."})
+		return
+	}
 	if !floodExempt(c.role) {
 		action, left := CheckChatFlood(room.floodTracker(c.ip), now)
 		switch action {
@@ -584,12 +599,20 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		}
 
 	case CmdTimeout:
+		secs := cmd.Arg2
+		if secs <= 0 {
+			secs = 60
+		}
+		if room.timeouts == nil {
+			room.timeouts = make(map[string]int64)
+		}
+		until := time.Now().Unix() + int64(secs)
+		room.timeouts[cmd.Arg1] = until
 		if target, ok := room.nicks[cmd.Arg1]; ok {
 			sendToClient(target, OutboundMsg{
 				Type: "system",
-				Text: "You have been timed out.",
+				Text: floodMuteNotice(secs),
 			})
-			target.Close()
 		}
 		broadcastToRoom(room, OutboundMsg{
 			Type: "system",

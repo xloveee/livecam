@@ -41,7 +41,7 @@ func hlsFailClosed(next http.Handler) http.Handler {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		room, _, ok := parseHlsRoom(r.URL.Path)
+		room, file, ok := parseHlsRoom(r.URL.Path)
 		if !ok {
 			http.NotFound(w, r)
 			return
@@ -50,6 +50,11 @@ func hlsFailClosed(next http.Handler) http.Handler {
 		// M2: header-only password (already); do not serve leftover HLS when not live.
 		if !info.Fetched || !info.IsLive {
 			http.Error(w, "Room is not live", http.StatusNotFound)
+			return
+		}
+		// M20: honor distribution — Compatible/Preview off means no files.
+		if !hlsDistributionAllows(room, file) {
+			http.Error(w, "HLS distribution disabled", http.StatusNotFound)
 			return
 		}
 		passed := false
@@ -79,4 +84,21 @@ func chatRoomAccessFetched(r *http.Request, roomID string) bool {
 		passed = rustCheckRoomPassword(roomID, submitted)
 	}
 	return roomAccessOK(info, passed)
+}
+
+// hlsDistributionAllows enforces streamer Compatible/Preview flags on the file gate (M20).
+func hlsDistributionAllows(room, file string) bool {
+	if sharedDonoDB == nil {
+		return true
+	}
+	d := sharedDonoDB.GetDistribution(room)
+	base := file
+	if i := strings.LastIndex(file, "/"); i >= 0 {
+		base = file[i+1:]
+	}
+	lower := strings.ToLower(base)
+	if strings.HasPrefix(lower, "pip") {
+		return d.PiP
+	}
+	return d.HLS
 }

@@ -31,6 +31,34 @@ var (
 	sharedDonoDB *donations.DB
 )
 
+
+// validProxyRoomID: public slug charset (32 hex) or legacy 32-alnum (M23).
+func validProxyRoomID(id string) bool {
+	if len(id) == 0 || len(id) > 64 {
+		return false
+	}
+	for i := 0; i < len(id); i++ {
+		c := id[i]
+		if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func logRoomRef(id string) string {
+	if id == "" {
+		return "-"
+	}
+	// M24: never log the raw publish capability / full id.
+	if len(id) <= 8 {
+		return id[:2] + "…"
+	}
+	return id[:8] + "…"
+}
+
+
 func main() {
 	initConfig()
 
@@ -288,7 +316,7 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -448,13 +476,13 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
 	if err != nil {
 		http.Error(w, "Failed to read body", http.StatusBadRequest)
 		return
 	}
 
-	log.Printf("Valid WHIP request for slug %s..., proxying to Rust Core", slug[:8])
+	log.Printf("Valid WHIP request for slug %s, proxying to Rust Core", logRoomRef(slug))
 
 	rustURL := fmt.Sprintf("%s/whip/%s", rustCoreURL, slug)
 	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
@@ -507,6 +535,10 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	roomID := r.URL.Path[len("/api/whep/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
+	if !validProxyRoomID(roomID) {
+		http.Error(w, "Invalid room id", http.StatusBadRequest)
+		return
+	}
 
 	info := fetchRoomInfo(roomID)
 	if !info.Fetched {
@@ -536,9 +568,9 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	log.Printf("WHEP request for room: %s (IP: %s), proxying to Rust Core...", roomID, ip)
+	log.Printf("WHEP request for room %s (IP: %s), proxying to Rust Core...", logRoomRef(roomID), ip)
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (1<<20)+1))
 	if err != nil {
 		http.Error(w, "Failed to read body", http.StatusBadRequest)
 		return
@@ -837,6 +869,10 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roomID := strings.TrimSuffix(r.URL.Path[len("/api/viewer_limit/"):], "/")
+	if !validProxyRoomID(roomID) {
+		http.Error(w, "Invalid room id", http.StatusBadRequest)
+		return
+	}
 	if roomID == "" {
 		roomID = publicSlug(streamKey)
 	}
@@ -846,7 +882,7 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID = publicSlug(streamKey)
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Failed to read body", http.StatusBadRequest)
 		return
@@ -890,6 +926,10 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	roomID := strings.TrimSuffix(r.URL.Path[len("/api/room_password/"):], "/")
+	if !validProxyRoomID(roomID) {
+		http.Error(w, "Invalid room id", http.StatusBadRequest)
+		return
+	}
 	if roomID == "" {
 		roomID = publicSlug(streamKey)
 	}
@@ -899,7 +939,7 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	roomID = publicSlug(streamKey)
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Failed to read body", http.StatusBadRequest)
 		return
@@ -1012,7 +1052,7 @@ func qualityProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Failed to read body", http.StatusBadRequest)
 		return

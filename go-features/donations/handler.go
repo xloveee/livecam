@@ -96,9 +96,13 @@ func (h *Handler) handleSetupGet(w http.ResponseWriter, streamKey string) {
 }
 
 func (h *Handler) handleSetupPost(w http.ResponseWriter, r *http.Request, streamKey string) {
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if len(body) > 64<<10 {
+		http.Error(w, "Payload too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -200,9 +204,13 @@ func (h *Handler) handleInitiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if len(body) > 64<<10 {
+		http.Error(w, "Payload too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -312,9 +320,13 @@ func (h *Handler) handleWebhook(w http.ResponseWriter, r *http.Request, provider
 		return
 	}
 
-	body, err := io.ReadAll(r.Body)
+	body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 	if err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+	if len(body) > 64<<10 {
+		http.Error(w, "Payload too large", http.StatusRequestEntityTooLarge)
 		return
 	}
 
@@ -424,7 +436,7 @@ func (h *Handler) handleOfflineBanner(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]string{"offline_banner": text})
 
 	case http.MethodPost:
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(io.LimitReader(r.Body, (64<<10)+1))
 		if err != nil {
 			http.Error(w, "Bad request", http.StatusBadRequest)
 			return

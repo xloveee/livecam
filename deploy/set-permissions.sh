@@ -1,11 +1,11 @@
 #!/bin/bash
-# Fix ownership and modes for /opt/livecam after deploy or git pull.
-# Run as root once, or as livecam when livecam already owns the tree.
+# H12: source tree is not group-writable by the runtime user.
+# Writable only: data/, hls/, archive/, and deploy/.env (640).
 set -euo pipefail
 
 ROOT="/opt/livecam"
-OWNER="livecam"
-GROUP="www-data"
+OWNER="${LIVECAM_OWNER:-livecam}"
+RUNTIME_GROUP="${LIVECAM_RUNTIME_GROUP:-www-data}"
 
 if [[ ! -d "$ROOT" ]]; then
 	echo "missing $ROOT" >&2
@@ -17,16 +17,22 @@ if [[ "$(id -un)" != "root" && "$(id -un)" != "$OWNER" ]]; then
 	exit 1
 fi
 
-chown -R "$OWNER:$GROUP" "$ROOT"
+# Tree owned by deploy user; runtime group may read but not rewrite source/binaries.
+chown -R "$OWNER:$RUNTIME_GROUP" "$ROOT"
 
-install -d -o "$OWNER" -g "$GROUP" -m 2770 "$ROOT/archive"
-install -d -o "$OWNER" -g "$GROUP" -m 2770 "$ROOT/hls"
-install -d -o "$OWNER" -g "$GROUP" -m 2770 "$ROOT/data"
-install -d -o "$OWNER" -g "$GROUP" -m 2770 "$ROOT/data/offline_banners"
-install -d -o "$OWNER" -g "$GROUP" -m 2750 "$ROOT/deploy"
+# Default: dirs 755, files 644 (not 775/664).
+find "$ROOT" -type d -exec chmod 755 {} +
+find "$ROOT" -type f -exec chmod 644 {} +
+
+# Runtime-writable areas only.
+install -d -o "$OWNER" -g "$RUNTIME_GROUP" -m 2770 "$ROOT/archive"
+install -d -o "$OWNER" -g "$RUNTIME_GROUP" -m 2770 "$ROOT/hls"
+install -d -o "$OWNER" -g "$RUNTIME_GROUP" -m 2770 "$ROOT/data"
+install -d -o "$OWNER" -g "$RUNTIME_GROUP" -m 2770 "$ROOT/data/offline_banners"
+install -d -o "$OWNER" -g "$RUNTIME_GROUP" -m 2750 "$ROOT/deploy"
 
 if [[ -f "$ROOT/deploy/.env" ]]; then
-	chown "$OWNER:$GROUP" "$ROOT/deploy/.env"
+	chown "$OWNER:$RUNTIME_GROUP" "$ROOT/deploy/.env"
 	chmod 640 "$ROOT/deploy/.env"
 fi
 
@@ -34,11 +40,8 @@ if [[ -f "$ROOT/deploy/.env.example" ]]; then
 	chmod 644 "$ROOT/deploy/.env.example"
 fi
 
-find "$ROOT" -type d ! -path "$ROOT/deploy" -exec chmod 775 {} +
-chmod 750 "$ROOT/deploy"
+# Binaries and install scripts executable, not group-writable.
+find "$ROOT" -type f \( -name 'api-server' -o -name 'rust-core' \) -exec chmod 755 {} +
+find "$ROOT/deploy" -type f -name '*.sh' -exec chmod 755 {} +
 
-find "$ROOT" -type f ! -path "$ROOT/deploy/.env" -exec chmod 664 {} +
-find "$ROOT" -type f \( -name 'api-server' -o -name 'rust-core' \) -exec chmod 775 {} +
-find "$ROOT/deploy" -type f -name '*.sh' -exec chmod 775 {} +
-
-echo "permissions applied: $OWNER:$GROUP under $ROOT"
+echo "permissions applied (H12): $OWNER:$RUNTIME_GROUP under $ROOT (source not group-writable)"

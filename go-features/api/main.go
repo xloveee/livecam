@@ -141,29 +141,21 @@ func initConfig() {
 		rustCoreURL = "http://127.0.0.1:8080"
 	}
 
-	allowedKeys := os.Getenv("ALLOWED_STREAM_KEYS")
-	if allowedKeys != "" {
-		cKeys := C.CString(allowedKeys)
-		C.init_stream_key_whitelist(cKeys)
-		C.free(unsafe.Pointer(cKeys))
-		count := strings.Count(allowedKeys, ",") + 1
-		log.Printf("Stream key whitelist loaded: %d keys", count)
-	} else {
-		log.Printf("Stream key whitelist: disabled (open mode)")
-	}
-
 	if err := applySessionSecret(os.Getenv("SESSION_SECRET")); err != nil {
 		log.Fatal(err)
 	}
-
-	broadcastPwd := os.Getenv("BROADCAST_PASSWORD")
-	if broadcastPwd != "" {
-		cPwd := C.CString(broadcastPwd)
-		C.init_broadcast_password(cPwd)
-		C.free(unsafe.Pointer(cPwd))
-		log.Printf("Broadcast page password: enabled")
+	if err := applyPublishPolicy(os.Getenv("ALLOWED_STREAM_KEYS"), os.Getenv("BROADCAST_PASSWORD"), envAllowOpenPublish()); err != nil {
+		log.Fatal(err)
+	}
+	if envAllowOpenPublish() && C.stream_key_whitelist_count() == 0 {
+		log.Printf("ALLOW_OPEN_PUBLISH: stream key whitelist disabled (open mode)")
 	} else {
-		log.Printf("Broadcast page password: disabled (open mode)")
+		log.Printf("Stream key whitelist loaded: %d keys", int(C.stream_key_whitelist_count()))
+	}
+	if envAllowOpenPublish() && C.broadcast_password_is_set() == 0 {
+		log.Printf("ALLOW_OPEN_PUBLISH: broadcast page password disabled (open mode)")
+	} else {
+		log.Printf("Broadcast page password: enabled")
 	}
 
 	stunURL := os.Getenv("STUN_URL")

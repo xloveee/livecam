@@ -96,3 +96,21 @@ func TestApplySessionSecretRejectsEmptyAndShort(t *testing.T) {
 		t.Fatalf("ok: %v", err)
 	}
 }
+
+func TestApplyPublishPolicyFailClosed(t *testing.T) {
+	if err := applyPublishPolicy("", "", false); err != errOpenPublish {
+		t.Fatalf("empty keys: %v", err)
+	}
+	if err := applyPublishPolicy(testKey, "", false); err != errOpenBroadcast {
+		t.Fatalf("empty password: %v", err)
+	}
+	if err := applyPublishPolicy("not-a-32-char-key", "pw", false); err != errOpenPublish {
+		t.Fatalf("bad key: %v", err)
+	}
+	if err := applyPublishPolicy(testKey, "studio-password", false); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+	if err := applyPublishPolicy("", "", true); err != nil {
+		t.Fatalf("allow open: %v", err)
+	}
+}

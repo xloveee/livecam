@@ -248,6 +248,16 @@ void init_broadcast_password(const char *password)
  * Constant-time check of the broadcast page password.
  * Returns 1 if no password is set (open mode) or if match, 0 if denied.
  */
+int32_t stream_key_whitelist_count(void)
+{
+    return g_whitelist_count;
+}
+
+int32_t broadcast_password_is_set(void)
+{
+    return (g_broadcast_password_len > 0) ? 1 : 0;
+}
+
 int32_t check_broadcast_password(const char *submitted)
 {
     if (g_broadcast_password_len == 0) {

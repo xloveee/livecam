@@ -8,6 +8,8 @@ package main
 import "C"
 import (
 	"errors"
+	"os"
+	"strings"
 	"unsafe"
 )
 
@@ -28,10 +30,41 @@ func applySessionSecret(secret string) error {
 	return nil
 }
 
+func initBroadcastPassword(password string) bool {
+	cs := C.CString(password)
+	C.init_broadcast_password(cs)
+	C.free(unsafe.Pointer(cs))
+	return C.broadcast_password_is_set() == 1
+}
+
 func initStreamKeyWhitelist(csv string) {
 	cs := C.CString(csv)
 	C.init_stream_key_whitelist(cs)
 	C.free(unsafe.Pointer(cs))
+}
+
+func applyPublishPolicy(keys, password string, allowOpen bool) error {
+	initStreamKeyWhitelist(keys)
+	initBroadcastPassword(password)
+	if allowOpen {
+		return nil
+	}
+	if C.stream_key_whitelist_count() <= 0 {
+		return errOpenPublish
+	}
+	if C.broadcast_password_is_set() != 1 {
+		return errOpenBroadcast
+	}
+	return nil
+}
+
+func envAllowOpenPublish() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ALLOW_OPEN_PUBLISH"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func generateSessionToken(streamKey string) string {
@@ -55,4 +88,6 @@ func sessionTokenHexLen() int { return int(C.SESSION_TOKEN_HEX_LEN) }
 var (
 	errSessionSecretRequired = errors.New("SESSION_SECRET is required")
 	errSessionSecretTooWeak  = errors.New("SESSION_SECRET must be at least 16 bytes")
+	errOpenPublish           = errors.New("ALLOWED_STREAM_KEYS is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
+	errOpenBroadcast         = errors.New("BROADCAST_PASSWORD is required (set ALLOW_OPEN_PUBLISH=1 only for local open mode)")
 )

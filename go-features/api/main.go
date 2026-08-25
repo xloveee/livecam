@@ -168,34 +168,8 @@ func initConfig() {
 		log.Printf("Broadcast page password: unset")
 	}
 
-	stunURL := os.Getenv("STUN_URL")
-	if stunURL == "" {
-		stunURL = "stun:stun.l.google.com:19302"
-	}
-
-	iceServers = []map[string]interface{}{
-		{"urls": stunURL},
-	}
-
-	turnURL := os.Getenv("TURN_URL")
-	turnUser := os.Getenv("TURN_USERNAME")
-	turnCred := os.Getenv("TURN_CREDENTIAL")
-	if turnURL != "" && turnUser != "" && turnCred != "" {
-		turnParts := strings.Split(turnURL, ",")
-		for i := range turnParts {
-			turnParts[i] = strings.TrimSpace(turnParts[i])
-		}
-		var turnURLs interface{} = turnParts[0]
-		if len(turnParts) > 1 {
-			turnURLs = turnParts
-		}
-		iceServers = append(iceServers, map[string]interface{}{
-			"urls":       turnURLs,
-			"username":   turnUser,
-			"credential": turnCred,
-		})
-	}
-
+	// H6: public ICE is built per /api/config request (no static TURN creds).
+	iceServers = publicIceServers()
 	log.Printf("Client dir: %s", clientDir)
 	log.Printf("Rust Core URL: %s", rustCoreURL)
 	log.Printf("ICE servers configured: %d entries", len(iceServers))
@@ -285,13 +259,7 @@ func configHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-
-	resp := map[string]interface{}{
-		"iceServers": iceServers,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	writePublicICEConfig(w)
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {

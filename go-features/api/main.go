@@ -92,7 +92,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth, nil))
+	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth, chatRoomAccessFetched))
 	mux.Handle("/api/donations/", donationHandler)
 	mux.HandleFunc("/api/whip/", whipProxyHandler)
 	mux.HandleFunc("/api/whep/", whepProxyHandler)
@@ -117,7 +117,7 @@ func main() {
 		hlsDir = "hls"
 	}
 	hlsFS := http.StripPrefix("/hls/", http.FileServer(http.Dir(hlsDir)))
-	mux.Handle("/hls/", setCORSAndCache(hlsFS))
+	mux.Handle("/hls/", setCORSAndCache(hlsFailClosed(hlsFS)))
 	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/privacy", privacyHandler)
@@ -543,6 +543,10 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 	roomID = strings.TrimSuffix(roomID, "/")
 
 	info := fetchRoomInfo(roomID)
+	if !info.Fetched {
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
 
 	if !info.IsLive {
 		log.Printf("Room '%s' is not live, rejecting viewer %s", roomID, ip)
@@ -642,6 +646,7 @@ type roomInfoResult struct {
 	HasPassword bool   `json:"has_password"`
 	IsLive      bool   `json:"is_live"`
 	Password    string `json:"password,omitempty"`
+	Fetched     bool   `json:"-"`
 }
 
 func fetchRoomInfo(roomID string) roomInfoResult {
@@ -656,6 +661,7 @@ func fetchRoomInfo(roomID string) roomInfoResult {
 	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
 		return roomInfoResult{}
 	}
+	info.Fetched = true
 	return info
 }
 
@@ -806,6 +812,10 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	info := fetchRoomInfo(roomID)
+	if !info.Fetched {
+		http.Error(w, "Media server unavailable", http.StatusBadGateway)
+		return
+	}
 
 	offlineBanner := ""
 	offlineBannerImg := ""
@@ -980,6 +990,9 @@ func startRoomStatePoller(hub *chat.Hub) {
 		for _, roomID := range roomIDs {
 			seen[roomID] = true
 			info := fetchRoomInfo(roomID)
+			if !info.Fetched {
+				continue
+			}
 			prev, exists := cache[roomID]
 
 			changed := !exists ||

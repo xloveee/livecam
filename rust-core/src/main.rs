@@ -7,6 +7,7 @@ mod api;
 mod config;
 mod hls;
 mod sfu;
+mod stun_loopback;
 
 use api::AppState;
 use config::Config;
@@ -17,28 +18,46 @@ async fn main() {
     str0m::crypto::from_feature_flags().install_process_default();
 
     let cfg = Config::from_env();
+    if cfg.internal_secret.len() < 16 {
+        panic!("SFU_INTERNAL_SECRET must be at least 16 bytes");
+    }
     tracing::info!("HTTP API on {}", cfg.http_bind);
-    tracing::info!("UDP bind on {}", cfg.udp_bind_addr());
+    tracing::info!("UDP bind addrs {:?}", cfg.media_bind_addrs());
     tracing::info!("ICE candidate {}", cfg.udp_candidate_addr());
+    tracing::info!("ICE host candidates {:?}", cfg.ice_candidate_addrs());
 
-    let udp_socket = tokio::net::UdpSocket::bind(cfg.udp_bind_addr())
-        .await
-        .expect("failed to bind UDP socket");
+    let mut udp_sockets = Vec::new();
+    for addr in cfg.media_bind_addrs() {
+        let sock = tokio::net::UdpSocket::bind(addr)
+            .await
+            .unwrap_or_else(|e| panic!("failed to bind UDP socket {addr}: {e}"));
+        let sndbuf: i32 = 2 * 1024 * 1024;
+        let rcvbuf: i32 = 2 * 1024 * 1024;
+        let sock_ref = socket2::SockRef::from(&sock);
+        if let Err(e) = sock_ref.set_send_buffer_size(sndbuf as usize) {
+            tracing::warn!("SO_SNDBUF set failed on {addr}: {e}");
+        }
+        if let Err(e) = sock_ref.set_recv_buffer_size(rcvbuf as usize) {
+            tracing::warn!("SO_RCVBUF set failed on {addr}: {e}");
+        }
+        tracing::info!(
+            "UDP {addr} buffers: send={}KB recv={}KB",
+            sock_ref.send_buffer_size().unwrap_or(0) / 1024,
+            sock_ref.recv_buffer_size().unwrap_or(0) / 1024,
+        );
+        udp_sockets.push(sock);
+    }
+    if udp_sockets.is_empty() {
+        panic!("no UDP media sockets bound");
+    }
 
-    let sndbuf: i32 = 2 * 1024 * 1024;
-    let rcvbuf: i32 = 2 * 1024 * 1024;
-    let sock_ref = socket2::SockRef::from(&udp_socket);
-    if let Err(e) = sock_ref.set_send_buffer_size(sndbuf as usize) {
-        tracing::warn!("SO_SNDBUF set failed: {}", e);
+    let stun_addr: std::net::SocketAddr = "127.0.0.1:3478".parse().unwrap();
+    match tokio::net::UdpSocket::bind(stun_addr).await {
+        Ok(stun_sock) => {
+            tokio::spawn(stun_loopback::run(stun_sock));
+        }
+        Err(e) => tracing::warn!("loopback STUN bind {stun_addr}: {e}"),
     }
-    if let Err(e) = sock_ref.set_recv_buffer_size(rcvbuf as usize) {
-        tracing::warn!("SO_RCVBUF set failed: {}", e);
-    }
-    tracing::info!(
-        "UDP buffers: send={}KB recv={}KB",
-        sock_ref.send_buffer_size().unwrap_or(0) / 1024,
-        sock_ref.recv_buffer_size().unwrap_or(0) / 1024,
-    );
 
     let (new_peer_tx, new_peer_rx) = mpsc::unbounded_channel();
     let (quality_tx, quality_rx) = mpsc::unbounded_channel();
@@ -46,11 +65,13 @@ async fn main() {
     let room_state = sfu::new_room_state();
 
     let udp_candidate_addr = cfg.udp_candidate_addr();
+    let ice_candidate_addrs = cfg.ice_candidate_addrs();
     if let Some(ref dir) = cfg.hls_dir {
         tracing::info!("HLS output enabled -> {:?}", dir);
     }
     tokio::spawn(sfu::run_sfu_loop(
-        udp_socket, udp_candidate_addr, new_peer_rx, quality_rx, disconnect_rx, room_state.clone(),
+        udp_sockets, udp_candidate_addr, ice_candidate_addrs.clone(),
+        new_peer_rx, quality_rx, disconnect_rx, room_state.clone(),
         cfg.hls_dir.clone(),
     ));
 
@@ -60,6 +81,8 @@ async fn main() {
         disconnect_tx,
         room_state,
         udp_candidate_addr,
+        ice_candidate_addrs,
+        internal_secret: cfg.internal_secret.clone(),
     });
 
     let app = Router::new()
@@ -69,6 +92,8 @@ async fn main() {
         .route("/room_info/:room_id", get(api::room_info_handler))
         .route("/viewer_limit/:room_id", post(api::viewer_limit_handler))
         .route("/room_password/:room_id", post(api::room_password_handler))
+        .route("/room_camera/:room_id", post(api::room_camera_handler))
+        .route("/check_room_password/:room_id", post(api::check_room_password_handler))
         .route("/active", get(api::active_handler))
         .route("/health", get(|| async { (StatusCode::OK, "ok") }))
         .with_state(state);

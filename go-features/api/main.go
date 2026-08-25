@@ -141,6 +141,9 @@ func initConfig() {
 	if err := applySessionSecret(os.Getenv("SESSION_SECRET")); err != nil {
 		log.Fatal(err)
 	}
+	if err := applySfuInternalSecret(envSfuInternalSecret()); err != nil {
+		log.Fatal(err)
+	}
 	if err := applyPublishPolicy(os.Getenv("ALLOWED_STREAM_KEYS"), os.Getenv("BROADCAST_PASSWORD"), envAllowOpenPublish()); err != nil {
 		log.Fatal(err)
 	}
@@ -287,7 +290,7 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := http.Get(rustCoreURL + "/health")
+	resp, err := rustGet(rustCoreURL + "/health")
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadGateway)
@@ -431,7 +434,7 @@ func activeProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/active", rustCoreURL)
-	resp, err := http.Get(rustURL)
+	resp, err := rustGet(rustURL)
 	if err != nil {
 		http.Error(w, "Media server unavailable", http.StatusBadGateway)
 		return
@@ -479,7 +482,7 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Valid WHIP request for slug %s..., proxying to Rust Core", slug[:8])
 
 	rustURL := fmt.Sprintf("%s/whip/%s", rustCoreURL, slug)
-	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
@@ -547,12 +550,7 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 	if info.HasPassword {
 		submitted := r.Header.Get("X-Room-Password")
-		cSubmitted := C.CString(submitted)
-		cStored := C.CString(info.Password)
-		defer C.free(unsafe.Pointer(cSubmitted))
-		defer C.free(unsafe.Pointer(cStored))
-
-		if C.check_room_password(cSubmitted, cStored) == 0 {
+		if !rustCheckRoomPassword(roomID, submitted) {
 			log.Printf("Room '%s' password rejected for viewer %s", roomID, ip)
 			http.Error(w, "Incorrect room password", http.StatusForbidden)
 			return
@@ -568,7 +566,7 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/whep/%s", rustCoreURL, roomID)
-	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
@@ -609,7 +607,7 @@ func whepDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/whep/%s", rustCoreURL, roomID)
-	req, err := http.NewRequest(http.MethodDelete, rustURL, nil)
+	req, err := rustRequest(http.MethodDelete, rustURL, nil)
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
@@ -639,7 +637,7 @@ type roomInfoResult struct {
 
 func fetchRoomInfo(roomID string) roomInfoResult {
 	infoURL := fmt.Sprintf("%s/room_info/%s", rustCoreURL, roomID)
-	resp, err := http.Get(infoURL)
+	resp, err := rustGet(infoURL)
 	if err != nil {
 		return roomInfoResult{}
 	}
@@ -862,7 +860,7 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/viewer_limit/%s", rustCoreURL, roomID)
-	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
@@ -915,7 +913,7 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/room_password/%s", rustCoreURL, roomID)
-	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return
@@ -1025,7 +1023,7 @@ func qualityProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rustURL := fmt.Sprintf("%s/quality/%s", rustCoreURL, roomID)
-	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
+	req, err := rustRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
 		return

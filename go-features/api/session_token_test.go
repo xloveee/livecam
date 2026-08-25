@@ -142,3 +142,15 @@ func TestPublicSlugNotPublishSecret(t *testing.T) {
 		t.Fatal("publisherOwnsRoom rejected own slug/key")
 	}
 }
+
+func TestApplySfuInternalSecret(t *testing.T) {
+	if err := applySfuInternalSecret(""); err != errSfuInternalRequired {
+		t.Fatalf("empty: %v", err)
+	}
+	if err := applySfuInternalSecret("short"); err != errSfuInternalTooWeak {
+		t.Fatalf("short: %v", err)
+	}
+	if err := applySfuInternalSecret("sixteen-byte-sfu!"); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+}

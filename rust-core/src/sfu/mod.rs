@@ -389,7 +389,18 @@ pub async fn run_sfu_loop(
                     return false;
                 }
                 if let Some(ref root) = hls_dir {
+                    if room.is_empty()
+                        || room.len() > 64
+                        || !room.bytes().all(|b| b.is_ascii_alphanumeric())
+                    {
+                        tracing::warn!("HLS linger refused unsafe room id");
+                        return false;
+                    }
                     let path = root.join(room);
+                    if !path.starts_with(root) {
+                        tracing::warn!("HLS linger refused path escape {:?}", path);
+                        return false;
+                    }
                     match fs::remove_dir_all(&path) {
                         Ok(()) => tracing::info!("HLS linger expired, removed {:?}", path),
                         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}

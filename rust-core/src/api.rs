@@ -14,7 +14,11 @@ use str0m::change::SdpOffer;
 use str0m::{Candidate, RtcConfig};
 use tokio::sync::mpsc;
 
-use crate::sfu::{NewPeer, PeerDisconnect, PeerId, PeerRole, QualityChange, RoomStateMap};
+use crate::config::whep_ice_addrs;
+use crate::sfu::{
+    CameraLayout, NewPeer, PeerDisconnect, PeerId, PeerRole, QualityChange, RoomStateMap, SceneLayer,
+    SceneLayout,
+};
 
 /// Shared state injected into axum handlers.
 pub struct AppState {
@@ -23,6 +27,69 @@ pub struct AppState {
     pub disconnect_tx: mpsc::UnboundedSender<PeerDisconnect>,
     pub room_state: RoomStateMap,
     pub udp_candidate_addr: SocketAddr,
+    pub ice_candidate_addrs: Vec<SocketAddr>,
+    pub internal_secret: String,
+}
+
+pub fn valid_http_room_id(id: &str) -> bool {
+    id.len() == 32 && id.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+pub fn safe_hls_room_id(id: &str) -> bool {
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
+fn secrets_equal(a: &str, b: &str) -> bool {
+    let ab = a.as_bytes();
+    let bb = b.as_bytes();
+    if ab.len() != bb.len() || ab.is_empty() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for i in 0..ab.len() {
+        diff |= ab[i] ^ bb[i];
+    }
+    diff == 0
+}
+
+fn authorize(state: &AppState, headers: &HeaderMap) -> bool {
+    let got = headers
+        .get("X-SFU-Internal")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    secrets_equal(got, &state.internal_secret)
+}
+
+
+fn add_host_candidates(rtc: &mut str0m::Rtc, addrs: &[SocketAddr]) -> Result<(), String> {
+    if addrs.is_empty() {
+        return Err("no ICE host candidates configured".into());
+    }
+    for addr in addrs {
+        let candidate = Candidate::host(*addr, "udp")
+            .map_err(|e| format!("Failed to create host candidate {}: {:?}", addr, e))?;
+        rtc.add_local_candidate(candidate);
+    }
+    Ok(())
+}
+
+/// str0m requires `s=-` (JSEP). ffmpeg WHIP emits `s=FFmpegPublishSession`.
+fn normalize_sdp_session_name(sdp: &str) -> String {
+    let mut out = String::with_capacity(sdp.len());
+    for line in sdp.split_inclusive(['\n']) {
+        let content = line.trim_end_matches(['\r', '\n']);
+        if let Some(name) = content.strip_prefix("s=") {
+            if name != "-" {
+                out.push_str("s=-");
+                out.push_str(&line[content.len()..]);
+                continue;
+            }
+        }
+        out.push_str(line);
+    }
+    out
 }
 
 /// WHIP Ingest Handler — receives SDP Offer from the Broadcaster (proxied via Go).
@@ -30,9 +97,24 @@ pub struct AppState {
 pub async fn whip_handler(
     State(state): State<Arc<AppState>>,
     Path(stream_id): Path<String>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> impl IntoResponse {
-    let sdp_raw = String::from_utf8_lossy(&body);
+    if !authorize(&state, &headers) {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [("Content-Type", "text/plain")],
+            "unauthorized".to_string(),
+        );
+    }
+    if !valid_http_room_id(&stream_id) {
+        return (
+            StatusCode::BAD_REQUEST,
+            [("Content-Type", "text/plain")],
+            "invalid room id".to_string(),
+        );
+    }
+    let sdp_raw = normalize_sdp_session_name(&String::from_utf8_lossy(&body));
     tracing::info!("WHIP offer for stream '{}'", stream_id);
 
     let offer = match SdpOffer::from_sdp_string(&sdp_raw) {
@@ -56,18 +138,14 @@ pub async fn whip_handler(
         .enable_opus(true)
         .build(Instant::now());
 
-    let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to create host candidate: {:?}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [("Content-Type", "text/plain")],
-                "Internal candidate error".to_string(),
-            );
-        }
-    };
-    rtc.add_local_candidate(candidate);
+    if let Err(e) = add_host_candidates(&mut rtc, &state.ice_candidate_addrs) {
+        tracing::error!("{}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [("Content-Type", "text/plain")],
+            "Internal candidate error".to_string(),
+        );
+    }
 
     let answer = match rtc.sdp_api().accept_offer(offer) {
         Ok(a) => a,
@@ -112,10 +190,21 @@ pub async fn whip_handler(
 pub async fn whep_handler(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
+    headers: HeaderMap,
     body: Bytes,
 ) -> axum::response::Response {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, "invalid room id").into_response();
+    }
     let sdp_raw = String::from_utf8_lossy(&body);
-    tracing::info!("WHEP offer for room '{}'", room_id);
+    let offer_cands: Vec<&str> = sdp_raw
+        .lines()
+        .filter(|l| l.starts_with("a=candidate:") || l.starts_with("a=ice-ufrag") || l.starts_with("a=ice-pwd"))
+        .collect();
+    tracing::info!("WHEP offer for room '{}' cands={:?}", room_id, offer_cands);
 
     let is_live = state.room_state.lock()
         .ok()
@@ -154,18 +243,16 @@ pub async fn whep_handler(
         .enable_opus(true)
         .build(Instant::now());
 
-    let candidate = match Candidate::host(state.udp_candidate_addr, "udp") {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!("Failed to create host candidate: {:?}", e);
-            return (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                [("Content-Type", "text/plain")],
-                "Internal candidate error",
-            ).into_response();
-        }
-    };
-    rtc.add_local_candidate(candidate);
+    let whep_addrs = whep_ice_addrs(&sdp_raw, &state.ice_candidate_addrs);
+    tracing::info!("WHEP ICE hosts for room '{}': {:?}", room_id, whep_addrs);
+    if let Err(e) = add_host_candidates(&mut rtc, &whep_addrs) {
+        tracing::error!("{}", e);
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            [("Content-Type", "text/plain")],
+            "Internal candidate error",
+        ).into_response();
+    }
 
     let answer = match rtc.sdp_api().accept_offer(offer) {
         Ok(a) => a,
@@ -217,7 +304,13 @@ pub async fn quality_handler(
     Path(room_id): Path<String>,
     headers: HeaderMap,
     Json(body): Json<QualityRequest>,
-) -> impl IntoResponse {
+ ) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, "invalid room id");
+    }
     let session_id = match headers.get("X-Session-Id").and_then(|v| v.to_str().ok()) {
         Some(id) => id.to_owned(),
         None => {
@@ -289,7 +382,9 @@ pub struct RoomInfoResponse {
     pub has_password: bool,
     pub is_live: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub password: Option<String>,
+    pub camera: Option<CameraLayout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scene: Option<SceneLayout>,
 }
 
 /// Returns current viewer count, max viewer cap, and password state for a room.
@@ -298,7 +393,28 @@ pub struct RoomInfoResponse {
 pub async fn room_info_handler(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, Json(RoomInfoResponse {
+            viewer_count: 0,
+            max_viewers: 0,
+            has_password: false,
+            is_live: false,
+            camera: None,
+            scene: None,
+        })).into_response();
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, Json(RoomInfoResponse {
+            viewer_count: 0,
+            max_viewers: 0,
+            has_password: false,
+            is_live: false,
+            camera: None,
+            scene: None,
+        })).into_response();
+    }
     let info = state.room_state.lock()
         .ok()
         .and_then(|s| s.get(&room_id).cloned());
@@ -309,18 +425,20 @@ pub async fn room_info_handler(
             max_viewers: info.max_viewers,
             has_password: info.password.is_some(),
             is_live: info.is_live,
-            password: info.password,
+            camera: info.camera,
+            scene: info.scene,
         },
         None => RoomInfoResponse {
             viewer_count: 0,
             max_viewers: 0,
             has_password: false,
             is_live: false,
-            password: None,
+            camera: None,
+            scene: None,
         },
     };
 
-    (StatusCode::OK, Json(resp))
+    (StatusCode::OK, Json(resp)).into_response()
 }
 
 #[derive(Deserialize)]
@@ -332,8 +450,15 @@ pub struct ViewerLimitRequest {
 pub async fn viewer_limit_handler(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<ViewerLimitRequest>,
 ) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, "invalid room id");
+    }
     if let Ok(mut s) = state.room_state.lock() {
         s.entry(room_id.clone()).or_default().max_viewers = body.max_viewers;
     }
@@ -351,8 +476,15 @@ pub struct RoomPasswordRequest {
 pub async fn room_password_handler(
     State(state): State<Arc<AppState>>,
     Path(room_id): Path<String>,
+    headers: HeaderMap,
     Json(body): Json<RoomPasswordRequest>,
 ) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized");
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, "invalid room id");
+    }
     let pw = if body.password.is_empty() { None } else { Some(body.password.clone()) };
     let active = pw.is_some();
 
@@ -364,6 +496,119 @@ pub async fn room_password_handler(
     (StatusCode::OK, "ok")
 }
 
+#[derive(Deserialize)]
+pub struct CameraLayoutRequest {
+    #[serde(default)]
+    pub x: f32,
+    #[serde(default)]
+    pub y: f32,
+    #[serde(default)]
+    pub w: f32,
+    #[serde(default)]
+    pub h: f32,
+    #[serde(default)]
+    pub visible: bool,
+    #[serde(default)]
+    pub plate_w: u32,
+    #[serde(default)]
+    pub plate_h: u32,
+    #[serde(default)]
+    pub layers: Vec<SceneLayer>,
+}
+
+fn clamp_norm(v: f32) -> f32 {
+    v.clamp(-1.0, 2.0)
+}
+
+fn clamp_scene_layer(mut layer: SceneLayer) -> SceneLayer {
+    layer.x = clamp_norm(layer.x);
+    layer.y = clamp_norm(layer.y);
+    layer.w = layer.w.clamp(0.0, 2.0);
+    layer.h = layer.h.clamp(0.0, 2.0);
+    layer.visible = layer.visible && layer.w > 0.0 && layer.h > 0.0;
+    layer
+}
+
+fn camera_from_scene(scene: &SceneLayout) -> Option<CameraLayout> {
+    let cam = scene.layers.iter().find(|l| {
+        l.visible && (l.kind == "camera-face" || l.kind == "camera-extra")
+    }).or_else(|| {
+        scene.layers.iter().find(|l| l.visible && l.kind != "screen")
+    });
+    cam.map(|c| CameraLayout {
+        x: c.x,
+        y: c.y,
+        w: c.w,
+        h: c.h,
+        visible: c.visible,
+    })
+}
+
+/// Studio scene (every video layer x/y/w/h + track index) for WHEP composite.
+/// Old `{x,y,w,h,visible}` camera-only bodies still work.
+pub async fn room_camera_handler(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<CameraLayoutRequest>,
+) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, "unauthorized").into_response();
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, "invalid room id").into_response();
+    }
+    let scene = if !body.layers.is_empty() {
+        SceneLayout {
+            plate_w: if body.plate_w > 0 { body.plate_w } else { 1280 },
+            plate_h: if body.plate_h > 0 { body.plate_h } else { 720 },
+            layers: body.layers.into_iter().map(clamp_scene_layer).collect(),
+        }
+    } else {
+        let visible = body.visible && body.w > 0.0 && body.h > 0.0;
+        SceneLayout {
+            plate_w: 1280,
+            plate_h: 720,
+            layers: vec![clamp_scene_layer(SceneLayer {
+                id: "camera".into(),
+                kind: "camera-face".into(),
+                x: body.x,
+                y: body.y,
+                w: body.w,
+                h: body.h,
+                visible,
+                track: 0,
+                z: 1,
+            })],
+        }
+    };
+    let cam = camera_from_scene(&scene).unwrap_or(CameraLayout {
+        x: body.x.clamp(-1.0, 2.0),
+        y: body.y.clamp(-1.0, 2.0),
+        w: body.w.clamp(0.0, 2.0),
+        h: body.h.clamp(0.0, 2.0),
+        visible: false,
+    });
+    if let Ok(mut s) = state.room_state.lock() {
+        let info = s.entry(room_id.clone()).or_default();
+        info.camera = Some(cam.clone());
+        info.scene = Some(scene.clone());
+    }
+    tracing::info!(
+        "Room scene for '{}': plate={}x{} layers={} camera visible={} {:.3},{:.3} {:.3}x{:.3}",
+        room_id,
+        scene.plate_w,
+        scene.plate_h,
+        scene.layers.len(),
+        cam.visible,
+        cam.x,
+        cam.y,
+        cam.w,
+        cam.h
+    );
+    (StatusCode::OK, "ok").into_response()
+}
+
 #[derive(Serialize)]
 pub struct ActiveRoomResponse {
     pub room_id: Option<String>,
@@ -373,7 +618,11 @@ pub struct ActiveRoomResponse {
 /// Returns the first currently-live room, or null if no broadcast is active.
 pub async fn active_handler(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
 ) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, Json(ActiveRoomResponse { room_id: None, has_password: false })).into_response();
+    }
     let active = state.room_state.lock()
         .ok()
         .and_then(|s| {
@@ -387,5 +636,72 @@ pub async fn active_handler(
         None => ActiveRoomResponse { room_id: None, has_password: false },
     };
 
-    (StatusCode::OK, Json(resp))
+    (StatusCode::OK, Json(resp)).into_response()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_sdp_session_name;
+
+    #[test]
+    fn ffmpeg_session_name_becomes_dash() {
+        let raw = "v=0\r\no=FFmpeg 1 2 IN IP4 127.0.0.1\r\ns=FFmpegPublishSession\r\nt=0 0\r\n";
+        let got = normalize_sdp_session_name(raw);
+        assert!(got.contains("s=-\r\n"));
+        assert!(!got.contains("FFmpegPublishSession"));
+    }
+}
+
+
+#[derive(Deserialize)]
+pub struct CheckRoomPasswordRequest {
+    pub password: String,
+}
+
+#[derive(Serialize)]
+pub struct CheckRoomPasswordResponse {
+    pub ok: bool,
+}
+
+pub async fn check_room_password_handler(
+    State(state): State<Arc<AppState>>,
+    Path(room_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<CheckRoomPasswordRequest>,
+) -> impl IntoResponse {
+    if !authorize(&state, &headers) {
+        return (StatusCode::UNAUTHORIZED, Json(CheckRoomPasswordResponse { ok: false })).into_response();
+    }
+    if !valid_http_room_id(&room_id) {
+        return (StatusCode::BAD_REQUEST, Json(CheckRoomPasswordResponse { ok: false })).into_response();
+    }
+    let stored = state
+        .room_state
+        .lock()
+        .ok()
+        .and_then(|s| s.get(&room_id).and_then(|i| i.password.clone()));
+    let ok = match stored {
+        Some(pw) => pw == body.password,
+        None => body.password.is_empty(),
+    };
+    (StatusCode::OK, Json(CheckRoomPasswordResponse { ok })).into_response()
+}
+
+#[cfg(test)]
+mod auth_tests {
+    use super::{safe_hls_room_id, valid_http_room_id};
+
+    #[test]
+    fn http_room_id_is_32_alnum() {
+        assert!(valid_http_room_id("abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(!valid_http_room_id("room1"));
+        assert!(!valid_http_room_id("../etc/passwd"));
+    }
+
+    #[test]
+    fn linger_room_id_rejects_path_escape() {
+        assert!(safe_hls_room_id("roomlinger"));
+        assert!(!safe_hls_room_id("../etc"));
+        assert!(!safe_hls_room_id("a/b"));
+    }
 }

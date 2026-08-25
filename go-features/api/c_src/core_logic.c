@@ -526,6 +526,22 @@ int32_t init_session_secret(const char *secret)
  * Never reversible to SESSION_SECRET. Open mode still requires the secret to mint.
  * out_hex must be at least SESSION_TOKEN_HEX_LEN + 1 bytes.
  */
+
+/* Public watch/HLS/chat id. 32 hex chars of SHA-256(stream_key). Not reversible to the key. */
+void public_slug_from_key(const char *stream_key, char *out_hex)
+{
+    if (out_hex == NULL) {
+        return;
+    }
+    out_hex[0] = '\0';
+    if (is_format_valid(stream_key) == 0) {
+        return;
+    }
+    uint8_t digest[32];
+    sha256((const uint8_t *)stream_key, STREAM_KEY_EXACT_LEN, digest);
+    bytes_to_hex(digest, 16, out_hex);
+}
+
 void generate_session_token(const char *stream_key, char *out_hex)
 {
     if (out_hex == NULL) {

@@ -233,6 +233,7 @@
                 if (!resp.ok) { window.location.reload(); return; }
                 var data = await resp.json();
                 authenticatedKey = data.stream_key;
+                publicSlug = data.public_slug || "";
                 streamKeyInput.value = data.stream_key;
                 chatConnect();
                 enumerateDevices();

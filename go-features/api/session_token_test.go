@@ -114,3 +114,31 @@ func TestApplyPublishPolicyFailClosed(t *testing.T) {
 		t.Fatalf("allow open: %v", err)
 	}
 }
+
+func TestPublicSlugNotPublishSecret(t *testing.T) {
+	slug := publicSlug(testKey)
+	if len(slug) != 32 {
+		t.Fatalf("slug len %d", len(slug))
+	}
+	if slug == testKey {
+		t.Fatal("public slug equals publish secret (C4 still open)")
+	}
+	for _, c := range slug {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			t.Fatalf("slug not hex: %q", slug)
+		}
+	}
+	if publicSlug(testKey) != slug {
+		t.Fatal("slug not stable")
+	}
+	other := "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"
+	if publicSlug(other) == slug {
+		t.Fatal("distinct keys share a slug")
+	}
+	if publisherOwnsRoom(testKey, other) {
+		t.Fatal("publisherOwnsRoom accepted a foreign key")
+	}
+	if !publisherOwnsRoom(testKey, slug) || !publisherOwnsRoom(testKey, testKey) {
+		t.Fatal("publisherOwnsRoom rejected own slug/key")
+	}
+}

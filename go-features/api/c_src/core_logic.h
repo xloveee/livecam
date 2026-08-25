@@ -20,6 +20,7 @@ int32_t validate_stream_key(const char *key);
 int32_t check_viewer_rate_limit(const char *ip_address);
 int32_t check_viewer_cap(int32_t current_viewers, int32_t max_viewers);
 int32_t check_room_password(const char *submitted, const char *stored);
+void    public_slug_from_key(const char *stream_key, char *out_hex);
 void    generate_session_token(const char *stream_key, char *out_hex);
 int32_t extract_stream_key_from_token(const char *token_hex, char *out_key);
 int32_t validate_session_token_for_key(const char *token_hex, const char *stream_key);

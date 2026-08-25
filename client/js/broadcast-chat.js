@@ -11,7 +11,7 @@ var chatInput = document.getElementById('chat-input');
 var btnChatSend = document.getElementById('btn-chat-send');
 
 function chatConnect() {
-    var roomId = authenticatedKey;
+    var roomId = (typeof publicSlug !== "undefined" && publicSlug) ? publicSlug : "";
     if (!roomId || !chatNick) return;
     if (chatWs) { chatWs.close(); chatWs = null; }
 

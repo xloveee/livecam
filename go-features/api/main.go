@@ -36,26 +36,23 @@ func main() {
 
 	chatHub := chat.NewHub()
 	chatAuth := chat.AuthFunc(func(r *http.Request) (string, bool) {
-		cookie, err := r.Cookie("broadcaster_session")
-		if err == nil && cookie.Value != "" {
-			if key, ok := streamKeyFromSessionToken(cookie.Value); ok {
-				return key, true
+		var key string
+		if cookie, err := r.Cookie("broadcaster_session"); err == nil && cookie.Value != "" {
+			if k, ok := streamKeyFromSessionToken(cookie.Value); ok {
+				key = k
 			}
 		}
-		bearer := bearerTokenFromRequest(r)
-		if bearer == "" {
+		if key == "" {
+			bearer := bearerTokenFromRequest(r)
+			if k, ok := streamKeyFromSessionToken(bearer); ok {
+				key = k
+			}
+		}
+		if key == "" {
 			return "", false
 		}
-		// Path: /api/chat/{roomId} — roomId equals stream key for broadcasters.
-		path := strings.TrimPrefix(r.URL.Path, "/api/chat/")
-		roomID := strings.TrimSuffix(path, "/")
-		if roomID != "" && validateBearerForStreamKey(bearer, roomID) {
-			return roomID, true
-		}
-		if key, ok := streamKeyFromSessionToken(bearer); ok {
-			return key, true
-		}
-		return "", false
+		// Chat room is the public slug, never the publish secret.
+		return publicSlug(key), true
 	})
 
 	donationDBPath := os.Getenv("DONATION_DB_PATH")
@@ -87,7 +84,7 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth))
+	mux.HandleFunc("/api/chat/", chat.NewHandler(chatHub, chatAuth, nil))
 	mux.Handle("/api/donations/", donationHandler)
 	mux.HandleFunc("/api/whip/", whipProxyHandler)
 	mux.HandleFunc("/api/whep/", whepProxyHandler)
@@ -359,9 +356,10 @@ func authBroadcastHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status":     "ok",
-		"token":      token,
-		"stream_key": req.StreamKey,
+		"status":      "ok",
+		"token":       token,
+		"stream_key":  req.StreamKey,
+		"public_slug": publicSlug(req.StreamKey),
 	})
 }
 
@@ -372,8 +370,9 @@ func authBroadcastCheckHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
-		"status":     "ok",
-		"stream_key": streamKey,
+		"status":      "ok",
+		"stream_key":  streamKey,
+		"public_slug": publicSlug(streamKey),
 	})
 }
 
@@ -456,20 +455,18 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	streamKey := r.URL.Path[len("/api/whip/"):]
-
-	cKey := C.CString(streamKey)
-	defer C.free(unsafe.Pointer(cKey))
-
-	isValid := C.validate_stream_key(cKey)
-	if isValid == 0 {
-		http.Error(w, "Invalid stream key", http.StatusUnauthorized)
+	streamKey, ok := requireBroadcasterAuth(w, r)
+	if !ok {
 		return
 	}
-
-	bearer := bearerTokenFromRequest(r)
-	if bearer != "" && !validateBearerForStreamKey(bearer, streamKey) {
+	slug := publicSlug(streamKey)
+	if slug == "" {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+	pathID := strings.TrimSuffix(r.URL.Path[len("/api/whip/"):], "/")
+	if pathID != "" && !publisherOwnsRoom(streamKey, pathID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
 
@@ -479,9 +476,9 @@ func whipProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Valid WHIP request for key: %s, proxying to Rust Core...", streamKey)
+	log.Printf("Valid WHIP request for slug %s..., proxying to Rust Core", slug[:8])
 
-	rustURL := fmt.Sprintf("%s/whip/%s", rustCoreURL, streamKey)
+	rustURL := fmt.Sprintf("%s/whip/%s", rustCoreURL, slug)
 	req, err := http.NewRequest(http.MethodPost, rustURL, bytes.NewReader(body))
 	if err != nil {
 		http.Error(w, "Failed to create proxy request", http.StatusInternalServerError)
@@ -693,10 +690,11 @@ func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	if roomID != streamKey {
+	if !publisherOwnsRoom(streamKey, roomID) {
 		http.Error(w, "Forbidden", http.StatusForbidden)
 		return
 	}
+	roomID = publicSlug(streamKey)
 	if err := r.ParseMultipartForm(maxOfflineBannerUploadBytes); err != nil {
 		http.Error(w, "Bad request", http.StatusBadRequest)
 		return
@@ -842,13 +840,20 @@ func viewerLimitProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	_, ok := requireBroadcasterAuth(w, r)
+	streamKey, ok := requireBroadcasterAuth(w, r)
 	if !ok {
 		return
 	}
 
-	roomID := r.URL.Path[len("/api/viewer_limit/"):]
-	roomID = strings.TrimSuffix(roomID, "/")
+	roomID := strings.TrimSuffix(r.URL.Path[len("/api/viewer_limit/"):], "/")
+	if roomID == "" {
+		roomID = publicSlug(streamKey)
+	}
+	if !publisherOwnsRoom(streamKey, roomID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	roomID = publicSlug(streamKey)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -888,13 +893,20 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	_, ok := requireBroadcasterAuth(w, r)
+	streamKey, ok := requireBroadcasterAuth(w, r)
 	if !ok {
 		return
 	}
 
-	roomID := r.URL.Path[len("/api/room_password/"):]
-	roomID = strings.TrimSuffix(roomID, "/")
+	roomID := strings.TrimSuffix(r.URL.Path[len("/api/room_password/"):], "/")
+	if roomID == "" {
+		roomID = publicSlug(streamKey)
+	}
+	if !publisherOwnsRoom(streamKey, roomID) {
+		http.Error(w, "Forbidden", http.StatusForbidden)
+		return
+	}
+	roomID = publicSlug(streamKey)
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

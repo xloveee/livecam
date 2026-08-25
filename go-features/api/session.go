@@ -67,6 +67,22 @@ func envAllowOpenPublish() bool {
 	}
 }
 
+func publicSlug(streamKey string) string {
+	ck := C.CString(streamKey)
+	defer C.free(unsafe.Pointer(ck))
+	var buf [C.STREAM_KEY_EXACT_LEN + 1]C.char
+	C.public_slug_from_key(ck, &buf[0])
+	return C.GoString(&buf[0])
+}
+
+func publisherOwnsRoom(streamKey, roomID string) bool {
+	if streamKey == "" || roomID == "" {
+		return false
+	}
+	slug := publicSlug(streamKey)
+	return roomID == slug || roomID == streamKey
+}
+
 func generateSessionToken(streamKey string) string {
 	ck := C.CString(streamKey)
 	defer C.free(unsafe.Pointer(ck))

@@ -30,6 +30,7 @@ var statsInterval = null;
 
 var activeStreamKey = null;
 var authenticatedKey = '';
+var publicSlug = '';
 
 /** Firefox: recoverable `disconnected` ICE; publish path uses addTrack + VP8 prefs instead of simulcast transceiver. */
 function isFirefoxBrowser() {
@@ -198,7 +199,7 @@ bitrateSelect.onchange = applyBitrateCap;
 
 async function setViewerLimit(streamKey, max) {
     try {
-        await fetch('/api/viewer_limit/' + streamKey, {
+        await fetch('/api/viewer_limit/' + (publicSlug || streamKey), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ max_viewers: parseInt(max, 10) || 0 })
@@ -208,7 +209,7 @@ async function setViewerLimit(streamKey, max) {
 
 async function setRoomPassword(streamKey, password) {
     try {
-        await fetch('/api/room_password/' + streamKey, {
+        await fetch('/api/room_password/' + (publicSlug || streamKey), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ password: password || '' })
@@ -299,7 +300,7 @@ function livecamApiRoot() {
 
 /** Try /api/... then /offline_banner_upload/... (nginx often strips /api). */
 function offlineBannerUploadURLs(streamKey) {
-    var enc = encodeURIComponent(streamKey);
+    var enc = encodeURIComponent(publicSlug || streamKey);
     var root = livecamApiRoot();
     return [
         root + '/api/offline_banner_upload/' + enc,

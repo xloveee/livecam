@@ -138,6 +138,15 @@ impl Default for RoomInfo {
 /// Thread-safe map of room_id -> RoomInfo, shared between API and SFU.
 pub type RoomStateMap = Arc<Mutex<HashMap<String, RoomInfo>>>;
 
+/// A publisher that sent media recently is live. Do not evict them
+/// for a new WHIP (H13). Stale leftovers (no media) may be replaced.
+pub fn live_publisher_blocks_replace(last_media_at: Option<Instant>, now: Instant) -> bool {
+    match last_media_at {
+        Some(t) => now.duration_since(t) < Duration::from_secs(3),
+        None => false,
+    }
+}
+
 pub fn new_room_state() -> RoomStateMap {
     Arc::new(Mutex::new(HashMap::new()))
 }
@@ -530,6 +539,19 @@ pub async fn run_sfu_loop(
             let mut peer = Peer::new(peer_id, new.rtc, role, new.room_id);
 
             if role == PeerRole::Broadcaster {
+                let now = Instant::now();
+                let live = peers.iter().any(|p| {
+                    p.role == PeerRole::Broadcaster
+                        && p.room_id == room_id
+                        && live_publisher_blocks_replace(p.last_media_at, now)
+                });
+                if live {
+                    tracing::warn!(
+                        "{}: refusing replace of live publisher in '{}'",
+                        peer_id, room_id
+                    );
+                    continue;
+                }
                 peer.last_media_at = Some(Instant::now());
                 let mut evict_ids: Vec<PeerId> = Vec::new();
                 for old in peers.iter_mut().filter(|p| {
@@ -1172,5 +1194,27 @@ fn propagate(
         }
 
         Propagated::Noop => {}
+    }
+}
+
+
+#[cfg(test)]
+mod replace_tests {
+    use super::live_publisher_blocks_replace;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn live_publisher_blocks_replace_when_media_is_recent() {
+        let now = Instant::now();
+        assert!(live_publisher_blocks_replace(Some(now), now));
+        assert!(live_publisher_blocks_replace(
+            Some(now - Duration::from_secs(2)),
+            now
+        ));
+        assert!(!live_publisher_blocks_replace(
+            Some(now - Duration::from_secs(3)),
+            now
+        ));
+        assert!(!live_publisher_blocks_replace(None, now));
     }
 }

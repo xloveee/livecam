@@ -114,6 +114,19 @@ pub async fn whip_handler(
             "invalid room id".to_string(),
         );
     }
+    let is_live = state
+        .room_state
+        .lock()
+        .ok()
+        .and_then(|s| s.get(&stream_id).map(|info| info.is_live))
+        .unwrap_or(false);
+    if is_live {
+        return (
+            StatusCode::CONFLICT,
+            [("Content-Type", "text/plain")],
+            "room already has a live publisher".to_string(),
+        );
+    }
     let sdp_raw = normalize_sdp_session_name(&String::from_utf8_lossy(&body));
     tracing::info!("WHIP offer for stream '{}'", stream_id);
 

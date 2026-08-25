@@ -37,8 +37,20 @@ pub struct RoomHls {
     master_rid: Option<String>,
 }
 
+
+/// M5: only 32-alnum room ids may touch the HLS filesystem.
+fn valid_hls_room_id(id: &str) -> bool {
+    // M5/H14: charset allowlist — blocks path escape; WHIP still uses 32-alnum.
+    !id.is_empty()
+        && id.len() <= 64
+        && id.bytes().all(|b| b.is_ascii_alphanumeric())
+}
+
 impl RoomHls {
     pub fn start(room_id: &str, hls_root: &Path) -> Result<Self, String> {
+        if !valid_hls_room_id(room_id) {
+            return Err("invalid hls room id".into());
+        }
         let hls_dir = hls_root.join(room_id);
         fs::create_dir_all(&hls_dir)
             .map_err(|e| format!("failed to create HLS dir {:?}: {}", hls_dir, e))?;
@@ -182,6 +194,9 @@ impl HlsSink {
         playlist_name: &str,
         segment_prefix: &str,
     ) -> Result<Self, String> {
+        if !valid_hls_room_id(room_id) {
+            return Err("invalid hls room id".into());
+        }
         let hls_dir = hls_root.join(room_id);
         fs::create_dir_all(&hls_dir)
             .map_err(|e| format!("failed to create HLS dir {:?}: {}", hls_dir, e))?;
@@ -1357,5 +1372,19 @@ mod tests {
             room.stop();
             let _ = fs::remove_dir_all(&root);
         }
+    }
+}
+
+#[cfg(test)]
+mod m5_tests {
+    use super::valid_hls_room_id;
+    #[test]
+    fn rejects_path_escape_room_id() {
+        assert!(valid_hls_room_id("abcdefghijklmnopqrstuvwxyz012345"));
+        assert!(valid_hls_room_id("room1"));
+        assert!(!valid_hls_room_id("../etc"));
+        assert!(!valid_hls_room_id("a/b"));
+        assert!(!valid_hls_room_id(""));
+        assert!(!valid_hls_room_id("abcdefghijklmnopqrstuvwxyz01234/"));
     }
 }

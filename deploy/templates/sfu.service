@@ -1,0 +1,26 @@
+[Unit]
+Description=Rust Core SFU (WebRTC Media Plane)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+EnvironmentFile=__INSTALL_ROOT__/deploy/.env
+WorkingDirectory=__INSTALL_ROOT__/rust-core
+ExecStart=__INSTALL_ROOT__/rust-core/target/release/rust-core
+Restart=always
+RestartSec=3
+LimitNOFILE=65535
+# M6 hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=__INSTALL_ROOT__/hls __INSTALL_ROOT__/data __INSTALL_ROOT__/archive
+
+[Install]
+WantedBy=multi-user.target

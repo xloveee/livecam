@@ -4,12 +4,18 @@
 
 Defaults:livecam !requiretty
 
+# M7: exact unit names only (no sfu* / nginx* globs).
 Cmnd_Alias LIVECAM_SYSTEMD = /bin/systemctl daemon-reload, \
-    /bin/systemctl * sfu*, /bin/systemctl * go-proxy*, /bin/systemctl * nginx*
+    /bin/systemctl start sfu, /bin/systemctl stop sfu, /bin/systemctl restart sfu, /bin/systemctl status sfu, /bin/systemctl enable sfu, /bin/systemctl disable sfu, \
+    /bin/systemctl start go-proxy, /bin/systemctl stop go-proxy, /bin/systemctl restart go-proxy, /bin/systemctl status go-proxy, /bin/systemctl enable go-proxy, /bin/systemctl disable go-proxy, \
+    /bin/systemctl start nginx, /bin/systemctl stop nginx, /bin/systemctl restart nginx, /bin/systemctl status nginx, /bin/systemctl enable nginx, /bin/systemctl disable nginx, \
+    /bin/systemctl start caddy, /bin/systemctl stop caddy, /bin/systemctl restart caddy, /bin/systemctl status caddy, /bin/systemctl enable caddy, /bin/systemctl disable caddy
 
 Cmnd_Alias LIVECAM_NGINX_TEST = /usr/sbin/nginx -t
 
-Cmnd_Alias LIVECAM_JOURNAL = /usr/bin/journalctl
+# M7: journal scoped to livecam units only.
+Cmnd_Alias LIVECAM_JOURNAL = /usr/bin/journalctl -u sfu, /usr/bin/journalctl -u go-proxy, /usr/bin/journalctl -u nginx, /usr/bin/journalctl -u caddy, \
+    /usr/bin/journalctl -u sfu -u go-proxy, /usr/bin/journalctl -u sfu -u go-proxy -u nginx, /usr/bin/journalctl -u sfu -u go-proxy -u caddy
 
 livecam ALL=(ALL) NOPASSWD: LIVECAM_SYSTEMD
 livecam ALL=(ALL) NOPASSWD: LIVECAM_NGINX_TEST

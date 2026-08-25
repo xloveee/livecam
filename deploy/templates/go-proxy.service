@@ -1,0 +1,28 @@
+[Unit]
+Description=Go Feature Layer (WHIP/WHEP Proxy + Auth)
+After=network.target sfu.service
+Requires=sfu.service
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+EnvironmentFile=__INSTALL_ROOT__/deploy/.env
+# M1/M6: loopback unless .env overrides GO_LISTEN_ADDR
+Environment=GO_LISTEN_ADDR=127.0.0.1:8443
+WorkingDirectory=__INSTALL_ROOT__/go-features/api
+ExecStart=__INSTALL_ROOT__/go-features/api/api-server
+Restart=always
+RestartSec=3
+# M6 hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+ReadWritePaths=__INSTALL_ROOT__/hls __INSTALL_ROOT__/data __INSTALL_ROOT__/archive __INSTALL_ROOT__/go-features
+
+[Install]
+WantedBy=multi-user.target

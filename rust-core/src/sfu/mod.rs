@@ -132,6 +132,8 @@ pub struct RoomInfo {
     pub is_live: bool,
     pub camera: Option<CameraLayout>,
     pub scene: Option<SceneLayout>,
+    /// M17: for idle eviction (not wall-clock persisted).
+    pub last_active: Instant,
 }
 
 impl Default for RoomInfo {
@@ -143,6 +145,7 @@ impl Default for RoomInfo {
             is_live: false,
             camera: None,
             scene: None,
+            last_active: Instant::now(),
         }
     }
 }
@@ -461,14 +464,36 @@ pub async fn run_sfu_loop(
                     info.is_live = false;
                 }
                 for (room_id, count) in viewer_counts {
-                    state.entry(room_id.to_owned())
-                        .or_default()
-                        .viewer_count = count;
+                    let info = state.entry(room_id.to_owned()).or_default();
+                    info.viewer_count = count;
+                    if count > 0 {
+                        info.last_active = Instant::now();
+                    }
                 }
                 for room_id in live_rooms {
-                    state.entry(room_id.to_owned())
-                        .or_default()
-                        .is_live = true;
+                    let info = state.entry(room_id.to_owned()).or_default();
+                    info.is_live = true;
+                    info.last_active = Instant::now();
+                }
+                // M17: drop idle rooms so passwords/scene do not live forever.
+                const ROOM_IDLE: Duration = Duration::from_secs(600);
+                const ROOM_CAP: usize = 4096;
+                state.retain(|_, info| {
+                    info.is_live
+                        || info.viewer_count > 0
+                        || info.last_active.elapsed() < ROOM_IDLE
+                });
+                if state.len() > ROOM_CAP {
+                    let mut idle: Vec<(String, Instant)> = state
+                        .iter()
+                        .filter(|(_, i)| !i.is_live && i.viewer_count == 0)
+                        .map(|(k, i)| (k.clone(), i.last_active))
+                        .collect();
+                    idle.sort_by_key(|(_, t)| *t);
+                    let over = state.len() - ROOM_CAP;
+                    for (k, _) in idle.into_iter().take(over) {
+                        state.remove(&k);
+                    }
                 }
             }
 

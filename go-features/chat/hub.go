@@ -142,17 +142,20 @@ func (room *Room) noteNickIP(nick, ip string) {
 	room.nickIPs[nick][ip] = true
 }
 
-func (room *Room) floodTracker(nick string) *FloodTracker {
+// floodTracker keys the window on client IP (M19). Nick rotation must not reset it.
+func (room *Room) floodTracker(ip string) *FloodTracker {
 	if room.flood == nil {
 		room.flood = make(map[string]*FloodTracker)
 	}
-	if nick == "" {
-		nick = "?"
+	ip = NormalizeIP(ip)
+	if ip == "" {
+		ip = "?"
 	}
-	st := room.flood[nick]
+	key := "ip:" + ip
+	st := room.flood[key]
 	if st == nil {
 		st = &FloodTracker{}
-		room.flood[nick] = st
+		room.flood[key] = st
 	}
 	return st
 }
@@ -425,7 +428,7 @@ func (h *Hub) HandleMessage(c *Client, text string) {
 	room.mu.Lock()
 	room.pruneFloodLocked(now)
 	if !floodExempt(c.role) {
-		action, left := CheckChatFlood(room.floodTracker(c.nick), now)
+		action, left := CheckChatFlood(room.floodTracker(c.ip), now)
 		switch action {
 		case FloodMuted, FloodStrike:
 			room.mu.Unlock()
@@ -491,10 +494,8 @@ func (h *Hub) applyFloodIPBanLocked(room *Room, c *Client) ([]string, *roomModSt
 	closeMatchingClients(room, nil, ips)
 	dropSessions := h.takeMatchingWHEP(room.id, ips, room.nickIPs[c.nick])
 	st := h.stageModerationLocked(room)
-	broadcastToRoom(room, OutboundMsg{
-		Type: "system",
-		Text: "IP ban: " + joinComma(setToSorted(ips)),
-	}, nil)
+	// M18: never put peer IPs in a room-wide line — staff get BannedIPs via moderation.
+	sendStaffSystemLocked(room, "Viewer IP ban applied.")
 	return dropSessions, st
 }
 
@@ -546,10 +547,8 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		persist = h.stageModerationLocked(room)
 		broadcastToRoom(room, OutboundMsg{Type: "ban", Nick: nick}, nil)
 		if len(ips) > 0 {
-			broadcastToRoom(room, OutboundMsg{
-				Type: "system",
-				Text: "IP ban: " + joinComma(setToSorted(ips)),
-			}, nil)
+			// M18: staff-only; BannedIPs already on moderation payload.
+			sendStaffSystemLocked(room, "Viewer IP ban applied.")
 		}
 
 	case CmdIPBan:
@@ -566,20 +565,15 @@ func (h *Hub) HandleCommand(c *Client, cmd ChatCommand) {
 		closeMatchingClients(room, nil, map[string]bool{ip: true})
 		dropSessions = h.takeMatchingWHEP(room.id, map[string]bool{ip: true}, nil)
 		persist = h.stageModerationLocked(room)
-		broadcastToRoom(room, OutboundMsg{
-			Type: "system",
-			Text: "IP ban: " + ip,
-		}, nil)
+		// M18: staff-only notice (no raw IP in room chat).
+		sendStaffSystemLocked(room, "Viewer IP ban applied.")
 
 	case CmdUnban:
 		arg := cmd.Arg1
 		if ip := NormalizeIP(arg); ip != "" {
 			delete(room.bannedIPs, ip)
 			persist = h.stageModerationLocked(room)
-			broadcastToRoom(room, OutboundMsg{
-				Type: "system",
-				Text: ip + " has been unbanned.",
-			}, nil)
+			sendStaffSystemLocked(room, "Viewer IP unbanned.")
 		} else {
 			delete(room.banned, arg)
 			persist = h.stageModerationLocked(room)
@@ -755,6 +749,24 @@ func (h *Hub) takeMatchingWHEP(roomID string, ips, nickIPs map[string]bool) []st
 		delete(h.whep, roomID)
 	}
 	return dropped
+}
+
+
+func sendStaffSystemLocked(room *Room, text string) {
+	msg := OutboundMsg{Type: "system", Text: text}
+	data, err := json.Marshal(msg)
+	if err != nil {
+		return
+	}
+	for client := range room.clients {
+		if client.role != RoleBroadcaster && client.role != RoleMod {
+			continue
+		}
+		select {
+		case client.send <- data:
+		default:
+		}
+	}
 }
 
 func sendModerationLocked(room *Room) {

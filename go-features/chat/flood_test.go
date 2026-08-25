@@ -309,7 +309,7 @@ func TestFloodStrike4PersistsIPBan(t *testing.T) {
 	}
 	room := h.getOrCreateRoom("banroom")
 	room.mu.Lock()
-	st := room.floodTracker("Eve")
+	st := room.floodTracker("203.0.113.77")
 	st.Strikes = int32(FloodBanStrike - 1)
 	room.mu.Unlock()
 

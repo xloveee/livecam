@@ -670,6 +670,7 @@ type roomInfoResult struct {
 	HasPassword bool   `json:"has_password"`
 	GrantEpoch  uint64 `json:"grant_epoch"`
 	IsLive      bool   `json:"is_live"`
+	VideoCodec  string `json:"video_codec,omitempty"`
 	Password    string `json:"password,omitempty"`
 	Fetched     bool   `json:"-"`
 }
@@ -865,6 +866,7 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		MaxViewers    int32  `json:"max_viewers"`
 		HasPassword   bool   `json:"has_password"`
 		IsLive        bool   `json:"is_live"`
+		VideoCodec    string `json:"video_codec,omitempty"`
 		OfflineBanner string `json:"offline_banner"`
 		// Always include (no omitempty) so clients can clear when broadcaster removes image/text.
 		OfflineBannerImage string `json:"offline_banner_image"`
@@ -873,6 +875,7 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 		MaxViewers:         info.MaxViewers,
 		HasPassword:        info.HasPassword,
 		IsLive:             info.IsLive,
+		VideoCodec:         info.VideoCodec,
 		OfflineBanner:      offlineBanner,
 		OfflineBannerImage: offlineBannerImg,
 	}

@@ -6,8 +6,9 @@
     <meta name="description" content="Watch live — independent broadcasting platform powered by WebRTC.">
     <!-- If the app lives under a path prefix, set content="/prefix" so API paths resolve (same as /broadcast). -->
     <meta name="livecam-api-root" content="">
+    <meta name="livecam-watch-js" content="whep-codec-20260826r1">
     <title>Live Stream — livecam</title>
-    <link rel="stylesheet" href="/css/watch.css">
+    <link rel="stylesheet" href="/css/watch.css?v=live-rm-20260820r1">
 </head>
 <body>
 
@@ -27,11 +28,15 @@
                     </span>
                     <span id="status">Checking stream...</span>
                 </span>
+                <select id="play-mode" title="How you watch — streamer decides what is offered">
+                    <option value="live">Live</option>
+                    <option value="hls">Compatible</option>
+                    <option value="pip">Preview</option>
+                </select>
                 <select id="quality-select" disabled title="Simulcast layer">
                     <option value="">Auto</option>
-                    <option value="h">1080p</option>
-                    <option value="m">720p</option>
-                    <option value="l">360p</option>
+                    <option value="h">High</option>
+                    <option value="l">Preview</option>
                 </select>
             </div>
         </div>
@@ -41,9 +46,10 @@
         <main class="stream-column">
             <div class="stream-snap-page stream-snap-page--playback">
                 <div class="stream-viewport">
-                    <!-- No autoplay: user starts playback via native controls (required on iOS / many mobile WebViews). -->
+                    <!-- WHEP: user starts playback via native controls (iOS / many mobile WebViews). HLS Compatible/Preview calls play() after the manifest is parsed. -->
                     <div class="player-wrap" id="player-wrap">
                         <video id="player" playsinline webkit-playsinline controls></video>
+                        <video id="player-facecam" class="player-facecam" playsinline webkit-playsinline muted autoplay hidden></video>
                         <div class="offline-overlay" id="offline-overlay" aria-live="polite">
                             <div class="offline-overlay-inner">
                                 <img class="offline-overlay-img" id="offline-overlay-img" alt="" style="display:none;">
@@ -53,8 +59,9 @@
                     </div>
 
                     <div id="decode-banner" role="status">
-                        <strong>Picture stuck?</strong> Data is arriving but this device is not decoding the incoming H.264 (common on <strong>iPhone/Safari</strong> if the publisher uses Main/High — often <strong>OBS</strong> WHIP).
-                        Use <strong>Baseline</strong> / <strong>Constrained Baseline</strong> in OBS, or publish from <strong>/broadcast</strong> (VP8 when available).
+                        <strong>Picture stuck?</strong> Data is arriving but this browser is not decoding the live video.
+                        If <strong>Compatible</strong> or <strong>Preview</strong> play, the encode is fine — switch to Compatible on this device, or refresh Live.
+                        /broadcast (camera, mix, or file-source) prefers <strong>H.264 Constrained Baseline</strong> so Compatible/Preview can remux. OBS should send the same.
                     </div>
 
                     <div id="degrade-banner">
@@ -167,11 +174,12 @@
         <div id="debug-content"></div>
     </div>
 
-    <script src="/js/watch-core.js"></script>
-    <script src="/js/chat.js"></script>
-    <script src="/js/donate.js"></script>
-    <script src="/js/watch-split.js"></script>
-    <script src="/js/watch-header.js"></script>
+    <script src="/js/hls.min.js?v=scene-20260820r1"></script>
+    <script src="/js/watch-core.js?v=whep-codec-20260826r1"></script>
+    <script src="/js/chat.js?v=scene-20260820r1"></script>
+    <script src="/js/donate.js?v=studio-20260818q1"></script>
+    <script src="/js/watch-split.js?v=studio-20260818q1"></script>
+    <script src="/js/watch-header.js?v=studio-20260818q1"></script>
     <script>
         (async function init() {
             roomId = getRoomIdFromURL();

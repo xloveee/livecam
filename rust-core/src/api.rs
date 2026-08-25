@@ -302,16 +302,24 @@ pub async fn whep_handler(
         }
     };
 
-    let mut rtc = RtcConfig::new()
+    let pub_codec = state
+        .room_state
+        .lock()
+        .ok()
+        .and_then(|s| s.get(&room_id).and_then(|i| i.video_codec.clone()));
+    let mut rtc_cfg = RtcConfig::new()
         .set_ice_lite(true)
         .set_reordering_size_audio(0)
         .set_send_buffer_video(500)
         .set_stats_interval(Some(std::time::Duration::from_secs(2)))
         .clear_codecs()
-        .enable_h264(true)
-        .enable_vp8(true)
-        .enable_opus(true)
-        .build(Instant::now());
+        .enable_opus(true);
+    match pub_codec.as_deref() {
+        Some("vp8") => { rtc_cfg = rtc_cfg.enable_vp8(true); }
+        Some("h264") => { rtc_cfg = rtc_cfg.enable_h264(true); }
+        _ => { rtc_cfg = rtc_cfg.enable_h264(true).enable_vp8(true); }
+    }
+    let mut rtc = rtc_cfg.build(Instant::now());
 
     let whep_addrs = whep_ice_addrs(&sdp_raw, &state.ice_candidate_addrs);
     tracing::info!("WHEP ICE hosts for room '{}': {:?}", room_id, whep_addrs);
@@ -457,6 +465,8 @@ pub struct RoomInfoResponse {
     pub camera: Option<CameraLayout>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scene: Option<SceneLayout>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub video_codec: Option<String>,
 }
 
 /// Returns current viewer count, max viewer cap, and password state for a room.
@@ -476,6 +486,7 @@ pub async fn room_info_handler(
             is_live: false,
             camera: None,
             scene: None,
+            video_codec: None,
         })).into_response();
     }
     if !valid_http_room_id(&room_id) {
@@ -487,6 +498,7 @@ pub async fn room_info_handler(
             is_live: false,
             camera: None,
             scene: None,
+            video_codec: None,
         })).into_response();
     }
     let info = state.room_state.lock()
@@ -506,6 +518,7 @@ pub async fn room_info_handler(
         is_live: info.is_live,
         camera: info.camera,
         scene: info.scene,
+        video_codec: info.video_codec,
     };
 
     (StatusCode::OK, Json(resp)).into_response()

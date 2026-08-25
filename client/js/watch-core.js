@@ -14,6 +14,7 @@
  */
 
 var video       = document.getElementById('player');
+var publishedVideoCodec = '';
 var qualitySelect = document.getElementById('quality-select');
 var statusEl    = document.getElementById('status');
 var viewerCountEl = document.getElementById('viewer-count');
@@ -385,6 +386,7 @@ async function pollActive() {
             if (!infoResp.ok) return;
             var info = await infoResp.json();
             applyOfflineBannerFromInfo(info);
+            if (info && info.video_codec) publishedVideoCodec = String(info.video_codec);
 
             if (!info.is_live) {
                 setState('offline');
@@ -479,9 +481,9 @@ function getRecvonlyVideoTransceiver(pc) {
 }
 
 function applyViewerVideoCodecPreferences(pc) {
-    /* Firefox default SDP often lists VP8 (and VP9) before H.264. OBS / many publishers send H.264 only — the SFU
-     * forwards RTP for the publisher codec; if the WHEP answer followed VP8 preference, the negotiated codec
-     * would not match the room and viewers get no picture. Same H.264-then-VP8 order as Chromium (README policy). */
+    /* Match the live publisher. Studio /broadcast prefers VP8; OBS is H.264.
+     * Offering H.264 first against a VP8 room made WHEP answer H.264 and the
+     * plate stay black (RTP may still arrive on a PT the browser will not decode). */
     try {
         if (typeof RTCRtpReceiver === 'undefined' || !RTCRtpReceiver.getCapabilities) return;
         var caps = RTCRtpReceiver.getCapabilities('video');
@@ -492,12 +494,14 @@ function applyViewerVideoCodecPreferences(pc) {
             return m !== 'video/h264' && m !== 'video/vp8';
         });
         var vtr = getRecvonlyVideoTransceiver(pc);
-        if (vtr) {
-            if (h264.length) {
-                vtr.setCodecPreferences(h264.concat(vp8).concat(rest));
-            } else if (vp8.length) {
-                vtr.setCodecPreferences(vp8.concat(rest));
-            }
+        if (!vtr) return;
+        var prefer = (publishedVideoCodec || '').toLowerCase();
+        if (prefer === 'h264' && h264.length) {
+            vtr.setCodecPreferences(h264.concat(vp8).concat(rest));
+        } else if (vp8.length) {
+            vtr.setCodecPreferences(vp8.concat(h264).concat(rest));
+        } else if (h264.length) {
+            vtr.setCodecPreferences(h264.concat(rest));
         }
     } catch (e) {
         debugEvent('codec-prefs:error');
@@ -637,6 +641,10 @@ async function connectWHEP() {
         clearWhepConnectTimeout();
         var kind = watchAdapter.onTrack(event);
         debugEvent('track:' + kind + ' ' + event.track.readyState);
+        if (video && kind === 'video') {
+            var playP = video.play();
+            if (playP && playP.catch) playP.catch(function () {});
+        }
         /* Firefox / mobile often deliver recv tracks before iceConnectionState hits "connected". */
         if (viewerState === 'connecting') {
             setState('live');

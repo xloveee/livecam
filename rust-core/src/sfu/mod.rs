@@ -134,6 +134,8 @@ pub struct RoomInfo {
     pub is_live: bool,
     pub camera: Option<CameraLayout>,
     pub scene: Option<SceneLayout>,
+    /// Live publisher video codec (`h264` / `vp8`) for WHEP match.
+    pub video_codec: Option<String>,
     /// M17: for idle eviction (not wall-clock persisted).
     pub last_active: Instant,
 }
@@ -148,6 +150,7 @@ impl Default for RoomInfo {
             is_live: false,
             camera: None,
             scene: None,
+            video_codec: None,
             last_active: Instant::now(),
         }
     }
@@ -216,6 +219,8 @@ struct Peer {
     video_started: HashSet<Mid>,
     /// Viewer: request a publisher IDR as soon as the WHEP video mid is mapped.
     need_join_pli: bool,
+    /// Broadcaster: first video codec name (`h264` / `vp8`) for WHEP match.
+    video_codec: Option<String>,
 }
 
 #[derive(Default)]
@@ -265,6 +270,7 @@ impl Peer {
             last_hls_pli: None,
             video_started: HashSet::new(),
             need_join_pli: false,
+            video_codec: None,
         }
     }
 }
@@ -773,6 +779,11 @@ pub async fn run_sfu_loop(
                         }
                         Ok(Output::Event(event)) => {
                             let ev = handle_peer_event(peer, event);
+                            if let Some(name) = peer.video_codec.as_deref() {
+                                if let Ok(mut s) = room_state.lock() {
+                                    s.entry(peer.room_id.clone()).or_default().video_codec = Some(name.to_string());
+                                }
+                            }
                             if !matches!(ev, Propagated::Noop) {
                                 propagation_queue.push_back(ev);
                             }
@@ -918,6 +929,11 @@ fn handle_peer_event(peer: &mut Peer, event: Event) -> Propagated {
                         "{} room='{}': first media mid={} codec={:?} rid={:?} keyframe={}",
                         peer.id, peer.room_id, data.mid, codec, data.rid, data.is_keyframe()
                     );
+                    peer.video_codec = match codec {
+                        Codec::H264 => Some("h264".into()),
+                        Codec::Vp8 => Some("vp8".into()),
+                        _ => peer.video_codec.clone(),
+                    };
                     peer.logged_mids.push(data.mid);
                 }
                 peer.last_media_at = Some(Instant::now());

@@ -219,7 +219,8 @@ if [[ "$(id -u)" -ne 0 ]]; then
 fi
 
 if [[ -z "$PUBLIC_IP" ]]; then
-	PUBLIC_IP="$(curl -fsS --max-time 8 http://checkip.amazonaws.com 2>/dev/null || true)"
+	# M11: HTTPS only — cleartext checkip was MITMable into SFU_PUBLIC_IP/ICE.
+	PUBLIC_IP="$(curl -fsS --max-time 8 https://checkip.amazonaws.com 2>/dev/null || true)"
 	PUBLIC_IP="${PUBLIC_IP//$'\n'/}"
 fi
 if [[ -z "$PUBLIC_IP" ]]; then
@@ -379,11 +380,14 @@ else
 fi
 
 if command -v ufw >/dev/null 2>&1; then
-	ufw allow 22/tcp || true
-	ufw allow 80/tcp || true
-	ufw allow 443/tcp || true
-	ufw allow 50000/udp || true
-	ufw --force enable || true
+	# M13: fail closed — ignored ufw left Go/rust on the WAN (with M1/H2).
+	ufw allow 22/tcp || { echo "ufw allow 22 failed" >&2; exit 1; }
+	ufw allow 80/tcp || { echo "ufw allow 80 failed" >&2; exit 1; }
+	ufw allow 443/tcp || { echo "ufw allow 443 failed" >&2; exit 1; }
+	ufw allow 50000/udp || { echo "ufw allow 50000/udp failed" >&2; exit 1; }
+	ufw deny 8080/tcp || { echo "ufw deny 8080 failed" >&2; exit 1; }
+	ufw deny 8443/tcp || { echo "ufw deny 8443 failed" >&2; exit 1; }
+	ufw --force enable || { echo "ufw enable failed" >&2; exit 1; }
 fi
 
 if ! is_truthy "${INSTALL_SKIP_SYSTEMD:-}"; then

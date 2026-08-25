@@ -594,6 +594,16 @@ func verifyStripeSignature(payload []byte, sigHeader, secret string) bool {
 		return false
 	}
 
+	ts, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		return false
+	}
+	const stripeTimestampSkew = int64(300)
+	now := time.Now().Unix()
+	if now-ts > stripeTimestampSkew || ts-now > stripeTimestampSkew {
+		return false
+	}
+
 	mac := hmac.New(sha256.New, []byte(secret))
 	mac.Write([]byte(timestamp))
 	mac.Write([]byte("."))

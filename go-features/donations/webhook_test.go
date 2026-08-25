@@ -1,6 +1,8 @@
 package donations
 
 import (
+	"time"
+	"strconv"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -48,7 +50,8 @@ func TestParseStripeWebhookAcceptsValidHMAC(t *testing.T) {
 	SetWebhookSecrets(secret, "", "", "")
 	body := []byte(`{"type":"checkout.session.completed","data":{"object":{"id":"cs_1","metadata":{"donation_id":"d1"}}}}`)
 	h := http.Header{}
-	h.Set("Stripe-Signature", stripeSig(secret, "1000", body))
+	ts := strconv.FormatInt(time.Now().Unix(), 10)
+	h.Set("Stripe-Signature", stripeSig(secret, ts, body))
 	id, ref, err := parseStripeWebhook(h, body)
 	if err != nil {
 		t.Fatal(err)
@@ -56,7 +59,7 @@ func TestParseStripeWebhookAcceptsValidHMAC(t *testing.T) {
 	if id != "d1" || ref != "cs_1" {
 		t.Fatalf("got %q %q", id, ref)
 	}
-	h.Set("Stripe-Signature", stripeSig("wrong-secret-value!", "1000", body))
+	h.Set("Stripe-Signature", stripeSig("wrong-secret-value!", ts, body))
 	if _, _, err := parseStripeWebhook(h, body); err == nil {
 		t.Fatal("expected reject for wrong secret")
 	}
@@ -161,5 +164,16 @@ func TestRequireWebhookSecretsWhenStripeEnabled(t *testing.T) {
 func TestRequireWebhookSecretsNilDB(t *testing.T) {
 	if err := RequireWebhookSecrets(nil); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestVerifyStripeRejectsStaleTimestamp(t *testing.T) {
+	secret := "stripe-webhook-secret-16"
+	SetWebhookSecrets(secret, "", "", "")
+	body := []byte(`{"type":"checkout.session.completed","data":{"object":{"id":"cs_1","metadata":{"donation_id":"d1"}}}}`)
+	h := http.Header{}
+	h.Set("Stripe-Signature", stripeSig(secret, "1000", body))
+	if _, _, err := parseStripeWebhook(h, body); err == nil {
+		t.Fatal("expected reject for stale Stripe timestamp (M14)")
 	}
 }

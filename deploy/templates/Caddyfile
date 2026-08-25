@@ -1,0 +1,21 @@
+# livecam reverse proxy — signaling only (WHIP/WHEP/chat/static).
+# WebRTC UDP media goes directly to the SFU on port 50000, not through Caddy.
+# reverse_proxy keeps the request path (do not rewrite or drop /api).
+# WebSocket (chat) upgrades are automatic.
+# Placeholders: __DOMAIN__ __EMAIL__
+
+{
+	email __EMAIL__
+}
+
+__DOMAIN__ {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' wss: https:; media-src 'self' blob:; frame-ancestors 'none'"
+		-Server
+	}
+	reverse_proxy 127.0.0.1:8443
+}

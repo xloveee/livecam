@@ -109,12 +109,19 @@ func (h *Handler) handleSetupPost(w http.ResponseWriter, r *http.Request, stream
 	}
 
 	validProviders := map[string]bool{
-		"stripe": true, "paypal": true, "crypto": true, "bank": true, "panels": true,
-		"offline_banner": true,
+		"stripe": true, "paypal": true, "cashapp": true, "crypto": true, "bank": true, "panels": true,
+		"offline_banner": true, "distribution": true,
 	}
 	if !validProviders[req.Provider] {
 		http.Error(w, "Invalid provider", http.StatusBadRequest)
 		return
+	}
+
+	if req.Provider == "cashapp" {
+		if err := validateCashAppSetup(req.ConfigData, req.Enabled); err != nil {
+			http.Error(w, "Invalid Cash App handle", http.StatusBadRequest)
+			return
+		}
 	}
 
 	if err := h.db.SaveConfig(streamKey, req.Provider, req.ConfigData, req.Enabled); err != nil {
@@ -158,6 +165,8 @@ func (h *Handler) handleMethods(w http.ResponseWriter, r *http.Request, roomID s
 			resp.Stripe = true
 		case "paypal":
 			resp.PayPal = true
+		case "cashapp":
+			resp.CashApp = true
 		case "crypto":
 			resp.Crypto = parseCryptoCurrencies(c.ConfigData)
 		case "bank":
@@ -208,7 +217,7 @@ func (h *Handler) handleInitiate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ip := r.Header.Get("X-Forwarded-For")
+	ip := chat.ClientIP(r)
 	if ip == "" {
 		ip = r.RemoteAddr
 	}
@@ -253,6 +262,11 @@ func (h *Handler) handleInitiate(w http.ResponseWriter, r *http.Request) {
 	}
 	if providerConfig == nil {
 		http.Error(w, "Provider not enabled for this stream", http.StatusBadRequest)
+		return
+	}
+
+	if !allowReturnURL(req.ReturnURL, r) {
+		http.Error(w, "Invalid returnURL", http.StatusBadRequest)
 		return
 	}
 

@@ -227,10 +227,21 @@ pub async fn whep_handler(
     let offer_cands = whep_offer_cand_lines(&sdp_raw);
     tracing::info!("WHEP offer for room '{}' cands={:?}", room_id, offer_cands);
 
-    let is_live = state.room_state.lock()
+    let (is_live, max_viewers, viewer_count, password_hash) = state
+        .room_state
+        .lock()
         .ok()
-        .and_then(|s| s.get(&room_id).map(|info| info.is_live))
-        .unwrap_or(false);
+        .and_then(|s| {
+            s.get(&room_id).map(|info| {
+                (
+                    info.is_live,
+                    info.max_viewers,
+                    info.viewer_count,
+                    info.password_hash.clone(),
+                )
+            })
+        })
+        .unwrap_or((false, 0, 0, None));
 
     if !is_live {
         tracing::info!("WHEP rejected for room '{}': not live", room_id);
@@ -239,6 +250,44 @@ pub async fn whep_handler(
             [("Content-Type", "text/plain")],
             "Room is not live",
         ).into_response();
+    }
+
+    // M16: enforce cap in rust (Go may be skipped).
+    if max_viewers > 0 && viewer_count >= max_viewers {
+        tracing::info!(
+            "WHEP rejected for room '{}': at capacity {}/{}",
+            room_id,
+            viewer_count,
+            max_viewers
+        );
+        return (
+            StatusCode::SERVICE_UNAVAILABLE,
+            [("Content-Type", "text/plain")],
+            "Room is at viewer capacity",
+        )
+            .into_response();
+    }
+
+    // M16: invite password when set — header X-Room-Password (H20).
+    if let Some(stored) = password_hash {
+        let submitted = headers
+            .get("X-Room-Password")
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+        if submitted.len() > ROOM_PASSWORD_MAX_LEN
+            || !room_persist::constant_eq_hex(
+                &stored,
+                &room_persist::hash_room_password(submitted),
+            )
+        {
+            tracing::info!("WHEP rejected for room '{}': bad password", room_id);
+            return (
+                StatusCode::FORBIDDEN,
+                [("Content-Type", "text/plain")],
+                "Incorrect room password",
+            )
+                .into_response();
+        }
     }
 
     let offer = match SdpOffer::from_sdp_string(&sdp_raw) {
@@ -641,6 +690,7 @@ pub struct ActiveRoomResponse {
 }
 
 /// Returns the first currently-live room, or null if no broadcast is active.
+/// M15/C4: `room_id` is the public slug WHIP registered (never the publish stream key).
 pub async fn active_handler(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,

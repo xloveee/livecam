@@ -551,6 +551,10 @@ func whepProxyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	req.Header.Set("Content-Type", r.Header.Get("Content-Type"))
+	// M16: rust also checks invite password when Go is bypassed.
+	if pw := strings.TrimSpace(r.Header.Get("X-Room-Password")); pw != "" {
+		req.Header.Set("X-Room-Password", pw)
+	}
 
 	client := &http.Client{}
 	resp, err := client.Do(req)

@@ -382,18 +382,77 @@ func parseWebhook(provider string, headers http.Header, body []byte) (donationID
 	}
 }
 
-var stripeWebhookSecret string
+const webhookSecretMinLen = 16
+
+var (
+	stripeWebhookSecret string
+	paypalWebhookSecret string
+	cryptoWebhookSecret string
+	bankWebhookSecret   string
+)
 
 func SetStripeWebhookSecret(secret string) {
 	stripeWebhookSecret = secret
 }
 
-func parseStripeWebhook(headers http.Header, body []byte) (string, string, error) {
-	if stripeWebhookSecret != "" {
-		sig := headers.Get("Stripe-Signature")
-		if !verifyStripeSignature(body, sig, stripeWebhookSecret) {
-			return "", "", errors.New("stripe: invalid signature")
+func SetWebhookSecrets(stripe, paypal, crypto, bank string) {
+	stripeWebhookSecret = stripe
+	paypalWebhookSecret = paypal
+	cryptoWebhookSecret = crypto
+	bankWebhookSecret = bank
+}
+
+func RequireWebhookSecrets(db *DB) error {
+	if db == nil {
+		return nil
+	}
+	checks := []struct {
+		provider string
+		secret   string
+		env      string
+	}{
+		{"stripe", stripeWebhookSecret, "STRIPE_WEBHOOK_SECRET"},
+		{"paypal", paypalWebhookSecret, "PAYPAL_WEBHOOK_SECRET"},
+		{"crypto", cryptoWebhookSecret, "BTCPAY_WEBHOOK_SECRET"},
+		{"bank", bankWebhookSecret, "BANK_WEBHOOK_SECRET"},
+	}
+	for _, c := range checks {
+		on, err := db.AnyProviderEnabled(c.provider)
+		if err != nil {
+			return err
 		}
+		if on && len(c.secret) < webhookSecretMinLen {
+			return fmt.Errorf("%s required when %s is enabled (min %d bytes)", c.env, c.provider, webhookSecretMinLen)
+		}
+	}
+	return nil
+}
+
+func headerHMACHex(header string) string {
+	got := strings.TrimSpace(header)
+	if i := strings.Index(got, "="); i >= 0 {
+		got = strings.TrimSpace(got[i+1:])
+	}
+	return got
+}
+
+func verifyBodyHMAC(body []byte, secret, header string) bool {
+	if secret == "" || header == "" {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(expected), []byte(headerHMACHex(header)))
+}
+
+func parseStripeWebhook(headers http.Header, body []byte) (string, string, error) {
+	if len(stripeWebhookSecret) < webhookSecretMinLen {
+		return "", "", errors.New("stripe: webhook secret not configured")
+	}
+	sig := headers.Get("Stripe-Signature")
+	if !verifyStripeSignature(body, sig, stripeWebhookSecret) {
+		return "", "", errors.New("stripe: invalid signature")
 	}
 
 	var event struct {
@@ -454,6 +513,26 @@ func verifyStripeSignature(payload []byte, sigHeader, secret string) bool {
 }
 
 func parsePayPalWebhook(headers http.Header, body []byte) (string, string, error) {
+	if len(paypalWebhookSecret) < webhookSecretMinLen {
+		return "", "", errors.New("paypal: webhook secret not configured")
+	}
+	transID := headers.Get("PayPal-Transmission-Id")
+	if transID == "" {
+		return "", "", errors.New("paypal: missing PayPal-Transmission-Id")
+	}
+	sig := headers.Get("PayPal-Transmission-Sig")
+	if sig == "" {
+		sig = headers.Get("X-Paypal-Signature")
+	}
+	mac := hmac.New(sha256.New, []byte(paypalWebhookSecret))
+	mac.Write([]byte(transID))
+	mac.Write([]byte("."))
+	mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	if !hmac.Equal([]byte(expected), []byte(headerHMACHex(sig))) {
+		return "", "", errors.New("paypal: invalid signature")
+	}
+
 	var event struct {
 		EventType string `json:"event_type"`
 		Resource  struct {
@@ -484,6 +563,17 @@ func parsePayPalWebhook(headers http.Header, body []byte) (string, string, error
 }
 
 func parseCryptoWebhook(headers http.Header, body []byte) (string, string, error) {
+	if len(cryptoWebhookSecret) < webhookSecretMinLen {
+		return "", "", errors.New("crypto: webhook secret not configured")
+	}
+	sig := headers.Get("BTCPay-Sig")
+	if sig == "" {
+		sig = headers.Get("BTCPAY-SIG")
+	}
+	if !verifyBodyHMAC(body, cryptoWebhookSecret, sig) {
+		return "", "", errors.New("crypto: invalid signature")
+	}
+
 	var event struct {
 		InvoiceID string `json:"invoiceId"`
 		Type      string `json:"type"`
@@ -514,6 +604,13 @@ func parseCryptoWebhook(headers http.Header, body []byte) (string, string, error
 }
 
 func parseBankWebhook(headers http.Header, body []byte) (string, string, error) {
+	if len(bankWebhookSecret) < webhookSecretMinLen {
+		return "", "", errors.New("bank: webhook secret not configured")
+	}
+	if !verifyBodyHMAC(body, bankWebhookSecret, headers.Get("X-Bank-Signature")) {
+		return "", "", errors.New("bank: invalid signature")
+	}
+
 	var event struct {
 		Reference   string `json:"reference"`
 		PaymentID   string `json:"payment_id"`

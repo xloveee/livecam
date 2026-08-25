@@ -145,6 +145,21 @@ func (d *DB) GetEnabledProviders(streamKey string) ([]ProviderConfig, error) {
 	return configs, rows.Err()
 }
 
+func (d *DB) AnyProviderEnabled(provider string) (bool, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var n int
+	err := d.db.QueryRow(
+		`SELECT COUNT(*) FROM streamer_config WHERE provider = ? AND enabled = 1`,
+		provider,
+	).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	return n > 0, nil
+}
+
 func (d *DB) InsertDonation(rec *DonationRecord) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()

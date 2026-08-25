@@ -69,10 +69,18 @@ func main() {
 		sharedDonoDB = donationDB
 		log.Printf("Donations database: %s", donationDBPath)
 
-		stripeWebhookSecret := os.Getenv("STRIPE_WEBHOOK_SECRET")
-		if stripeWebhookSecret != "" {
-			donations.SetStripeWebhookSecret(stripeWebhookSecret)
-			log.Printf("Stripe webhook signature verification: enabled")
+		cryptoSecret := os.Getenv("BTCPAY_WEBHOOK_SECRET")
+		if cryptoSecret == "" {
+			cryptoSecret = os.Getenv("CRYPTO_WEBHOOK_SECRET")
+		}
+		donations.SetWebhookSecrets(
+			os.Getenv("STRIPE_WEBHOOK_SECRET"),
+			os.Getenv("PAYPAL_WEBHOOK_SECRET"),
+			cryptoSecret,
+			os.Getenv("BANK_WEBHOOK_SECRET"),
+		)
+		if err := donations.RequireWebhookSecrets(donationDB); err != nil {
+			log.Fatal(err)
 		}
 	}
 

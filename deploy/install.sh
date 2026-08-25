@@ -119,6 +119,50 @@ random_alnum() {
 	LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$n"
 }
 
+# Prefer an existing live .env over minting (H22).
+load_existing_env "$INSTALL_ROOT/deploy/.env"
+
+
+# Read KEY=value from a dotenv file (first match). Empty if missing.
+env_get() {
+	local f="$1" key="$2"
+	[[ -f "$f" ]] || return 0
+	awk -F= -v k="$key" '
+		$0 ~ /^[[:space:]]*#/ { next }
+		index($0, "=") == 0 { next }
+		$1 == k {
+			sub(/^[^=]*=/, "")
+			print
+			exit
+		}
+	' "$f"
+}
+
+# H22: reuse secrets from an existing live .env instead of minting new ones.
+load_existing_env() {
+	local f="$1"
+	[[ -f "$f" ]] || return 0
+	echo "H22: loading SESSION_SECRET / ALLOWED_STREAM_KEYS / BROADCAST_PASSWORD from $f"
+	if [[ -z "$SESSION_SECRET" ]]; then
+		SESSION_SECRET="$(env_get "$f" SESSION_SECRET)"
+	fi
+	if [[ -z "$ALLOWED_STREAM_KEYS" ]]; then
+		ALLOWED_STREAM_KEYS="$(env_get "$f" ALLOWED_STREAM_KEYS)"
+	fi
+	if [[ -z "$PASSWORD" ]]; then
+		PASSWORD="$(env_get "$f" BROADCAST_PASSWORD)"
+	fi
+}
+
+backup_existing_env() {
+	local f="$1"
+	[[ -f "$f" ]] || return 0
+	local bak="${f}.bak.$(date +%Y%m%d%H%M%S)"
+	cp -a "$f" "$bak"
+	echo "H22: backed up existing .env to $bak"
+}
+
+
 if [[ "$DRY_RUN" -eq 1 ]]; then
 	# Documentation IPv4 (TEST-NET-3). No outbound lookup.
 	PUBLIC_IP="${PUBLIC_IP:-203.0.113.10}"
@@ -265,6 +309,7 @@ fi
 mkdir -p "$INSTALL_ROOT/archive" "$INSTALL_ROOT/hls" \
 	"$INSTALL_ROOT/data/offline_banners" "$INSTALL_ROOT/deploy"
 
+backup_existing_env "$INSTALL_ROOT/deploy/.env"
 write_rendered "$INSTALL_ROOT/deploy"
 # Canonical names expected by systemd EnvironmentFile=
 # (already written as .env). Keep copies of unit/nginx next to it.

@@ -124,15 +124,11 @@ func main() {
 	mux.HandleFunc("/watch/", watchHandler)
 	mux.HandleFunc("/", rootHandler)
 
-	port := os.Getenv("GO_LISTEN_PORT")
-	if port == "" {
-		port = "8443"
-	}
-
 	go startRoomStatePoller(chatHub)
 
-	fmt.Printf("Go proxy running on :%s\n", port)
-	log.Fatal(http.ListenAndServe(":"+port, mux))
+	addr := listenAddr()
+	fmt.Printf("Go proxy running on %s\n", addr)
+	log.Fatal(http.ListenAndServe(addr, mux))
 }
 
 func initConfig() {

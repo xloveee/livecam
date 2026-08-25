@@ -199,6 +199,14 @@ pub async fn whip_handler(
     )
 }
 
+
+/// Candidate-only SDP lines for logs (H4). Never include ice-ufrag / ice-pwd.
+fn whep_offer_cand_lines(sdp: &str) -> Vec<&str> {
+    sdp.lines()
+        .filter(|l| l.starts_with("a=candidate:"))
+        .collect()
+}
+
 /// WHEP Egress Handler — receives SDP Offer from a Viewer (proxied via Go).
 /// Creates an Rtc, negotiates SDP, and ships the instance to the SFU run loop.
 /// Returns X-Session-Id header so the client can reference this peer for quality changes.
@@ -215,10 +223,8 @@ pub async fn whep_handler(
         return (StatusCode::BAD_REQUEST, "invalid room id").into_response();
     }
     let sdp_raw = String::from_utf8_lossy(&body);
-    let offer_cands: Vec<&str> = sdp_raw
-        .lines()
-        .filter(|l| l.starts_with("a=candidate:") || l.starts_with("a=ice-ufrag") || l.starts_with("a=ice-pwd"))
-        .collect();
+    // H4: log candidate lines only — never ice-ufrag / ice-pwd.
+    let offer_cands = whep_offer_cand_lines(&sdp_raw);
     tracing::info!("WHEP offer for room '{}' cands={:?}", room_id, offer_cands);
 
     let is_live = state.room_state.lock()
@@ -713,7 +719,7 @@ pub async fn check_room_password_handler(
 
 #[cfg(test)]
 mod auth_tests {
-    use super::{safe_hls_room_id, valid_http_room_id};
+    use super::{safe_hls_room_id, valid_http_room_id, whep_offer_cand_lines};
 
     #[test]
     fn http_room_id_is_32_alnum() {
@@ -727,5 +733,20 @@ mod auth_tests {
         assert!(safe_hls_room_id("roomlinger"));
         assert!(!safe_hls_room_id("../etc"));
         assert!(!safe_hls_room_id("a/b"));
+    }
+
+    #[test]
+    fn whep_offer_omits_ice_secrets() {
+        let sdp = concat!(
+            "a=ice-ufrag:secretufrag\n",
+            "a=ice-pwd:secretpassword\n",
+            "a=candidate:1 1 UDP 1 1.2.3.4 9 typ host\n",
+        );
+        let lines = whep_offer_cand_lines(sdp);
+        assert_eq!(lines, vec!["a=candidate:1 1 UDP 1 1.2.3.4 9 typ host"]);
+        let joined = lines.join("\n");
+        assert!(!joined.contains("ice-ufrag"));
+        assert!(!joined.contains("ice-pwd"));
+        assert!(!joined.contains("secret"));
     }
 }

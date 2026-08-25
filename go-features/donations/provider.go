@@ -42,6 +42,8 @@ func buildRedirectURL(provider, configData string, rec *DonationRecord, returnUR
 		return buildStripeRedirect(configData, rec, returnURL)
 	case "paypal":
 		return buildPayPalRedirect(configData, rec)
+	case "cashapp":
+		return buildCashAppRedirect(configData, rec)
 	case "crypto":
 		return buildCryptoRedirect(configData, rec, returnURL)
 	case "bank":
@@ -197,6 +199,80 @@ func buildPayPalCheckout(clientID, secret string, rec *DonationRecord) (string, 
 	return "", errors.New("paypal: no approve link in response")
 }
 
+/* ── Cash App (no merchant API keys in v1) ───────────────── */
+
+func parseCashAppConfig(configData string) (string, error) {
+	var cfg struct {
+		Handle  string `json:"handle"`
+		Cashtag string `json:"cashtag"`
+	}
+	if err := json.Unmarshal([]byte(configData), &cfg); err != nil {
+		return "", errors.New("cashapp: invalid config")
+	}
+	raw := strings.TrimSpace(cfg.Handle)
+	if raw == "" {
+		raw = strings.TrimSpace(cfg.Cashtag)
+	}
+	handle, ok := NormalizeCashAppHandle(raw)
+	if !ok {
+		return "", errors.New("cashapp: invalid handle")
+	}
+	return handle, nil
+}
+
+// NormalizeCashAppHandle strips a leading $ and whitespace.
+// The server is the authority: only a valid cashtag is returned.
+func NormalizeCashAppHandle(raw string) (string, bool) {
+	h := strings.TrimSpace(raw)
+	h = strings.TrimPrefix(h, "$")
+	h = strings.TrimSpace(h)
+	if h == "" || !ValidateCashAppHandle(h) {
+		return "", false
+	}
+	return h, true
+}
+
+func validateCashAppSetup(configData string, enabled bool) error {
+	var cfg struct {
+		Handle  string `json:"handle"`
+		Cashtag string `json:"cashtag"`
+	}
+	if err := json.Unmarshal([]byte(configData), &cfg); err != nil {
+		return errors.New("cashapp: invalid config")
+	}
+	raw := strings.TrimSpace(cfg.Handle)
+	if raw == "" {
+		raw = strings.TrimSpace(cfg.Cashtag)
+	}
+	if raw == "" && !enabled {
+		return nil
+	}
+	_, err := parseCashAppConfig(configData)
+	return err
+}
+
+// BuildCashAppURL is the public cash.app/$Handle link.
+// Amount (cents → dollars) is appended when Cash App's public path allows it.
+func BuildCashAppURL(handle string, amountCents int64) string {
+	u := "https://cash.app/$" + handle
+	if amountCents > 0 {
+		u += "/" + fmt.Sprintf("%.2f", float64(amountCents)/100.0)
+	}
+	return u
+}
+
+func buildCashAppRedirect(configData string, rec *DonationRecord) (string, error) {
+	handle, err := parseCashAppConfig(configData)
+	if err != nil {
+		return "", err
+	}
+	amount := int64(0)
+	if rec != nil {
+		amount = rec.Amount
+	}
+	return BuildCashAppURL(handle, amount), nil
+}
+
 /* ── Crypto ──────────────────────────────────────────────── */
 
 func buildCryptoRedirect(configData string, rec *DonationRecord, returnURL string) (string, error) {
@@ -233,15 +309,24 @@ func buildCryptoRedirect(configData string, rec *DonationRecord, returnURL strin
 
 func createBTCPayInvoice(btcpayURL, storeID, apiKey string, rec *DonationRecord, returnURL string) (string, error) {
 	amountStr := fmt.Sprintf("%.2f", float64(rec.Amount)/100.0)
-	invoiceBody := fmt.Sprintf(`{
-		"amount": "%s",
-		"currency": "%s",
-		"metadata": {"orderId": "%s", "viewer_nick": "%s"},
-		"checkout": {"redirectURL": "%s"}
-	}`, amountStr, strings.ToUpper(rec.Currency), rec.ID, rec.ViewerNick, returnURL)
+	payload := map[string]interface{}{
+		"amount":   amountStr,
+		"currency": strings.ToUpper(rec.Currency),
+		"metadata": map[string]string{
+			"orderId":     rec.ID,
+			"viewer_nick": rec.ViewerNick,
+		},
+		"checkout": map[string]string{
+			"redirectURL": returnURL,
+		},
+	}
+	invoiceBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("btcpay: marshal: %w", err)
+	}
 
 	apiURL := fmt.Sprintf("%s/api/v1/stores/%s/invoices", btcpayURL, storeID)
-	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(invoiceBody))
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(string(invoiceBody)))
 	if err != nil {
 		return "", fmt.Errorf("btcpay: %w", err)
 	}
@@ -324,16 +409,20 @@ func buildBankRedirect(configData string, rec *DonationRecord, returnURL string)
 }
 
 func createYowPayPayment(baseURL, merchantID, apiKey, amount, currency, ref, returnURL string) (string, error) {
-	payloadBody := fmt.Sprintf(`{
-		"merchant_id": "%s",
-		"amount": "%s",
-		"currency": "%s",
-		"reference": "%s",
-		"return_url": "%s"
-	}`, merchantID, amount, currency, ref, returnURL)
+	payload := map[string]string{
+		"merchant_id": merchantID,
+		"amount":      amount,
+		"currency":    currency,
+		"reference":   ref,
+		"return_url":  returnURL,
+	}
+	payloadBody, err := json.Marshal(payload)
+	if err != nil {
+		return "", fmt.Errorf("yowpay: marshal: %w", err)
+	}
 
 	apiURL := baseURL + "/api/v1/payments"
-	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(payloadBody))
+	req, err := http.NewRequest(http.MethodPost, apiURL, strings.NewReader(string(payloadBody)))
 	if err != nil {
 		return "", fmt.Errorf("yowpay: %w", err)
 	}
@@ -373,6 +462,8 @@ func parseWebhook(provider string, headers http.Header, body []byte) (donationID
 		return parseStripeWebhook(headers, body)
 	case "paypal":
 		return parsePayPalWebhook(headers, body)
+	case "cashapp":
+		return "", "", errors.New("cashapp: no webhook in v1 (open cash.app/$Handle)")
 	case "crypto":
 		return parseCryptoWebhook(headers, body)
 	case "bank":

@@ -402,6 +402,7 @@ func broadcastHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// H17: never mint a session from ?stream_key=. Login POST checks BROADCAST_PASSWORD.
 	http.ServeFile(w, r, clientDir+"/broadcast_login.html")
 }
 

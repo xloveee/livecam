@@ -11,7 +11,7 @@
 #define SESSION_TOKEN_HEX_LEN 176
 
 void    init_stream_key_whitelist(const char *csv);
-void    init_session_secret(const char *secret);
+int32_t init_session_secret(const char *secret);
 void    init_broadcast_password(const char *password);
 int32_t check_broadcast_password(const char *submitted);
 int32_t validate_stream_key(const char *key);

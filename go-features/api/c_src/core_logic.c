@@ -491,23 +491,24 @@ static int32_t ct_memeq(const uint8_t *a, const uint8_t *b, size_t n)
     return diff == 0 ? 1 : 0;
 }
 
-void init_session_secret(const char *secret)
+int32_t init_session_secret(const char *secret)
 {
     memset(g_session_secret, 0, sizeof(g_session_secret));
     g_session_secret_len = 0;
     g_session_secret_set = 0;
     if (secret == NULL) {
-        return;
+        return 0;
     }
     const size_t len = bounded_strlen(secret, SESSION_SECRET_LEN + 1);
     if (len < 16) {
-        return;
+        return 0;
     }
     size_t copy_len = (len > SESSION_SECRET_LEN) ? SESSION_SECRET_LEN : len;
     memcpy(g_session_secret, secret, copy_len);
     g_session_secret[copy_len] = '\0';
     g_session_secret_len = copy_len;
     g_session_secret_set = 1;
+    return 1;
 }
 
 /*

@@ -84,3 +84,15 @@ func TestHMACSessionTokenWhitelistGate(t *testing.T) {
 	}
 	initStreamKeyWhitelist("")
 }
+
+func TestApplySessionSecretRejectsEmptyAndShort(t *testing.T) {
+	if err := applySessionSecret(""); err != errSessionSecretRequired {
+		t.Fatalf("empty: %v", err)
+	}
+	if err := applySessionSecret("short-secret"); err != errSessionSecretTooWeak {
+		t.Fatalf("short: %v", err)
+	}
+	if err := applySessionSecret(testSecret); err != nil {
+		t.Fatalf("ok: %v", err)
+	}
+}

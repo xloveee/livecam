@@ -152,14 +152,9 @@ func initConfig() {
 		log.Printf("Stream key whitelist: disabled (open mode)")
 	}
 
-	sessionSecret := os.Getenv("SESSION_SECRET")
-	if sessionSecret == "" {
-		sessionSecret = "default_dev_secret_change_me!!"
-		log.Printf("WARNING: SESSION_SECRET not set, using insecure default")
+	if err := applySessionSecret(os.Getenv("SESSION_SECRET")); err != nil {
+		log.Fatal(err)
 	}
-	cSecret := C.CString(sessionSecret)
-	C.init_session_secret(cSecret)
-	C.free(unsafe.Pointer(cSecret))
 
 	broadcastPwd := os.Getenv("BROADCAST_PASSWORD")
 	if broadcastPwd != "" {

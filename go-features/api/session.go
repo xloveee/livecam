@@ -6,12 +6,26 @@ package main
 #include "c_src/core_logic.h"
 */
 import "C"
-import "unsafe"
+import (
+	"errors"
+	"unsafe"
+)
 
-func initSessionSecret(secret string) {
+func initSessionSecret(secret string) bool {
 	cs := C.CString(secret)
-	C.init_session_secret(cs)
+	ok := C.init_session_secret(cs) == 1
 	C.free(unsafe.Pointer(cs))
+	return ok
+}
+
+func applySessionSecret(secret string) error {
+	if secret == "" {
+		return errSessionSecretRequired
+	}
+	if !initSessionSecret(secret) {
+		return errSessionSecretTooWeak
+	}
+	return nil
 }
 
 func initStreamKeyWhitelist(csv string) {
@@ -37,3 +51,8 @@ func validateSessionTokenForKey(token, streamKey string) bool {
 }
 
 func sessionTokenHexLen() int { return int(C.SESSION_TOKEN_HEX_LEN) }
+
+var (
+	errSessionSecretRequired = errors.New("SESSION_SECRET is required")
+	errSessionSecretTooWeak  = errors.New("SESSION_SECRET must be at least 16 bytes")
+)

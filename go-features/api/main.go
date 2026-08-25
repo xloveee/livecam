@@ -167,7 +167,7 @@ func main() {
 		hlsDir = "hls"
 	}
 	hlsFS := http.StripPrefix("/hls/", http.FileServer(http.Dir(hlsDir)))
-	mux.Handle("/hls/", setCORSAndCache(hlsFailClosed(hlsFS)))
+	mux.Handle("/hls/", setCORSAndCache(hlsFailClosed(hlsFS, chatHub)))
 	mux.HandleFunc("/broadcast", broadcastHandler)
 	mux.HandleFunc("/broadcast/", broadcastHandler)
 	mux.HandleFunc("/privacy", privacyHandler)

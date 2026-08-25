@@ -46,3 +46,17 @@ func TestCheckChatOriginAllowlist(t *testing.T) {
 		t.Fatal("CHAT_ALLOWED_ORIGINS must allow")
 	}
 }
+
+func TestCheckChatOriginIgnoresForwardedHost(t *testing.T) {
+	t.Setenv("PUBLIC_BASE_URL", "")
+	t.Setenv("PUBLIC_DOMAIN", "")
+	t.Setenv("CHAT_ALLOWED_ORIGINS", "")
+	req := httptest.NewRequest(http.MethodGet, "https://live.example/api/chat/x", nil)
+	req.Host = "live.example"
+	req.TLS = &tls.ConnectionState{}
+	req.Header.Set("Origin", "https://evil.example")
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	if checkChatOrigin(req) {
+		t.Fatal("X-Forwarded-Host must not allow cross-site Origin (H27)")
+	}
+}

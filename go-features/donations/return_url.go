@@ -78,11 +78,8 @@ func donationReturnHosts(r *http.Request) []string {
 		add(part)
 	}
 	if r != nil {
-		host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
-		if host == "" {
-			host = r.Host
-		}
-		host = strings.TrimSpace(strings.Split(host, ",")[0])
+		// H28: request Host only — never client X-Forwarded-Host.
+		host := strings.TrimSpace(strings.Split(r.Host, ",")[0])
 		if h, _, err := net.SplitHostPort(host); err == nil {
 			host = h
 		}

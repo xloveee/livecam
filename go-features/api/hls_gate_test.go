@@ -85,23 +85,19 @@ func TestRoomPasswordOKFailClosed(t *testing.T) {
 
 func TestInviteCookieRoundTrip(t *testing.T) {
 	room := "abcdefghijklmnopqrstuvwxyz012345"
-	pw := "secret-invite"
-	tok := mintInviteCookie(room, pw)
-	if !validInviteCookieValue(tok, room, pw) {
-		t.Fatalf("fresh cookie rejected: %s", tok)
+	tok := mintInviteCookie(room, "")
+	if !validInviteCookieValue(tok, room, "") {
+		t.Fatalf("fresh grant rejected: %s", tok)
 	}
-	if validInviteCookieValue(tok, room, "wrong") {
-		t.Fatal("cookie accepted for wrong password")
+	if validInviteCookieValue(tok, "otherroom", "") {
+		t.Fatal("grant accepted for other room")
 	}
-	if validInviteCookieValue(tok, "otherroom", pw) {
-		t.Fatal("cookie accepted for other room")
-	}
-	if validInviteCookieValue("not-a-cookie", room, pw) {
+	if validInviteCookieValue("not-a-cookie", room, "") {
 		t.Fatal("garbage accepted")
 	}
-	expired := signInviteCookie(room, pw, time.Now().Add(-time.Hour).Unix())
-	if validInviteCookieValue(expired, room, pw) {
-		t.Fatal("expired cookie accepted")
+	expired := signInviteGrant(room, time.Now().Add(-time.Hour).Unix())
+	if validInviteCookieValue(expired, room, "") {
+		t.Fatal("expired grant accepted")
 	}
 }
 

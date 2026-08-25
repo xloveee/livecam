@@ -1,6 +1,7 @@
 package main
 
 import (
+	"livecam/chat"
 	"net/http"
 	"strings"
 )
@@ -35,7 +36,7 @@ func parseHlsRoom(urlPath string) (room, file string, ok bool) {
 	return room, file, true
 }
 
-func hlsFailClosed(next http.Handler) http.Handler {
+func hlsFailClosed(next http.Handler, hub *chat.Hub) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -44,6 +45,11 @@ func hlsFailClosed(next http.Handler) http.Handler {
 		room, file, ok := parseHlsRoom(r.URL.Path)
 		if !ok {
 			http.NotFound(w, r)
+			return
+		}
+		viewerIP := chat.ClientIP(r)
+		if hub != nil && hub.IsIPBanned(room, viewerIP) {
+			http.Error(w, "You are banned from this room.", http.StatusForbidden)
 			return
 		}
 		info := fetchRoomInfo(room)
@@ -63,11 +69,21 @@ func hlsFailClosed(next http.Handler) http.Handler {
 			if r != nil {
 				submitted = strings.TrimSpace(r.Header.Get("X-Room-Password"))
 			}
-			passed = rustCheckRoomPassword(room, submitted)
+			if submitted != "" && rustCheckRoomPassword(room, submitted) {
+				passed = true
+			} else if r != nil {
+				if c, err := r.Cookie(inviteCookieName); err == nil && validInviteCookieValue(c.Value, room, "") {
+					passed = true
+				}
+			}
 		}
 		if !roomAccessOK(info, passed) {
 			http.Error(w, "Incorrect room password", http.StatusForbidden)
 			return
+		}
+		// H26: mint grant after rust check or existing cookie — no info.Password.
+		if info.HasPassword && passed {
+			setHlsAuthCookies(w, r, room, "", "", true)
 		}
 		next.ServeHTTP(w, r)
 	})

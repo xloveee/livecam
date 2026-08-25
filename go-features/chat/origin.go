@@ -58,15 +58,12 @@ func chatAllowedOrigins(r *http.Request) []string {
 		add(part)
 	}
 
+	// H27: never trust client X-Forwarded-Host. Request Host is nginx $host / local.
 	proto := "http"
-	if xf := strings.TrimSpace(r.Header.Get("X-Forwarded-Proto")); strings.EqualFold(xf, "https") || r.TLS != nil {
+	if r.TLS != nil {
 		proto = "https"
 	}
-	host := strings.TrimSpace(r.Header.Get("X-Forwarded-Host"))
-	if host == "" {
-		host = r.Host
-	}
-	host = strings.TrimSpace(strings.Split(host, ",")[0])
+	host := strings.TrimSpace(strings.Split(r.Host, ",")[0])
 	if host != "" {
 		add(proto + "://" + host)
 	}

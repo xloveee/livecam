@@ -577,7 +577,9 @@ btnStart.onclick = async function () {
         var offer = await pc.createOffer();
         await pc.setLocalDescription(offer);
 
-        var response = await fetch('/api/whip/' + streamKey, {
+        var whipRoom = publicSlug || '';
+        if (!whipRoom) { throw new Error('missing public slug'); }
+        var response = await fetch('/api/whip/' + whipRoom, {
             method: 'POST',
             headers: { 'Content-Type': 'application/sdp' },
             body: pc.localDescription.sdp

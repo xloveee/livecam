@@ -148,7 +148,7 @@ env_get() {
 load_existing_env() {
 	local f="$1"
 	[[ -f "$f" ]] || return 0
-	echo "H22: loading SESSION_SECRET / ALLOWED_STREAM_KEYS / BROADCAST_PASSWORD from $f"
+	echo "H22: loading SESSION_SECRET / ALLOWED_STREAM_KEYS / BROADCAST_PASSWORD / SFU_INTERNAL_SECRET from $f"
 	if [[ -z "$SESSION_SECRET" ]]; then
 		SESSION_SECRET="$(env_get "$f" SESSION_SECRET)"
 	fi
@@ -157,6 +157,9 @@ load_existing_env() {
 	fi
 	if [[ -z "$PASSWORD" ]]; then
 		PASSWORD="$(env_get "$f" BROADCAST_PASSWORD)"
+	fi
+	if [[ -z "$SFU_INTERNAL_SECRET" ]]; then
+		SFU_INTERNAL_SECRET="$(env_get "$f" SFU_INTERNAL_SECRET)"
 	fi
 }
 
@@ -174,11 +177,13 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 	PUBLIC_IP="${PUBLIC_IP:-203.0.113.10}"
 	SESSION_SECRET="${SESSION_SECRET:-dryrun-session-secret-min16}"
 	ALLOWED_STREAM_KEYS="${ALLOWED_STREAM_KEYS:-dryrun00000000000000000000000001}"
+	SFU_INTERNAL_SECRET="${SFU_INTERNAL_SECRET:-dryrun-sfu-internal-min16}"
 	OUT_DIR="${INSTALL_OUT_DIR:-$SCRIPT_DIR/out/$DOMAIN}"
 else
 	PUBLIC_IP="${PUBLIC_IP:-}"
 	SESSION_SECRET="${SESSION_SECRET:-}"
 	ALLOWED_STREAM_KEYS="${ALLOWED_STREAM_KEYS:-}"
+	SFU_INTERNAL_SECRET="${SFU_INTERNAL_SECRET:-}"
 	OUT_DIR="$INSTALL_ROOT/deploy"
 fi
 
@@ -194,6 +199,7 @@ render() {
 	content="${content//__BROADCAST_PASSWORD__/$PASSWORD}"
 	content="${content//__SESSION_SECRET__/$SESSION_SECRET}"
 	content="${content//__ALLOWED_STREAM_KEYS__/$ALLOWED_STREAM_KEYS}"
+	content="${content//__SFU_INTERNAL_SECRET__/$SFU_INTERNAL_SECRET}"
 	content="${content//__SERVICE_USER__/$SERVICE_USER}"
 	mkdir -p "$(dirname "$dest")"
 	printf '%s\n' "$content" >"$dest"
@@ -247,6 +253,10 @@ if [[ -z "$SESSION_SECRET" ]]; then
 fi
 if [[ -z "$ALLOWED_STREAM_KEYS" ]]; then
 	ALLOWED_STREAM_KEYS="$(random_alnum 32)"
+fi
+if [[ -z "$SFU_INTERNAL_SECRET" ]]; then
+	# M37: rust/Go Fatal if < 16.
+	SFU_INTERNAL_SECRET="$(random_alnum 32)"
 fi
 
 install_caddy_pkg() {

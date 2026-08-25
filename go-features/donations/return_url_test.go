@@ -51,3 +51,15 @@ func TestDonationRateLimitKeyIgnoresUntrustedXFF(t *testing.T) {
 		t.Fatalf("got %q", ip)
 	}
 }
+
+func TestAllowReturnURLIgnoresForwardedHost(t *testing.T) {
+	t.Setenv("PUBLIC_DOMAIN", "live.example")
+	t.Setenv("PUBLIC_BASE_URL", "")
+	t.Setenv("DONATION_RETURN_HOSTS", "")
+	req := httptest.NewRequest(http.MethodPost, "https://live.example/api/donations/initiate", nil)
+	req.Host = "live.example"
+	req.Header.Set("X-Forwarded-Host", "evil.example")
+	if allowReturnURL("https://evil.example/phish", req) {
+		t.Fatal("X-Forwarded-Host must not allow return host (H28)")
+	}
+}

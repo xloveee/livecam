@@ -17,25 +17,37 @@ use crate::config::pick_ice_recv_dest;
 use crate::hls::RoomHls;
 
 /// Unique identifier for a peer session (broadcaster or viewer).
+/// H10: 128-bit random — not guessable sequential `peer-N`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PeerId(u64);
-
-static NEXT_PEER_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+pub struct PeerId([u8; 16]);
 
 impl PeerId {
     pub fn next() -> Self {
-        Self(NEXT_PEER_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed))
+        let mut b = [0u8; 16];
+        getrandom::fill(&mut b).expect("PeerId entropy");
+        Self(b)
     }
 
     pub fn parse(s: &str) -> Option<Self> {
-        let num = s.strip_prefix("peer-")?;
-        num.parse::<u64>().ok().map(PeerId)
+        let hex = s.strip_prefix("peer-")?;
+        if hex.len() != 32 || !hex.bytes().all(|c| c.is_ascii_hexdigit()) {
+            return None;
+        }
+        let mut out = [0u8; 16];
+        for i in 0..16 {
+            out[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+        }
+        Some(Self(out))
     }
 }
 
 impl std::fmt::Display for PeerId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "peer-{}", self.0)
+        write!(f, "peer-")?;
+        for b in &self.0 {
+            write!(f, "{:02x}", b)?;
+        }
+        Ok(())
     }
 }
 
@@ -1216,5 +1228,26 @@ mod replace_tests {
             now
         ));
         assert!(!live_publisher_blocks_replace(None, now));
+    }
+}
+
+#[cfg(test)]
+mod peer_id_tests {
+    use super::PeerId;
+
+    #[test]
+    fn peer_id_is_random_hex_not_sequential() {
+        let a = PeerId::next();
+        let b = PeerId::next();
+        assert_ne!(a, b);
+        let sa = a.to_string();
+        let sb = b.to_string();
+        assert!(sa.starts_with("peer-"), "sa={sa}");
+        assert_eq!(sa.len(), 37, "sa={sa}");
+        assert!(sb.starts_with("peer-"), "sb={sb}");
+        assert_eq!(sb.len(), 37, "sb={sb}");
+        assert!(PeerId::parse(&sa).unwrap() == a);
+        assert!(PeerId::parse("peer-1").is_none());
+        assert!(PeerId::parse("peer-not-hex").is_none());
     }
 }

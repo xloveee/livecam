@@ -12,6 +12,7 @@ str0m = "0.16"
 tracing = "0.1"
 tracing-subscriber = "0.3"
 socket2 = "0.6"
+getrandom = "0.3"
 
 [profile.release]
 lto = true

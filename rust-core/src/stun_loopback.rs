@@ -36,10 +36,41 @@ const ATTR_XOR_RELAYED: u16 = 0x0016;
 const ATTR_XOR_MAPPED: u16 = 0x0020;
 
 const REALM: &str = "livecam";
-const USER: &str = "livecam";
-const PASS: &str = "livecam";
 const NONCE: &str = "livecam-nonce-1";
 const MEDIA: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(Ipv4Addr::LOCALHOST), 50000);
+const ALLOC_TTL: std::time::Duration = std::time::Duration::from_secs(600);
+
+static CREDS: std::sync::OnceLock<(String, String)> = std::sync::OnceLock::new();
+
+pub fn enabled() -> bool {
+    matches!(
+        std::env::var("SFU_LOOPBACK_TURN").ok().as_deref(),
+        Some("1") | Some("true") | Some("TRUE") | Some("yes") | Some("YES")
+    )
+}
+
+fn creds() -> &'static (String, String) {
+    CREDS.get_or_init(|| {
+        let mut buf = [0u8; 16];
+        getrandom::fill(&mut buf).expect("loopback TURN entropy");
+        let user = hex::encode(&buf[..8]);
+        let pass = hex::encode(&buf[8..]);
+        tracing::info!("loopback TURN creds (process-local): user={user}");
+        (user, pass)
+    })
+}
+
+mod hex {
+    pub fn encode(bytes: &[u8]) -> String {
+        const H: &[u8; 16] = b"0123456789abcdef";
+        let mut out = String::with_capacity(bytes.len() * 2);
+        for &b in bytes {
+            out.push(H[(b >> 4) as usize] as char);
+            out.push(H[(b & 0xf) as usize] as char);
+        }
+        out
+    }
+}
 
 fn hmac_sha1(key: &[u8], data: &[u8]) -> [u8; 20] {
     str0m::crypto::from_feature_flags()
@@ -70,6 +101,7 @@ pub async fn run(sock: UdpSocket) {
                         continue;
                     }
                 };
+                expire_allocs(&mut allocs);
                 let pkt = &buf[..n];
                 if n >= 4 && pkt[0] & 0xC0 == 0x40 {
                     if let Some(alloc) = allocs.get(&src) {
@@ -117,6 +149,7 @@ pub async fn run(sock: UdpSocket) {
 struct Alloc {
     relay: std::sync::Arc<UdpSocket>,
     channels: HashMap<u16, SocketAddr>,
+    expires: std::time::Instant,
 }
 
 async fn handle_stun(
@@ -175,6 +208,7 @@ async fn handle_stun(
                             Alloc {
                                 relay,
                                 channels: HashMap::new(),
+                                expires: std::time::Instant::now() + ALLOC_TTL,
                             },
                         );
                         let port = relay_addr.port();
@@ -186,7 +220,7 @@ async fn handle_stun(
                                 xor_mapped(ATTR_XOR_MAPPED, loopback_port(src.port()), &tid),
                                 lifetime(600),
                             ],
-                            Some(&turn_key(USER, REALM, PASS)),
+                            Some(&turn_key(&creds().0, REALM, &creds().1)),
                         ))
                     }
                     Err(e) => {
@@ -204,7 +238,7 @@ async fn handle_stun(
                         xor_mapped(ATTR_XOR_MAPPED, loopback_port(src.port()), &tid),
                         lifetime(600),
                     ],
-                    Some(&turn_key(USER, REALM, PASS)),
+                    Some(&turn_key(&creds().0, REALM, &creds().1)),
                 ))
             }
         }
@@ -212,26 +246,31 @@ async fn handle_stun(
             REFRESH_SUCCESS,
             &tid,
             &[lifetime(600)],
-            Some(&turn_key(USER, REALM, PASS)),
+            Some(&turn_key(&creds().0, REALM, &creds().1)),
         )),
         CREATE_PERM_REQUEST => Some(encode_success(
             CREATE_PERM_SUCCESS,
             &tid,
             &[],
-            Some(&turn_key(USER, REALM, PASS)),
+            Some(&turn_key(&creds().0, REALM, &creds().1)),
         )),
         CHANNEL_BIND_REQUEST => {
             let ch = attr_u16(req, ATTR_CHANNEL_NUMBER).unwrap_or(0x4000);
             let peer = xor_peer_addr(req, &tid).unwrap_or(MEDIA);
+            // H15: only relay to the SFU media port on loopback.
+            if peer != MEDIA {
+                tracing::warn!("TURN channel bind rejected peer {peer}");
+                return None;
+            }
             if let Some(a) = allocs.get_mut(&src) {
-                a.channels.insert(ch, peer);
-                tracing::info!("TURN channel {ch:#x} {src} -> {peer}");
+                a.channels.insert(ch, MEDIA);
+                tracing::info!("TURN channel {ch:#x} {src} -> {MEDIA}");
             }
             Some(encode_success(
                 CHANNEL_BIND_SUCCESS,
                 &tid,
                 &[],
-                Some(&turn_key(USER, REALM, PASS)),
+                Some(&turn_key(&creds().0, REALM, &creds().1)),
             ))
         }
         _ => {
@@ -239,7 +278,9 @@ async fn handle_stun(
                 // Send indication
                 if let (Some(data), Some(alloc)) = (attr_bytes(req, ATTR_DATA), allocs.get(&src)) {
                     let dest = xor_peer_addr(req, &tid).unwrap_or(MEDIA);
-                    let _ = alloc.relay.send_to(data, dest).await;
+                    if dest == MEDIA {
+                        let _ = alloc.relay.send_to(data, MEDIA).await;
+                    }
                 }
             }
             None
@@ -251,8 +292,67 @@ fn loopback_port(port: u16) -> u16 {
     port
 }
 
+fn expire_allocs(allocs: &mut HashMap<SocketAddr, Alloc>) {
+    let now = std::time::Instant::now();
+    allocs.retain(|_, a| a.expires > now);
+}
+
 fn has_integrity(req: &[u8]) -> bool {
-    find_attr(req, ATTR_MESSAGE_INTEGRITY).is_some()
+    let Some((start, len)) = find_attr_range(req, ATTR_MESSAGE_INTEGRITY) else {
+        return false;
+    };
+    if len != 20 || start + 4 + len > req.len() {
+        return false;
+    }
+    let provided = &req[start + 4..start + 4 + 20];
+    // MESSAGE-INTEGRITY covers bytes up to but not including the MI attr,
+    // with header length adjusted as if MI is the last attr.
+    if req.len() < 20 {
+        return false;
+    }
+    let mut adjusted = req[..start].to_vec();
+    if adjusted.len() < 20 {
+        return false;
+    }
+    let mi_total = 24u16; // type+len+20
+    let body_len = (adjusted.len() as u16).saturating_sub(20) + mi_total;
+    adjusted[2] = (body_len >> 8) as u8;
+    adjusted[3] = (body_len & 0xff) as u8;
+    let key = turn_key(&creds().0, REALM, &creds().1);
+    let expect = hmac_sha1(&key, &adjusted);
+    constant_eq(provided, &expect)
+}
+
+fn constant_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut d = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        d |= x ^ y;
+    }
+    d == 0
+}
+
+fn find_attr_range(msg: &[u8], want: u16) -> Option<(usize, usize)> {
+    if msg.len() < 20 {
+        return None;
+    }
+    let mut i = 20usize;
+    let end = msg.len().min(20 + u16::from_be_bytes([msg[2], msg[3]]) as usize);
+    while i + 4 <= end {
+        let typ = u16::from_be_bytes([msg[i], msg[i + 1]]);
+        let len = u16::from_be_bytes([msg[i + 2], msg[i + 3]]) as usize;
+        let val_end = i + 4 + len;
+        if val_end > end {
+            break;
+        }
+        if typ == want {
+            return Some((i, len));
+        }
+        i = val_end + (4 - len % 4) % 4;
+    }
+    None
 }
 
 fn allocate_401(tid: &[u8]) -> Vec<u8> {
@@ -477,6 +577,15 @@ pub fn binding_success_loopback(req: &[u8], src: SocketAddr) -> Option<Vec<u8>> 
         &[xor_mapped(ATTR_XOR_MAPPED, src.port(), tid)],
         None,
     ))
+}
+
+#[cfg(test)]
+mod h15_tests {
+    #[test]
+    fn loopback_turn_disabled_by_default() {
+        std::env::remove_var("SFU_LOOPBACK_TURN");
+        assert!(!super::enabled());
+    }
 }
 
 #[cfg(test)]

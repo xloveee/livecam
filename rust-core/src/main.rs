@@ -52,12 +52,17 @@ async fn main() {
         panic!("no UDP media sockets bound");
     }
 
-    let stun_addr: std::net::SocketAddr = "127.0.0.1:3478".parse().unwrap();
-    match tokio::net::UdpSocket::bind(stun_addr).await {
-        Ok(stun_sock) => {
-            tokio::spawn(stun_loopback::run(stun_sock));
+    // H15: loopback TURN is off unless SFU_LOOPBACK_TURN=1 (local Firefox hairpin only).
+    if stun_loopback::enabled() {
+        let stun_addr: std::net::SocketAddr = "127.0.0.1:3478".parse().unwrap();
+        match tokio::net::UdpSocket::bind(stun_addr).await {
+            Ok(stun_sock) => {
+                tokio::spawn(stun_loopback::run(stun_sock));
+            }
+            Err(e) => tracing::warn!("loopback STUN bind {stun_addr}: {e}"),
         }
-        Err(e) => tracing::warn!("loopback STUN bind {stun_addr}: {e}"),
+    } else {
+        tracing::info!("loopback STUN/TURN disabled (set SFU_LOOPBACK_TURN=1 to enable)");
     }
 
     let (new_peer_tx, new_peer_rx) = mpsc::unbounded_channel();

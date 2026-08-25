@@ -79,13 +79,17 @@ function switchSettingsTab(page, btn) {
 /* ── Device Enumeration & Preview ────────────────────────── */
 
 async function enumerateDevices() {
+    var probe = null;
     try {
-        await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+        probe = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
     } catch (e) {
         statusEl.textContent = 'Camera/mic permission denied';
         statusEl.classList.add('error');
         btnStart.disabled = true;
         return;
+    }
+    if (probe) {
+        probe.getTracks().forEach(function (tr) { try { tr.stop(); } catch (e2) {} });
     }
 
     var devices = await navigator.mediaDevices.enumerateDevices();
@@ -151,6 +155,20 @@ async function startPreview() {
         preview.srcObject = localStream;
         preview.playsInline = true;
         preview.play().catch(function () {});
+        var emptyHint = document.getElementById('preview-empty');
+        function markPreviewVideo() {
+            var live = false;
+            try {
+                live = !!(localStream && localStream.getVideoTracks && localStream.getVideoTracks().some(function (tr) {
+                    return tr && tr.readyState === 'live';
+                }));
+            } catch (e3) {}
+            if (emptyHint && (preview.videoWidth > 0 || live)) emptyHint.classList.add('has-video');
+        }
+        preview.addEventListener('loadeddata', markPreviewVideo);
+        preview.addEventListener('playing', markPreviewVideo);
+        if (preview.videoWidth > 0) markPreviewVideo();
+        if (typeof syncCameraFaceLayer === 'function') syncCameraFaceLayer();
     } catch (e) {
         statusEl.textContent = 'Failed to access camera: ' + e.message;
         statusEl.classList.add('error');

@@ -930,7 +930,7 @@ func roomPasswordProxyHandler(w http.ResponseWriter, r *http.Request) {
 
 func setCORSAndCache(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// M3: no wildcard CORS — same-origin HLS does not need ACAO.
 		if strings.HasSuffix(r.URL.Path, ".m3u8") {
 			w.Header().Set("Cache-Control", "no-cache, no-store")
 			w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")

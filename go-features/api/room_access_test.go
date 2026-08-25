@@ -40,3 +40,10 @@ func TestParseHlsRoomAccess(t *testing.T) {
 		t.Fatal("not hls")
 	}
 }
+
+
+func TestRoomAccessStillFailsClosedUnfetched(t *testing.T) {
+	if roomAccessOK(roomInfoResult{IsLive: true}, false) {
+		t.Fatal("unfetched must deny")
+	}
+}

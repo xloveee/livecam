@@ -47,8 +47,13 @@ func hlsFailClosed(next http.Handler) http.Handler {
 			return
 		}
 		info := fetchRoomInfo(room)
+		// M2: header-only password (already); do not serve leftover HLS when not live.
+		if !info.Fetched || !info.IsLive {
+			http.Error(w, "Room is not live", http.StatusNotFound)
+			return
+		}
 		passed := false
-		if info.Fetched && info.HasPassword {
+		if info.HasPassword {
 			submitted := ""
 			if r != nil {
 				submitted = strings.TrimSpace(r.Header.Get("X-Room-Password"))

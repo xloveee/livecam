@@ -20,6 +20,7 @@ func initSessionSecret(secret string) bool {
 	return ok
 }
 
+// M35/C2: refuse short SESSION_SECRET; C never falls back to 0x5A mix.
 func applySessionSecret(secret string) error {
 	if secret == "" {
 		return errSessionSecretRequired

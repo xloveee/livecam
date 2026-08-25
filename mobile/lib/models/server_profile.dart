@@ -21,6 +21,19 @@ class ServerProfile {
     return u;
   }
 
+  /// Prefs-safe JSON (M26): no stream key / broadcast password.
+  Map<String, dynamic> toPublicJson() => {
+        'id': id,
+        'name': name,
+        'baseUrl': baseUrl,
+        'streamKeyHint': maskedStreamKey,
+      };
+
+  String get maskedStreamKey {
+    if (streamKey.length <= 4) return '••••';
+    return '${streamKey.substring(0, 2)}…${streamKey.substring(streamKey.length - 2)}';
+  }
+
   Map<String, dynamic> toJson() => {
         'id': id,
         'name': name,
@@ -33,7 +46,7 @@ class ServerProfile {
         id: json['id'] as String,
         name: json['name'] as String,
         baseUrl: json['baseUrl'] as String,
-        streamKey: json['streamKey'] as String,
+        streamKey: (json['streamKey'] as String?) ?? '',
         broadcastPassword: json['broadcastPassword'] as String? ?? '',
       );
 

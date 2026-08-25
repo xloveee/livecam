@@ -256,12 +256,32 @@ func (d *DB) GetOfflineBannerText(streamKey string) string {
 }
 
 // OfflineBannerUploadPath returns the on-disk path for this stream's uploaded banner, or "" if uploads disabled.
+func OfflineBannerMediaID(streamKey string) string {
+	sum := sha256.Sum256([]byte(streamKey))
+	return fmt.Sprintf("%x", sum[:])
+}
+
 func OfflineBannerUploadPath(streamKey string) string {
 	if OfflineBannerUploadDir == "" {
 		return ""
 	}
-	sum := sha256.Sum256([]byte(streamKey))
-	return filepath.Join(OfflineBannerUploadDir, fmt.Sprintf("%x", sum[:])+".bin")
+	return filepath.Join(OfflineBannerUploadDir, OfflineBannerMediaID(streamKey)+".bin")
+}
+
+// OfflineBannerPathByMediaID resolves a public hash id to a file under the upload dir (M28).
+func OfflineBannerPathByMediaID(mediaID string) string {
+	if OfflineBannerUploadDir == "" || mediaID == "" {
+		return ""
+	}
+	for _, c := range mediaID {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+			return ""
+		}
+	}
+	if len(mediaID) != 64 {
+		return ""
+	}
+	return filepath.Join(OfflineBannerUploadDir, mediaID+".bin")
 }
 
 // GetOfflineBannerImageURL returns an optional image URL: https, http, or same-origin path /offline_banner_media/…
@@ -312,6 +332,25 @@ func (d *DB) SyncOfflineBannerUploadFile(streamKey string, configData string) {
 		_ = os.Remove(path)
 		return
 	}
+}
+
+func (d *DB) getDistributionRaw(streamKey string) string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	var data string
+	err := d.db.QueryRow(
+		`SELECT config_data FROM streamer_config WHERE stream_key = ? AND provider = 'distribution'`,
+		streamKey).Scan(&data)
+	if err != nil {
+		return ""
+	}
+	return data
+}
+
+// GetDistribution returns the streamer's watch-mode offer. Missing config uses defaults.
+func (d *DB) GetDistribution(streamKey string) DistributionConfig {
+	return ParseDistribution(d.getDistributionRaw(streamKey))
 }
 
 // GetOfflineBanner is an alias for GetOfflineBannerText (room_info JSON field offline_banner).

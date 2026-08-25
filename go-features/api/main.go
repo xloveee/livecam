@@ -743,7 +743,7 @@ func offlineBannerUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	text := sharedDonoDB.GetOfflineBannerText(streamKey)
-	rel := "/offline_banner_media/" + url.PathEscape(roomID)
+	rel := "/offline_banner_media/" + donations.OfflineBannerMediaID(streamKey)
 	cfg := map[string]string{"text": text, "image_url": rel}
 	raw, err := json.Marshal(cfg)
 	if err != nil {
@@ -776,7 +776,7 @@ func offlineBannerMediaHandler(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	path := donations.OfflineBannerUploadPath(roomID)
+	path := donations.OfflineBannerPathByMediaID(roomID)
 	if path == "" {
 		http.NotFound(w, r)
 		return
@@ -811,10 +811,10 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	roomID := r.URL.Path[len("/api/room_info/"):]
 	roomID = strings.TrimSuffix(roomID, "/")
 
-	// Single-streamer shortcut: GET /api/room_info/ (no room ID) resolves
-	// the offline banner from the only configured streamer.
-	if roomID == "" && sharedDonoDB != nil {
-		roomID = sharedDonoDB.GetDefaultOfflineBannerStreamKey()
+	// M28: empty room id does not resolve to a default stream key.
+	if roomID == "" {
+		http.Error(w, "room id required", http.StatusBadRequest)
+		return
 	}
 
 	info := fetchRoomInfo(roomID)
@@ -830,7 +830,7 @@ func roomInfoProxyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if p := donations.OfflineBannerUploadPath(roomID); p != "" {
 		if _, err := os.Stat(p); err == nil {
-			offlineBannerImg = "/offline_banner_media/" + url.PathEscape(roomID)
+			offlineBannerImg = "/offline_banner_media/" + donations.OfflineBannerMediaID(roomID)
 		}
 	}
 	if offlineBannerImg == "" && sharedDonoDB != nil {

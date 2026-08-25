@@ -64,6 +64,7 @@ fi
 DOMAIN="${1:-${DOMAIN:-}}"
 EMAIL="${2:-${EMAIL:-}}"
 PASSWORD="${3:-${BROADCAST_PASSWORD:-}}"
+# M30: prefer env BROADCAST_PASSWORD over argv (visible in ps).
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
 	# Default dry-run hostname is example.test — never indep.stream.
@@ -109,9 +110,14 @@ if [[ "$(uname -s)" == Darwin && "$DRY_RUN" -eq 0 ]]; then
 	exit 1
 fi
 
-if [[ "$DRY_RUN" -eq 0 && "$INSTALL_ROOT" == "/opt/src/livecam" ]]; then
-	echo "refusing to install over /opt/src/livecam" >&2
-	exit 1
+# M29: realpath compare — refuse Mac tree and any path under it.
+if [[ "$DRY_RUN" -eq 0 ]]; then
+	_root_real="$(realpath "$INSTALL_ROOT" 2>/dev/null || echo "$INSTALL_ROOT")"
+	_mac_real="$(realpath /opt/src/livecam 2>/dev/null || echo /opt/src/livecam)"
+	if [[ "$_root_real" == "$_mac_real" || "$_root_real" == "$_mac_real"/* ]]; then
+		echo "refusing to install over $_root_real (Mac livestream tree)" >&2
+		exit 1
+	fi
 fi
 
 random_alnum() {
@@ -201,7 +207,12 @@ write_rendered() {
 	render "$TEMPLATE_DIR/nginx-http.conf" "$dest_dir/nginx-http.conf"
 	render "$TEMPLATE_DIR/sfu.service" "$dest_dir/sfu.service"
 	render "$TEMPLATE_DIR/go-proxy.service" "$dest_dir/go-proxy.service"
-	render "$TEMPLATE_DIR/env" "$dest_dir/.env"
+	# M30: write .env as 0640 via temp+mv (never 0644 then chmod).
+	local env_tmp
+	env_tmp="$(mktemp "$dest_dir/.env.XXXXXX")"
+	chmod 640 "$env_tmp"
+	render "$TEMPLATE_DIR/env" "$env_tmp"
+	mv -f "$env_tmp" "$dest_dir/.env"
 }
 
 if [[ "$DRY_RUN" -eq 1 ]]; then

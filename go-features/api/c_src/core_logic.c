@@ -130,6 +130,7 @@ int32_t validate_stream_key(const char *key)
 
 typedef struct {
     uint32_t ip_hash;
+    char     ip[MAX_IP_ADDR_LEN + 1];
     int32_t  tokens;
     int64_t  last_refill_sec;
     int32_t  occupied;
@@ -176,9 +177,19 @@ int32_t check_viewer_rate_limit(const char *ip_address)
     pthread_mutex_lock(&g_rate_mu);
     rate_entry_t *const entry = &g_rate_table[idx];
 
-    if (entry->occupied == 0 || entry->ip_hash != h ||
+    if (entry->occupied != 0 && entry->ip_hash == h &&
+        strncmp(entry->ip, ip_address, MAX_IP_ADDR_LEN) != 0) {
+        /* M34: hash collision with a live different IP — do not refill; deny. */
+        pthread_mutex_unlock(&g_rate_mu);
+        return 0;
+    }
+    if (entry->occupied == 0 ||
+        strncmp(entry->ip, ip_address, MAX_IP_ADDR_LEN) != 0 ||
         (now - entry->last_refill_sec) > RATE_ENTRY_TTL_SEC) {
         entry->ip_hash = h;
+        memset(entry->ip, 0, sizeof(entry->ip));
+        memcpy(entry->ip, ip_address, len);
+        entry->ip[len] = 0;
         entry->tokens = RATE_MAX_TOKENS - 1;
         entry->last_refill_sec = now;
         entry->occupied = 1;
@@ -696,6 +707,10 @@ int32_t check_room_password(const char *submitted, const char *stored)
     }
 
     const size_t stored_len = bounded_strlen(stored, MAX_ROOM_PASSWORD_LEN + 1);
+    /* M33: reject over-long (no NUL within MAX) — do not compare truncated. */
+    if (stored_len > MAX_ROOM_PASSWORD_LEN) {
+        return 0;
+    }
     if (stored_len == 0) {
         return 1;
     }
@@ -705,6 +720,9 @@ int32_t check_room_password(const char *submitted, const char *stored)
     }
 
     const size_t submitted_len = bounded_strlen(submitted, MAX_ROOM_PASSWORD_LEN + 1);
+    if (submitted_len > MAX_ROOM_PASSWORD_LEN) {
+        return 0;
+    }
 
     /* Length mismatch — still iterate to preserve constant time */
     volatile int32_t diff = 0;

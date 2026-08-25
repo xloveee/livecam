@@ -43,11 +43,30 @@ class _ServerEditScreenState extends State<ServerEditScreen> {
       );
       return;
     }
+    final url = _urlCtrl.text.trim();
+    // M27: https only (localhost http allowed for dev).
+    Uri? parsed;
+    try {
+      parsed = Uri.parse(url);
+    } catch (_) {
+      parsed = null;
+    }
+    final host = parsed?.host ?? '';
+    final okScheme = parsed != null &&
+        (parsed.scheme == 'https' ||
+            (parsed.scheme == 'http' &&
+                (host == 'localhost' || host == '127.0.0.1')));
+    if (!okScheme) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Base URL must be https:// (or http://localhost)')),
+      );
+      return;
+    }
     Navigator.pop(
       context,
       widget.profile.copyWith(
         name: _nameCtrl.text.trim(),
-        baseUrl: _urlCtrl.text.trim(),
+        baseUrl: url,
         streamKey: key,
         broadcastPassword: _pwdCtrl.text,
       ),

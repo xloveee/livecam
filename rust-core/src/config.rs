@@ -124,7 +124,10 @@ impl Config {
 /// primary outbound IPv4. Non-loopback addresses are listed first so
 /// Chrome prefers a LAN pair over `127.0.0.1`.
 fn collect_ice_host_ips(public_ip: IpAddr) -> Vec<IpAddr> {
+    // M36: production advertises SFU_PUBLIC_IP (+ optional SFU_EXTRA_IPS) only.
+    // Set SFU_ADVERTISE_LOCAL=1 for same-host Chrome/loopback/LAN ICE.
     let mut ips: Vec<IpAddr> = Vec::new();
+    push_unique_ip(&mut ips, public_ip);
     if let Ok(extra) = std::env::var("SFU_EXTRA_IPS") {
         for part in extra.split(',') {
             if let Ok(ip) = part.trim().parse::<IpAddr>() {
@@ -132,13 +135,15 @@ fn collect_ice_host_ips(public_ip: IpAddr) -> Vec<IpAddr> {
             }
         }
     }
-    if let Some(ip) = discover_outbound_ipv4() {
-        push_unique_ip(&mut ips, ip);
+    let advertise_local = std::env::var("SFU_ADVERTISE_LOCAL")
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false);
+    if advertise_local {
+        if let Some(ip) = discover_outbound_ipv4() {
+            push_unique_ip(&mut ips, ip);
+        }
+        push_unique_ip(&mut ips, IpAddr::V4(Ipv4Addr::LOCALHOST));
     }
-    push_unique_ip(&mut ips, public_ip);
-    // Chrome on http://127.0.0.1 may STUN to loopback; same-host LAN
-    // publish still needs the outbound IPv4 advertised above.
-    push_unique_ip(&mut ips, IpAddr::V4(Ipv4Addr::LOCALHOST));
     ips.sort_by_key(|ip| ip.is_loopback());
     ips
 }
@@ -264,10 +269,18 @@ mod tests {
     }
 
     #[test]
-    fn ice_hosts_include_loopback_and_public() {
+    fn ice_hosts_public_only_and_local_opt_in() {
+        // M36: single test so env mutations are not racy across threads.
+        std::env::remove_var("SFU_ADVERTISE_LOCAL");
+        std::env::remove_var("SFU_EXTRA_IPS");
+        let pub_ip: IpAddr = "203.0.113.10".parse().unwrap();
+        let ips = collect_ice_host_ips(pub_ip);
+        assert_eq!(ips, vec![pub_ip]);
+
+        std::env::set_var("SFU_ADVERTISE_LOCAL", "1");
         let ips = collect_ice_host_ips(IpAddr::V4(Ipv4Addr::LOCALHOST));
-        assert!(ips.iter().any(|ip| ip.is_loopback()));
         assert!(ips.contains(&IpAddr::V4(Ipv4Addr::LOCALHOST)));
+        std::env::remove_var("SFU_ADVERTISE_LOCAL");
     }
 
     #[test]

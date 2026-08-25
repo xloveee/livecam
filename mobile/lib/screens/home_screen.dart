@@ -126,7 +126,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: ListTile(
                         title: Text(s.name),
-                        subtitle: Text('${s.normalizedBaseUrl}\nRoom: ${s.streamKey.isEmpty ? "(not set)" : s.streamKey}'),
+                        subtitle: Text('${s.normalizedBaseUrl}\nRoom: ${s.streamKey.isEmpty ? "(not set)" : s.maskedStreamKey}'),
                         isThreeLine: true,
                         onTap: () => _editServer(s),
                         trailing: PopupMenuButton<String>(

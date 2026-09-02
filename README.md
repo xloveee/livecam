@@ -16,9 +16,9 @@ Self-hosted WebRTC live streaming & livecam platform. OBS WHIP broadcaster, brow
 
 | Flow | URL |
 |---|---|
-| **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{streamKey}` |
+| **Publish (OBS WHIP)** | `https://yourdomain.com/api/whip/{publicSlug}` |
 | **Publish (Browser)** | `https://yourdomain.com/broadcast` |
-| **Publish (Mobile WHIP)** | `POST https://yourdomain.com/api/whip/{streamKey}` with SDP body + `Authorization: Bearer {token}` |
+| **Publish (Mobile WHIP)** | `POST https://yourdomain.com/api/whip/{publicSlug}` with SDP body + `Authorization: Bearer {token}` |
 | **Broadcaster Auth** | `POST https://yourdomain.com/api/auth/broadcast` → JSON `{ "token", "stream_key" }` (+ session cookie for browser) |
 | **Watch (Browser WHEP)** | `https://yourdomain.com/watch/{roomId}` |
 | **Watch (Mobile WHEP/HLS)** | `POST /api/whep/{roomId}` (WebRTC) or `GET /hls/{roomId}/master.m3u8` (fallback) |
@@ -194,7 +194,7 @@ Drag the **resize bar** between stream and chat to change the split (vertical ba
 4. Choose your camera, mic, and resolution from the dropdowns.
 5. Click **Start Broadcast**.
 
-Both options use the same WHIP endpoint. **Video codec** follows whatever the publisher negotiates (browser `/broadcast` is usually **VP8** when the browser supports it; **OBS** is usually **H.264**). The stream key doubles as the room ID. Viewers at `/watch/{stream-key}` will receive the broadcast.
+Both options use the same WHIP endpoint. **Video codec** follows whatever the publisher negotiates (browser `/broadcast` is usually **VP8** when the browser supports it; **OBS** is usually **H.264**). The room id is the **public slug** (not the stream key). Viewers at `/watch/{roomId}` will receive the broadcast.
 
 **Option C — Mobile app (Flutter, iOS/Android)**
 
@@ -212,7 +212,7 @@ curl -sS -X POST https://yourdomain.com/api/auth/broadcast \
   -d '{"password":"YOUR_BROADCAST_PASSWORD","stream_key":"YOUR_32_CHAR_STREAM_KEY"}'
 # → {"status":"ok","token":"<hex>","stream_key":"..."}
 
-curl -sS -X POST https://yourdomain.com/api/whip/YOUR_32_CHAR_STREAM_KEY \
+curl -sS -X POST https://yourdomain.com/api/whip/YOUR_PUBLIC_SLUG \
   -H 'Content-Type: application/sdp' \
   -H 'Authorization: Bearer <token>' \
   --data-binary @offer.sdp

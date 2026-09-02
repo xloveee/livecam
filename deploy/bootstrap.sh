@@ -17,8 +17,13 @@ set -euo pipefail
 
 REPO_URL="${REPO_URL:-https://github.com/xloveee/livecam.git}"
 INSTALL_ROOT="${INSTALL_ROOT:-/opt/livecam}"
-# Pin required for live clone (full SHA or tag). Override per release.
-INSTALL_REF="${INSTALL_REF:-5129a60e21aef3ba49408d598a90b9d8d101ee18}"
+# M42: no baked SHA. Explicit INSTALL_REF pins a clone; otherwise keep an
+# existing tree, or use this checkout HEAD. (A baked pin rewound installs.)
+INSTALL_REF="${INSTALL_REF:-}"
+PIN_FROM_ENV=0
+if [[ -n "$INSTALL_REF" ]]; then
+	PIN_FROM_ENV=1
+fi
 GO_VERSION="${GO_VERSION:-1.25.5}"
 # Set GO_SHA256 to the official go.dev archive digest for GO_VERSION+arch.
 GO_SHA256="${GO_SHA256:-}"
@@ -40,7 +45,7 @@ Usage (from a git checkout — do not pipe this script into bash):
 
   PROXY=caddy|nginx   (default caddy)
   INSTALL_DRY_RUN=1   render only (Mac ok)
-  INSTALL_REF         pinned commit/tag for clone (default ${INSTALL_REF})
+  INSTALL_REF         pinned commit/tag for clone (required to clone; else checkout HEAD)
   GO_SHA256           required when this script installs Go
 EOF
 }
@@ -113,8 +118,12 @@ ubuntu | debian) ;;
 	;;
 esac
 
-if [[ -z "$INSTALL_REF" ]]; then
-	echo "INSTALL_REF is required (pinned commit or tag)" >&2
+if [[ -z "$INSTALL_REF" && -n "$REPO_ROOT" ]] && git -C "$REPO_ROOT" rev-parse --verify HEAD >/dev/null 2>&1; then
+	INSTALL_REF="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+	echo "M42: INSTALL_REF=$INSTALL_REF (checkout HEAD)"
+fi
+if [[ -z "$INSTALL_REF" && ! -f "$INSTALL_ROOT/deploy/install.sh" ]]; then
+	echo "INSTALL_REF is required (pinned commit or tag) to clone into $INSTALL_ROOT" >&2
 	exit 1
 fi
 
@@ -183,8 +192,11 @@ if [[ ! -f "$INSTALL_ROOT/deploy/install.sh" ]]; then
 	git clone "$REPO_URL" "$INSTALL_ROOT"
 	git -C "$INSTALL_ROOT" checkout "$INSTALL_REF"
 else
-	git -C "$INSTALL_ROOT" fetch --all --tags >/dev/null 2>&1 || true
-	git -C "$INSTALL_ROOT" checkout "$INSTALL_REF"
+	# Existing tree: do not rewind to a stale pin (M42).
+	if [[ "$PIN_FROM_ENV" -eq 1 ]]; then
+		git -C "$INSTALL_ROOT" fetch --all --tags >/dev/null 2>&1 || true
+		git -C "$INSTALL_ROOT" checkout "$INSTALL_REF"
+	fi
 fi
 
 exec "$INSTALL_ROOT/deploy/install.sh" "$@"

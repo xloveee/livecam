@@ -61,3 +61,6 @@ old/
 old/*
 
 neverdo.md
+deploy/out/
+*.deb
+*.rpm

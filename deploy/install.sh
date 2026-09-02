@@ -2,8 +2,9 @@
 # VPS / custom-domain installer for livecam.
 # Any hostname works. indep.stream is a demo name only — never required.
 #
-# One-line droplet path: see deploy/bootstrap.sh (Caddy auto-TLS default).
-#   sudo ./deploy/install.sh your.domain you@email.com [BROADCAST_PASSWORD]
+# Production VPS: apt install ./livecam.deb && sudo livecam-setup DOMAIN EMAIL
+# (see deploy/packaging/build-deb.sh). This script is what livecam-setup runs
+# (INSTALL_SKIP_BUILD=1 when binaries came from the package).
 #   INSTALL_DRY_RUN=1 ./deploy/install.sh example.test admin@example.test
 #   PROXY=nginx sudo ./deploy/install.sh your.domain you@email.com
 #
@@ -37,10 +38,11 @@ Environment:
 
 Dry-run with no args uses DOMAIN=example.test (not indep.stream).
 
-Pinned VPS path (fresh Ubuntu/Debian, DNS A first):
-  git clone https://github.com/xloveee/livecam.git /opt/livecam
-  cd /opt/livecam && git checkout "$INSTALL_REF"
-  sudo ./deploy/install.sh your.domain you@email.com optional-password
+VPS (Ubuntu/Debian, DNS A first):
+  sudo apt install ./livecam.deb
+  sudo livecam-setup your.domain you@email.com
+
+  (source checkout still works: sudo ./deploy/install.sh DOMAIN EMAIL)
 EOF
 }
 
@@ -125,10 +127,6 @@ random_alnum() {
 	LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$n"
 }
 
-# Prefer an existing live .env over minting (H22).
-load_existing_env "$INSTALL_ROOT/deploy/.env"
-
-
 # Read KEY=value from a dotenv file (first match). Empty if missing.
 env_get() {
 	local f="$1" key="$2"
@@ -170,6 +168,9 @@ backup_existing_env() {
 	cp -a "$f" "$bak"
 	echo "H22: backed up existing .env to $bak"
 }
+
+# Prefer an existing live .env over minting (H22).
+load_existing_env "$INSTALL_ROOT/deploy/.env"
 
 
 if [[ "$DRY_RUN" -eq 1 ]]; then

@@ -108,7 +108,44 @@ WebRTC end-to-end rules recorded here so **desktop → mobile** and **mobile →
 
 When **H.264** must be used (OBS or VP8-unavailable browsers), **profile-level-id** in SDP `fmtp` matters for **WebKit**. The broadcast page’s **H.264** branch sorts by **RFC 6184** profile byte (**42** = Baseline family, **4D** = Main, **64** = High). **OBS** users should still set **Baseline / Constrained Baseline** and a **mobile-friendly level** (e.g. **3.0–3.1**) where the encoder allows it.
 
+## Getting Started (Production VPS)
+
+Install like nginx: drop a prebuilt package, then one setup command (domain +
+email). Official distro archives are not used. Debian-family and RPM-family
+are both first-class; a tarball covers any other Linux.
+
+```bash
+# Debian / Ubuntu (amd64), DNS A already pointing here
+sudo apt install ./livecam.deb
+sudo livecam-setup your.domain you@email.com
+
+# RHEL / Fedora / Alma / Rocky
+sudo rpm -i ./livecam.rpm
+sudo livecam-setup your.domain you@email.com
+
+# any Linux (distro-agnostic)
+sudo tar -C / -xzf livecam-linux-amd64.tar.gz
+sudo livecam-setup your.domain you@email.com
+```
+
+That writes Caddy (default) or `PROXY=nginx` + systemd units under `/opt/livecam`,
+generates `SESSION_SECRET` and `SFU_INTERNAL_SECRET` (≥16 chars) on first run,
+and reuses them on upgrade. Dry-run on a laptop (no root, no network):
+
+```bash
+INSTALL_DRY_RUN=1 ./deploy/install.sh example.test admin@example.test
+```
+
+Build packages on Linux amd64 (`cargo`, `go`, `dpkg-deb`; `rpmbuild` optional):
+
+```bash
+./deploy/packaging/build-deb.sh    # → deploy/out/livecam.deb
+./deploy/packaging/build-tarball.sh  # → deploy/out/livecam-linux-amd64.tar.gz
+./deploy/packaging/build-rpm.sh    # → deploy/out/livecam.rpm
+```
+
 ## Getting Started (Local Development)
+
 
 ### 1. Build and start the Rust Core
 

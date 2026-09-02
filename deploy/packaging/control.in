@@ -1,0 +1,13 @@
+Package: livecam
+Version: __VERSION__
+Section: net
+Priority: optional
+Architecture: amd64
+Maintainer: xloveee <admin@localhost>
+Depends: adduser, ca-certificates, curl
+Recommends: caddy
+Description: WebRTC livestream SFU and Go proxy
+ Prebuilt rust-core + go-proxy for Ubuntu/Debian amd64.
+ After install: sudo livecam-setup your.domain you@email.com
+ Secrets (SESSION_SECRET, SFU_INTERNAL_SECRET) are generated on
+ first setup and reused on upgrade (H22).

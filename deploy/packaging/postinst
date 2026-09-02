@@ -1,0 +1,9 @@
+#!/bin/sh
+set -e
+ROOT=/opt/livecam
+mkdir -p "$ROOT/hls" "$ROOT/data/offline_banners" "$ROOT/archive" "$ROOT/deploy"
+if id www-data >/dev/null 2>&1; then
+	chown -R www-data:www-data "$ROOT/hls" "$ROOT/data" "$ROOT/archive" 2>/dev/null || true
+fi
+echo "livecam: binaries in $ROOT. Configure TLS + systemd with:"
+echo "  sudo livecam-setup your.domain you@email.com"

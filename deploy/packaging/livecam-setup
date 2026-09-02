@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Configure a VPS after: sudo apt install ./livecam.deb
+#   sudo livecam-setup your.domain you@email.com [BROADCAST_PASSWORD]
+set -euo pipefail
+export INSTALL_ROOT="${INSTALL_ROOT:-/opt/livecam}"
+export INSTALL_SKIP_BUILD=1
+exec "$INSTALL_ROOT/deploy/install.sh" "$@"

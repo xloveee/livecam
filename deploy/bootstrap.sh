@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Ubuntu/Debian droplet installer for livecam.
-# H21: never curl|bash this file. Clone a pinned ref, then run from disk.
+# Preferred: sudo apt install ./livecam.deb && sudo livecam-setup DOMAIN EMAIL
+# H21: never curl|bash this file. Source checkout is the fallback.
 #
 #   git clone https://github.com/xloveee/livecam.git /opt/livecam
 #   cd /opt/livecam && git checkout "$INSTALL_REF"

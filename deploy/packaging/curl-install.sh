@@ -33,8 +33,8 @@ main() {
 
 	local repo_url="${REPO_URL:-https://github.com/xloveee/livecam.git}"
 	local install_root="${INSTALL_ROOT:-/opt/livecam}"
-	# Pin: origin app after this tree is pushed. Override with INSTALL_REF=<sha|tag|branch>.
-	local ref="${INSTALL_REF:-app}"
+	# H29: default is the release SHA that shipped curl-install (origin app at 0f9faf6), not a moving branch.
+	local ref="${INSTALL_REF:-0f9faf6237c8b2a05958f972de7c7c0ae3e422bd}"
 
 	if [[ "$dry" -eq 1 ]]; then
 		local here

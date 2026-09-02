@@ -113,15 +113,15 @@ When **H.264** must be used (OBS or VP8-unavailable browsers), **profile-level-i
 DNS A for your host, then this (domain + email are required for TLS):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/xloveee/livecam/app/deploy/packaging/curl-install.sh | sudo sh -s -- your.domain you@email.com
+curl -fsSL -o /tmp/livecam-install.sh https://raw.githubusercontent.com/xloveee/livecam/app/deploy/packaging/curl-install.sh
+echo '969817f5303ea2d76b70cd7d2a62cc1e8f896628ae197224b2785f5303a141fa  /tmp/livecam-install.sh' | sha256sum -c -
+sudo sh /tmp/livecam-install.sh your.domain you@email.com
 ```
 
-That is the Ollama-shaped path. The script wraps work in `main()` so a truncated
-pipe does nothing; it clones the `app` branch (override with `INSTALL_REF`) and
-runs `deploy/install.sh` from disk (`deploy/bootstrap.sh` still refuses pipes,
-H21). sha256 of `deploy/packaging/curl-install.sh` in this tree:
-
-`1b6eab661cdd15b2047b0adc2a3415595cf6b0f14c61187de02c4f3eca101a78`
+`sha256sum -c` must pass before exec (H29). The script defaults `INSTALL_REF`
+to `0f9faf6237c8b2a05958f972de7c7c0ae3e422bd` (override with `INSTALL_REF`).
+It runs `deploy/install.sh` from disk; `deploy/bootstrap.sh` still refuses
+pipes (H21).
 
 Packages if you already have a build (same domain + email setup):
 

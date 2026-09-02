@@ -110,9 +110,20 @@ When **H.264** must be used (OBS or VP8-unavailable browsers), **profile-level-i
 
 ## Getting Started (Production VPS)
 
-Install like nginx: drop a prebuilt package, then one setup command (domain +
-email). Official distro archives are not used. Debian-family and RPM-family
-are both first-class; a tarball covers any other Linux.
+DNS A for your host, then this (domain + email are required for TLS):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/xloveee/livecam/app/deploy/packaging/curl-install.sh | sudo sh -s -- your.domain you@email.com
+```
+
+That is the Ollama-shaped path. The script wraps work in `main()` so a truncated
+pipe does nothing; it clones the `app` branch (override with `INSTALL_REF`) and
+runs `deploy/install.sh` from disk (`deploy/bootstrap.sh` still refuses pipes,
+H21). sha256 of `deploy/packaging/curl-install.sh` in this tree:
+
+`1b6eab661cdd15b2047b0adc2a3415595cf6b0f14c61187de02c4f3eca101a78`
+
+Packages if you already have a build (same domain + email setup):
 
 ```bash
 # Debian / Ubuntu (amd64), DNS A already pointing here
